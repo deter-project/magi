@@ -1,0 +1,4 @@
+graft magi/tests/archivetest
+graft magi/tests/testPipe
+graft magi/tests/testSocket
+graft magi/tests/testThread
