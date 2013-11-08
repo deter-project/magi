@@ -21,21 +21,7 @@ from magi.daemon.daemon import Daemon
 from magi.util import config
 from magi import __version__ 
 
-def usage():
-    print """
-      Usage:
-        -s                   turn on TCP server regardless of node type, normally not turned on on experiment nodes
-        -m                   additional multicast address to use in additional to default
-        -f                   log to the foreground, not to file
-        -l <logger> <level>  set 'logger' to level 1=ALL, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR
-                             example loggers are 'magi', 'magi.messaging', 'magi.messaging.routerGroup'
-        -L                   automatically spawn the logging agent to write log data to the local magi database					 
-        -c                   specify the location of magi.conf. Default is /var/log/magi/magi.conf 
-	"""
-    sys.exit(2)
-
 handler = None
-enable_log_agent = False
 
 class PassThroughOptionParser(OptionParser):
     """
@@ -75,7 +61,7 @@ if __name__ ==  '__main__':
     # Also needed to extend the OptionParser to ignore the options is does not understand at the command line 
     #optparse.add_option("-l", "--loggerlevel", dest="loggerlevel", nargs=2, action='append', default="magi 20", help="set logger to level 1=ALL, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR. Default: %default, ex: -l magi 1")
     optparse.add_option("-c", "--magiconf", dest="magiconf", default=config.MAGILOG+'/magi.conf', help="Specify location of the magi configuration file, Default: %default, ex: -c localconfig.conf ")
-    epilog = "-l logger level \t Set logger to level where level can be 1=ALL, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR. Default: magi INFO, ex: -l magi 1"
+    optparse.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install ans setup data manager") 
 
     (options, args) = optparse.parse_args()
 #    print options, 
@@ -99,28 +85,27 @@ if __name__ ==  '__main__':
     root.handlers = []
     root.addHandler(handler)
     
-    from magi.util import database
-    from magi.mongolog.handlers import MongoHandler
-    dbname = 'magi'
-    collectionname = 'log'
-    dbhost = database.getDBHost()
-    connection = database.getConnection()
-    root.addHandler(MongoHandler.to(dbname, collectionname, host=dbhost, port=27017))
+    if not options.nodataman:
+        from magi.util import database
+        from magi.mongolog.handlers import MongoHandler
+        dbname = 'magi'
+        collectionname = 'log'
+        dbhost = database.getDBHost()
+        connection = database.getConnection()
+        root.addHandler(MongoHandler.to(dbname, collectionname, host=dbhost, port=27017))
 
     # Parse the positional options 
     ii=0
     while ii < len(args):
         arg = args[ii]
         ii = ii + 1 
-        print arg 
-
+        logging.debug("args: %s", args) 
         if arg == '-l':
-            print args 
             (logger,level) = args[ii:ii+2]
             logging.getLogger(logger).setLevel(int(level))
             ii = ii + 2
         else:
-            print "Bad option " , arg
+            logging.debug("Bad option %s", arg)
             optparse.print_help()
 
 
@@ -138,12 +123,12 @@ if __name__ ==  '__main__':
     for item in testbed:
         if item.get('nodename'):
             localname=item.get('nodename')
-# Some system initlization
-
+            
+    # Some system initialization
     logging.info("MAGI Version: %s", __version__)
     logging.info("Started magi daemon on %s with pid %s", localname, pid)
-    logging.info("DB host: %s", dbhost)
-    daemon = Daemon(localname, transports, enable_log_agent)
+    if not options.nodataman: logging.info("DB host: %s", dbhost)
+    daemon = Daemon(localname, transports, not options.nodataman)
     daemon.start()
 # Application will exit once last non-daemon thread finishes
 

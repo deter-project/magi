@@ -13,7 +13,7 @@ class DesktopExperiment(Testbed):
     
     def __init__(self, node=None):
         Testbed.__init__(self)
-        _store = {}
+        self._store = {}
         self.iflist = None
         self._ips = None
         self._nodes = None

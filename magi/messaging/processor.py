@@ -1,11 +1,12 @@
 
 
-import time
-import heapq 
-import logging
-import sys
 from collections import defaultdict
 from magi.messaging.api import MAGIMessage
+import heapq
+import logging
+import random
+import sys
+import time
 
 log = logging.getLogger(__name__)
 debug = False
@@ -117,8 +118,8 @@ class NameAndID(MessageProcessor):
 	"""
 	def __init__(self):
 		MessageProcessor.__init__(self)
-#		self.counter = random.randint(1, 2**31)
-		self.counter = 1
+		self.counter = random.randint(1, 2**31)
+#		self.counter = 1
 		self.lists = defaultdict(IdList)
 #		self.lastseenIds = defaultdict(int)
 

@@ -110,16 +110,21 @@ class EmulabTestbed(Testbed):
         """ return true if I am a virtual node (i.e. not a physical node or virtual host) """
         return len(execAndRead(["/usr/local/etc/emulab/tmcc", "jailconfig"])[0]) > 0
 
-
-    def getInterfaceInfo(self, ip):
-        """ return IFObj for ip """
+    def getInterfaceInfo(self, ip=None, name=None):
+        """ return IFObj for ip or name"""
+        if not ip and not name:
+            raise KeyError("Either IP or interface name should be provided")
         if self.iflist is None:
             self.loadIfConfig()
+        if ip:
+            for i in self.iflist:
+                if i.ip == ip:
+                    return i
         for i in self.iflist:
-            if i.ip == ip:
+            if i.name == name:
                 return i
-        return IFObj(ip, 'unknown', 'FF:FF:FF:FF:FF:FF', '255.255.255.255')
-
+        raise KeyError("Invalid IP or interface name provided.")
+    
     def parseVarLine(self, line):
         args = {}
         for x in shlex.split(line):
@@ -131,7 +136,6 @@ class EmulabTestbed(Testbed):
             else:
                 args[sp[0]] = sp[1]
         return args
-
 
 
     """ Abstracted 'readers' of data from 'locations' """

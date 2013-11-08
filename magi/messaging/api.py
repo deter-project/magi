@@ -4,6 +4,8 @@ from magi.messaging.transportTCP import TCPServer, TCPTransport
 from magi.messaging.transportSSL import SSLServer, SSLTransport
 from magi.messaging.transportMulticast import MulticastTransport
 from magi.messaging.magimessage import MAGIMessage, DefaultCodec
+from magi.messaging.transportPipe import InputPipe, OutputPipe
+from magi.messaging.transportTextPipe import TextPipe
 
 import Queue
 import yaml

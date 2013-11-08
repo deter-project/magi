@@ -4,7 +4,6 @@ import logging
 import inspect
 import traceback
 import sys
-import pdb
 from os.path import basename
 from magi.testbed import testbed
 
@@ -118,13 +117,14 @@ def doMessageAction(obj, msg, messaging=None):
 								   nodes=[testbed.nodename], filename=filename, line_num=line_num, error=str(e))
 				return
 			
-	if 'trigger' in data:
-		if retVal is None:
-			log.error("Agent %s does not provide return value for method", str(obj))
-			messaging.trigger(event='RuntimeException', agent=str(obj), nodes=[testbed.nodename], error="no return value")
-			return 
-		else:
-			messaging.trigger(event=data['trigger'], nodes=[testbed.nodename], retVal=retVal)
+		if 'trigger' in data:
+			if retVal is None:
+				log.error("Agent %s does not provide return value for method", str(obj))
+				messaging.trigger(event='RuntimeException', agent=str(obj), nodes=[testbed.nodename], error="no return value")
+				return 
+			else:
+				messaging.trigger(event=data['trigger'], nodes=[testbed.nodename], retVal=retVal)
+				
 	else:
 		log.warn('got message without supported (or any?) action')
 		

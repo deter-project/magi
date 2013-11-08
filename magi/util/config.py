@@ -132,7 +132,7 @@ def createMESDL():
     mesdl['bridges'] = list()
     mesdl['overlay'] = list()
     
-    transportClass = 'Multicast'
+    transportClass = 'TCP'
     
     if transportClass == 'TCP':
         for node in d.nodes():
@@ -258,7 +258,7 @@ def _intval(x, y):
 def _str2byte(strin):
     return reduce(_intval, strin, 0) % 255
 
-def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT_MAGICONF, rootdir=None):
+def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT_MAGICONF, rootdir=None, enable_dataman=True):
     """
         Create a basic configuration
         rootdir - for the magi code distribution 
@@ -361,15 +361,19 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
             })
 
     config['tempdir'] = '/tmp'
-
-    expdbconf = getConfig(dbconf)
-    config['collector_mapping'] = expdbconf['collector_mapping']
-    config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
-    config['dbhost'] = expdbconf['collector_mapping'][testbed.nodename]
-    config['isDBHost'] = (expdbconf['collector_mapping'][testbed.nodename] == testbed.nodename)
+    
+    if enable_dataman:
+        config['isDatamanSetup'] = True
+        expdbconf = getConfig(dbconf)
+        config['collector_mapping'] = expdbconf['collector_mapping']
+        config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
+        config['dbhost'] = expdbconf['collector_mapping'][testbed.nodename]
+        config['isDBHost'] = (expdbconf['collector_mapping'][testbed.nodename] == testbed.nodename)
         
-    if testbed.nodename in config['queriers']:
-        config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
+        if testbed.nodename in config['queriers']:
+            config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
+    else:
+        config['isDatamanSetup'] = False
         
     fp = open (magiconf, 'w') 
     fp.write(yaml.safe_dump(config))

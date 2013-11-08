@@ -134,7 +134,8 @@ if __name__ == '__main__':
         optparser.add_option("-m", "--mesdl", dest="mesdl", action="store", default=None, help="Path to the messaging overlay configuration file")  
         optparser.add_option("-c", "--magiconf", dest="magiconf", action="store", default=None, help="Path to the local node magi configuration file. Cannot use along with -f (see above)")
         optparser.add_option("-d", "--dbconf", dest="dbconf", action="store", default=None, help="Path to the data management configuration file")
-        
+        optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install ans setup data manager") 
+                
         (options, args) = optparser.parse_args()
 
         if options.magiconf and options.force == True:
@@ -171,28 +172,29 @@ if __name__ == '__main__':
         
                 log.info("Installing unittest2")
                 installPython('unittest2', 'unittest2', 'install')
-                log.info("Installing SQLAlchemy")
-                installPython('SQLAlchemy', 'sqlalchemy', 'install')
-                log.info("Installing pymongo")
-                installPython('pymongo', 'pymongo', 'install')
                 log.info("Installing networkx")
                 installPython('networkx', 'networkx', 'install')
                 magidist = 'MAGI-1'
                 log.info("Installing %s", magidist)
                 installPython(magidist, 'alwaysinstall', 'install')
 
+                if not options.nodataman:
+                        log.info("Installing pymongo")
+                        installPython('pymongo', 'pymongo', 'install')
+                
                 #updating sys.path with the installed packages
                 import site
                 site.main()
 
-                if is_os_64bit():
-                        call("rsync " + rpath + "/" + "mongodb-linux-x86_64-2.4.1.tgz" + " /tmp/mongodb.tgz")
-                        call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
-                        call("sudo rsync /tmp/mongodb-linux-x86_64-2.4.1/bin/* /usr/local/bin/")
-                else:
-                        call("rsync " + rpath + "/" + "mongodb-linux-i686-2.4.1.tgz" + " /tmp/mongodb.tgz")
-                        call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
-                        call("sudo rsync /tmp/mongodb-linux-i686-2.4.1/bin/* /usr/local/bin/")
+                if not options.nodataman:
+                        if is_os_64bit():
+                                call("rsync " + rpath + "/" + "mongodb-linux-x86_64-2.4.1.tgz" + " /tmp/mongodb.tgz")
+                                call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
+                                call("sudo rsync /tmp/mongodb-linux-x86_64-2.4.1/bin/* /usr/local/bin/")
+                        else:
+                                call("rsync " + rpath + "/" + "mongodb-linux-i686-2.4.1.tgz" + " /tmp/mongodb.tgz")
+                                call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
+                                call("sudo rsync /tmp/mongodb-linux-i686-2.4.1/bin/* /usr/local/bin/")
 
         # Now that MAGI is installed on the local node, import utilities 
         from magi import __version__
@@ -249,17 +251,18 @@ if __name__ == '__main__':
 
                                 log.info("Checking to see if a db config file is specified....")
                                 
-                                if not options.dbconf:
-                                        log.info("No db config file specified....")
-                                        options.dbconf = config.createDBConf()
-                                        log.info("Created a db config file at location %s....",options.dbconf)
-                                else:
-                                        log.info("Validating data config file at location %s....", options.dbconf)
-                                        options.dbconf = config.validateDBConf(options.dbconf)
+                                if not options.nodataman:
+                                        if not options.dbconf:
+                                                log.info("No db config file specified....")
+                                                options.dbconf = config.createDBConf()
+                                                log.info("Created a db config file at location %s....",options.dbconf)
+                                        else:
+                                                log.info("Validating data config file at location %s....", options.dbconf)
+                                                options.dbconf = config.validateDBConf(options.dbconf)
                 
                                 # The mesdl file was specified at the command line 
                                 # use it to create a new local node specific magi conf  
-                                config.createConfig( mesdl=options.mesdl, dbconf=options.dbconf, rootdir=rpath) 
+                                config.createConfig( mesdl=options.mesdl, dbconf=options.dbconf, rootdir=rpath, enable_dataman=not options.nodataman) 
                                 log.info("Created a magi conf at %s....", config.DEFAULT_MAGICONF) 
                 except Exception, e:
                         log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
@@ -282,11 +285,12 @@ if __name__ == '__main__':
 #        else:
 #                log.info("mongo db not required on this node")
 
-        from magi.util import database
-        if config.getConfig().get('isDBHost'):
-            database.startDBServer()
-        else:
-            log.info("Database server is not required on this node")
+        if not options.nodataman:
+                from magi.util import database
+                if config.getConfig().get('isDBHost'):
+                        database.startDBServer()
+                else:
+                        log.info("Database server is not required on this node")
                 
                 
         # Get the pid for the daemon process from the pid file 
@@ -311,13 +315,18 @@ if __name__ == '__main__':
         else:
                 log.info("No %s file found....", config.DEFAULT_MAGIPID)
 
+        log.info("Starting daemon")
+        daemon = ['/usr/local/bin/magi_daemon.py']
+
+        if options.nodataman:
+                log.info("Starting daemon without data manager")
+                daemon += ['-D']
+                
         if options.dargs:
                 log.info("Starting daemon with debugging")
-                daemon = ['/usr/local/bin/magi_daemon.py', '-l', 'magi', '1']
-        else:
-                log.info("Starting daemon")
-                daemon = ['/usr/local/bin/magi_daemon.py']
-
+                daemon += ['-l', 'magi', '1']
+                
+                
         # Record the process id in a file for later reference 
         pid=Popen( daemon ).pid
  

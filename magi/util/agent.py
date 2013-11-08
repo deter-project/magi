@@ -16,7 +16,7 @@ from magi.util.calls import doMessageAction
 from magi.util.execl import spawn, execAndRead
 from magi.messaging.magimessage import MAGIMessage
 from magi.testbed import testbed
-from magi.util import database
+#from magi.util import database
 
 log = logging.getLogger(__name__)
 
@@ -286,7 +286,7 @@ class TrafficClientAgent(AgentVariables):
         try:
             (output, err) = execAndRead(self.getCmd(dst))
             fp.write(output)
-            self.collection.insert(**{"result" : output, "error" : err})
+#            self.collection.insert(**{"result" : output, "error" : err})
         except OSError, e:
             log.error("can't execute command: %s", e)
             fp.close()
@@ -305,7 +305,7 @@ class TrafficClientAgent(AgentVariables):
         """ Implements startClient from idl """
         self.running = True
         self.nextrun = time.time() + eval(self.interval)
-        self.collection = database.getCollection(self.collectionname, self.collector)
+#        self.collection = database.getCollection(self.collectionname, self.collector)
         return True
 
     @agentmethod()
