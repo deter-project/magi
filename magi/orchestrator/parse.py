@@ -3,9 +3,9 @@ import yaml
 import sys
 import cStringIO
 import optparse
+from controlflow import ControlGraph  
 from collections import defaultdict
 from magi.messaging.api import MAGIMessage
-import pdb
 
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 
     { type: event, ....}
     { type: trigger, triggers: [{timeout:1, event:X, otherkey:Y, target:null},
+    { type: trigger, triggers: [ esets: [ { event:X, otherkey:Y } { event:Y, otherkey:A } ], target: null, timeout: 100} 
         ...] }
 
 """
@@ -55,8 +56,8 @@ class TriggerData(object):
     def __init__(self, datadict):
         self.args = dict()
         self.sets = defaultdict(set)
+        self.esets = defaultdict(dict)
         self.count = [1, 0]  # default is always to look for a single match
-        self.selfDestructTime = -1.0
 
         # handle 'meta' constraint data
         if 'count' in datadict:
@@ -65,7 +66,12 @@ class TriggerData(object):
         for k, v in datadict.iteritems():
             log.debug("unpacking incoming trigger k: %s, v: %s", k,v)
             if isinstance(v, list):
-                self.sets[k] = set(v)
+                #  Here  we need to check if the value v is a dictionary 
+                for ll in v:
+                    if isinstance(ll,dict):
+                        self.esets[ll['event']] = TriggerData(ll) 
+                    else:
+                        self.sets[k] = set(v)
             elif isinstance(v, dict):
                 if k == 'retVal':
                     log.debug("received a dict as return value from agent")
@@ -80,6 +86,7 @@ class TriggerData(object):
         log.debug("datadict: %s", datadict)
         log.debug("sets: %s", self.sets) 
         log.debug("args: %s", self.args)
+        log.debug("esets: %s", self.esets) 
         log.debug("count: %s", self.count)
 
     def update(self, incomingTrigData):
@@ -104,18 +111,41 @@ class TriggerData(object):
             return True
         return False
 
-    def shouldDelete(self, curTime):
-        if self.selfDestructTime is None:
-            return False   # we don't care about self destruct
-        else:
-            return curTime > self.selfDestructTime
+   # def shouldDelete(self, curTime):
+   #     if self.selfDestructTime is None:
+   #         return False   # we don't care about self destruct
+   #     else:
+   #         return curTime > self.selfDestructTime
 
 
     def getEsets(self):
-        return self.sets['eset'] 
+        return self.esets
+
+    def getSets(self):
+        return self.sets
+
+    def getArgs(self):
+        return self.args
+
+    def getCount(self):
+        return self.count[0]
 
     def __repr__(self):
-        return "TriggerData count: %s, timout: %s, args: %s, sets: %s" % (self.count, self.selfDestructTime, self.args, self.sets)
+        if self.sets:
+            setstr = self.sets 
+        else:
+            setstr = "None"
+
+        # esets is a dictionary with events as keys 
+        # the triggerData is just the value within the dict entry
+        if self.esets:
+            esetstr = ""
+            for e in self.esets:
+                esetstr = esetstr + "\n\t\t" + e + ":" + TriggerData.__repr__(self.esets[e])
+        else:
+            esetstr = "None" 
+
+        return "TriggerData count: %s, args: %s, sets: %s, esets: %s" % (self.count, self.args, setstr, esetstr)
 
 
 class Trigger(TriggerData):
@@ -131,6 +161,15 @@ class Trigger(TriggerData):
 
     def getEsets(self):
         return TriggerData.getEsets(self) 
+
+    def getSets(self):
+        return TriggerData.getSets(self) 
+
+    def getArgs(self):
+        return TriggerData.getArgs(self)
+
+    def getCount(self):
+        return TriggerData.getCount(self)
 
     def __repr__(self):
         return "Trigger target:%s, timeout:%s, data: %s" % (
@@ -151,6 +190,7 @@ class TriggerList(list):
             tesets = Trigger.getEsets(entry) 
             if tesets:
                 for e in tesets:
+                    print e 
                     completeests.add(e)
         return completeests
 
@@ -305,6 +345,10 @@ class AAL(object):
             ADditionally, it also creates the control graph that can be 
             visualized later.
         """
+
+        # TODO: currently the startup stream is always setup for an AAL 
+        # Later the experiment may or may not have a startup phase 
+        self.startup = True 
         
         if dagdisplay:
             print "dagdisplay True, creating graph" 
@@ -333,65 +377,86 @@ class AAL(object):
         self.setupStream = list()
         self.teardownStream = list()
         self.streams = dict()
-        self.eventtriggers = defaultdict(set) 
+        self.ieventtriggers = defaultdict(set) 
+        self.oeventtriggers = defaultdict(set) 
 
         # The AAL extra-YAML references
         self._resolveReferences(self.aal)
 
-        # sanity check.
+        # Sanity Check: does the AAL have the following directives. 
+        # if not, log that they are missing but continue 
         for k in ['streamstarts', 'agents', 'groups', 'eventstreams']:
             if not k in self.aal.keys():
                 log.critical('missing required key in AAL: %s', k)
-                #sys.exit(1)
 
+        # Define startup stream 
+        # By default we add a startup stream 
+        if self.startup: 
         # Stand up the experiemnt, load agents, build groups.
-        for name, nodes in self.aal['groups'].iteritems():
-            self.setupStream.append(BuildGroupCall(name, nodes))
-        for name, nodes in self.aal['groups'].iteritems():
-            self.setupStream.append(
-                TriggerList([
-                    {'event': 'GroupBuildDone', 'group': name, 'nodes': nodes},
-                    {'event': 'GroupBuildDone', 'retVal': False,
-                     'target': 'exit'},
-                    {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
+            for name, nodes in self.aal['groups'].iteritems():
+                self.setupStream.append(BuildGroupCall(name, nodes))
 
-        # create an internal agent dock using unique name of agent. 
-        # if specified in the AAL, do not do this. 
-        for name, agent in self.aal['agents'].iteritems():
-            if not 'dock' in agent:
-                agent['dock'] = name + '_dock'
-            if not 'code' in agent:
-                agent['code'] = name + '_code' 
+            # Add triggers for the BuildGroup calls 
+            for name, nodes in self.aal['groups'].iteritems():
+                self.setupStream.append(
+                    TriggerList([
+                        {'event': 'GroupBuildDone', 'group': name, 'nodes': nodes},
+                        {'event': 'GroupBuildDone', 'retVal': False,
+                        'target': 'exit'},
+                        {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
 
-        for name, agent in self.aal['agents'].iteritems():
-            self.setupStream.append(LoadAgentCall(name, **agent))
-        for name, agent in self.aal['agents'].iteritems():
-            timeout = (200000 if not 'loadTimeout' in agent
-                       else agent['loadTimeout'])
-            self.setupStream.append(
-                TriggerList([
-                    {'timeout': timeout, 'event': 'AgentLoadDone',
-                     'agent': name,
-                     'nodes': self.aal['groups'][agent['group']]},
-                    {'event': 'AgentLoadDone', 'agent': name, 'retVal': False,
-                     'target': 'exit'}]))
+            # create an internal agent dock using unique name of agent. 
+            # if specified in the AAL, do not do this. 
+            for name, agent in self.aal['agents'].iteritems():
+                if not 'dock' in agent:
+                    agent['dock'] = name + '_dock'
+                if not 'code' in agent:
+                    agent['code'] = name + '_code' 
 
+            # Add event call for load Agents 
+            for name, agent in self.aal['agents'].iteritems():
+                self.setupStream.append(LoadAgentCall(name, **agent))
+
+            # Add triggers to ensure  the agents are loaded correctly 
+            for name, agent in self.aal['agents'].iteritems():
+                timeout = (200000 if not 'loadTimeout' in agent
+                           else agent['loadTimeout'])
+                self.setupStream.append(
+                    TriggerList([
+                        {'event': 'AgentLoadDone',
+                        'agent': name,
+                        'nodes': self.aal['groups'][agent['group']]},
+                        {'event': 'AgentLoadDone', 'agent': name, 'retVal': False,
+                        'target': 'exit'},
+                        {'timeout': int(timeout), 'target': 'exit'} 
+                         ]))
+
+        # We always define a teardown stream as jumping to target exit 
+        # activates this stream 
         # tear down the experiment, unload agents, leave groups.
         for name, agent in self.aal['agents'].iteritems():
             self.teardownStream.append(UnloadAgentCall(name, **agent))
         for name, agent in self.aal['agents'].iteritems():
-            # unload timeout is less important so a default is probably OK.
+            # Use the same timeouts as setup for teardown stream
             self.teardownStream.append(
-                TriggerList([{'timeout': 200000, 'event': 'AgentUnloadDone',
-                              'agent': name,
-                              'nodes': self.aal['groups'][agent['group']]}]))
+                TriggerList([
+                        {'event': 'AgentUnloadDone',
+                        'agent': name,
+                        'nodes': self.aal['groups'][agent['group']]},
+                        {'event': 'AgentUnloadDone', 'agent': name, 'retVal': False,
+                        'target': 'exit'},
+                        {'timeout': int(timeout), 'target': 'exit'} 
+                         ]))
 
         for name, nodes in self.aal['groups'].iteritems():
             self.teardownStream.append(LeaveGroupCall(name, nodes))
         for name, nodes in self.aal['groups'].iteritems():
             self.teardownStream.append(
-                TriggerList([{'timeout': 20000, 'event': 'GroupTeardownDone',
-                              'group': name, 'nodes': nodes}]))
+                TriggerList([
+                    {'event': 'GroupTeardownDone', 'group': name, 'nodes': nodes},
+                    {'event': 'GroupTeardownDone', 'retVal': False,
+                    'target': 'exit'},
+                    {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
 
         #if dagdisplay: 
             #callgraph = pydot.Dot(graph_type='digraph',fontname="Verdana")
@@ -413,21 +478,23 @@ class AAL(object):
                 # we log errors if it is not an event or trigger. 
 
                 if event['type'] == 'trigger':
-                    newstream.append(TriggerList(event['triggers']))
+                    t = TriggerList(event['triggers'])
 
-                    feset = TriggerList(event['triggers']).getEsets()
+                    feset = t.getEsets()
                     if feset:
-                        for f in feset:
-                            self.eventtriggers[key].add(f)
+                        for k in feset:
+                            self.ieventtriggers[key].add(k)
 
                     if dagdisplay:
-                        self.cgraph.addTrigger(key,event['triggers'])
+                        self.cgraph.addTrigger(key,t)
+
+                    newstream.append(t)
 
                 elif event['type'] == 'event':
                     agent = self.aal['agents'][event['agent']]
                     newstream.append(EventMethodCall(agent, event))
                     if 'trigger' in event:
-                        self.eventtriggers[key].add(event['trigger'])
+                        self.oeventtriggers[key].add(event['trigger'])
                     if dagdisplay: 
                         self.cgraph.addEvent(key,event)
                         # Error: it is not an event or a trigger type     
@@ -473,11 +540,19 @@ class AAL(object):
 
     def getInterStreamEvents(self):
         ies = set()
-        for k in self.eventtriggers:
+        for k in self.ieventtriggers:
             if len(ies) == 0:
-                ies = self.eventtriggers[k]
+                ies = self.ieventtriggers[k]
             else:
-                ies.union(self.eventtriggers[k])
+                ies.union(self.ieventtriggers[k])
+
+        for k in self.oeventtriggers:
+            if len(ies) == 0:
+                ies = self.oeventtriggers[k]
+            else:
+                ies.union(self.oeventtriggers[k])
+
+
         return ies 
 
 
@@ -543,253 +618,14 @@ class AAL(object):
 
 
 
-class ControlGraph(object):
-    """ Create the call graph from the procedure description 
-    """
-    def __init__(self):
-        print "in Controlgraph" 
-        self.controlgraph = dict() 
-        self.keys = list()
-        self.addSetupNode()
-        self.keys.append('setup')
-        self.addTeardownNode()
-        self.keys.append('teardown')
-
-    def addSetupNode(self):
-        self.controlgraph['setup'] = {'id': 'setup0', 'label': 'Setup', 'type': 'node'}  
-
-    def addTeardownNode(self):
-        self.controlgraph['teardown'] = {'id': 'exit0', 'label': 'TearDown', 'type': 'node'}  
-
-
-    def createCluster(self,key):
-        self.keys.append(key)
-        self.controlgraph[key] = ControlGraphCluster(key) 
-
-    def writepng(self):
-        import pydot 
-        # TODO: walk through the controlgraph 
-        # keys. if key is setup or teardown add node
-        # else add cluster and send to graphcluster to populate 
-        cpng = pydot.Dot(graph_type = 'digraph', fontname="Verdana")
-        for k in self.keys:
-            if k == 'setup' or k == 'teardown':
-                cpng.add_node(pydot.Node(self.controlgraph[k]['id'],
-                                         label = self.controlgraph[k]['label']))
-            else:
-                c = pydot.Cluster(k, label=k)
-
-                allnodes = self.controlgraph[k].getAllNodes()
-                for n in allnodes:
-                    if n['type'] != 'syncnode':
-                        c.add_node(pydot.Node(n['id'], label=n['label']))
-
-                cpng.add_subgraph(c)
-
-                alledges = self.controlgraph[k].getAllEdges()
-                for e in alledges:
-                    cpng.add_edge(pydot.Edge(e['from'], e['to'], label=e['label']))
-
-        cpng.write_raw('test.dot')
-        cpng.write_png('test.png')
-
-
-
-    def finishControlgraph(self):
-        # if addEvent edge to node exisits otherwise add external node to sink edge 
-        # if addTrigger edge from node exisits otherwise add external node generating
-        pass 
-
-    def finishCluster(self,key):
-        self.addIntraClusterEdges(key)
-        # if triggerlist, need to add proper edges from parent event
-        
-
-    def addIntraClusterEdges(self,key):
-        self.controlgraph[key].addStraightEdges()
-
-    def addEvent(self,key,event):
-        self.controlgraph[key].addEvent(event)
-
-    def addTrigger(self,key,event):
-        self.controlgraph[key].addTrigger(event)
-
-    def __repr__(self):
-        rstr = "Control Graph\n" 
-        for k, v in self.controlgraph.items():
-            rstr = rstr + str(k) + "\n" + v.__repr__()+ "\n"
-        return rstr 
-
-class ControlGraphCluster(dict):
-    """ Creates a cluster of connected control graph nodes  
-    """
-
-    def __init__(self,key):
-        self.key = key
-        self.eventcount = 0 
-        self.targettriggers = list() 
-        self.nodes = list()
-        self.edges = list()
-
-
-    def getWaitTriggers(self):
-        return self.targetriggers
-
-    def getNodeIndex(self):
-        return len(self.nodes)
-
-    def getAllNodes(self):
-        return self.nodes 
-
-    def getEdgeIndex(self):
-        return len(self.edges)
-
-    def getAllEdges(self):
-        return self.edges
-
-    def addEvent(self,event):
-        print "adding node", event 
-        tempnode = dict()
-        tempnode['type'] = 'node'
-        tempnode['id']= str(self.key) + "Event" + str(self.eventcount) 
-        # Create the label 
-        label = "Send" 
-        # TODO: write send method to agent format using getkey 
-        for k,v in event.items():
-            if k == 'trigger':
-                    tempnode['edgeto']= v 
-                    self.addOneEdge(tempnode['id'], ('Trigger' + str(v)),label=str(v)) 
-                    continue
-            if k == 'args' or k == 'execargs' or k == 'type':
-                continue 
-            label = label + "\n" + str(k) + ":" + str(v)
-
-        tempnode['label'] = label 
-        self.nodes.append(tempnode)
-        self.advanceEventCount()
-                
-    def addStraightEdges(self):
-        prevnodes = list() 
-        prevnodes.append('setup0')
-
-        currentnodes = list() 
-        # index into nodes 
-        j = 0 
-
-        for i in range(0, self.eventcount):
-            if 'Event' in self.nodes[j]['id']:
-                currentnodes.append(self.nodes[j]['id'])
-                j += 1
-            else:
-                if 'StartTList' in self.nodes[j]['id']: 
-                    # Ignore the syncnode 
-                    j += 1
-                    while not 'EndTList' in self.nodes[j]['id']:
-                        currentnodes.append(self.nodes[j]['id'])
-                        j += 1
-                    # Ignore the syncnode 
-                    j += 1
-
-            if j > self.getNodeIndex():
-                log.error("node index exceeds event index") 
-
-            for pnode in prevnodes:
-                for cnode in currentnodes:
-                    tempedge = dict()
-                    tempedge['id'] = str(self.key) + 'Edge' + str(self.getEdgeIndex())
-                    tempedge['type'] = 'edge'
-                    tempedge['label'] = " " 
-                    # Test for first node in the stream 
-                    # The first node gets an incoming edge from setup 
-                    tempedge['to'] =  cnode
-                    tempedge['from'] = pnode
-                    self.edges.append(tempedge)
-            prevnodes = currentnodes
-            currentnodes = list() 
-
-
-    def addOneEdge(self,fromNode,toNode,label=" "):
-        tempedge = dict()
-        tempedge['id'] = str(self.key) + 'Edge' + str(self.getEdgeIndex())
-        tempedge['type'] = 'edge'
-        tempedge['label'] = label 
-        tempedge['from'] = fromNode
-        tempedge['to'] = toNode 
-        self.edges.append(tempedge)
-
-    def addTrigger(self,trigger):
-        print "adding trigger", trigger 
-        # A Trigger is a list of TriggerData
-        # We parse each trigger and see which one arrives and decides the control 
-        # path 
-        
-        # Add triggerlist ends in the node list to indicate start and end of 
-        # the trigger list #
-        # This significantly simpliies adding and managing the links during 
-        # fanin and fanout  
-        tempnode = dict()
-        tempnode['type'] = 'syncnode'
-        tempnode['id'] = 'StartTList'
-        self.nodes.append(tempnode)
-
-        for i, l in enumerate(trigger):
-            print l,i
-            tempnode = dict()
-            tempnode['type'] = 'node' 
-            tempnode['id'] = str(self.key) + "Trigger"+ str(self.eventcount) + str(i)
-            label = "Wait Until"
-            if l.get('event'):
-                tempnode['edgefrom'] = l.get('event')
-                label = label + "\n" + 'event: ' + str(l.get('event')) 
-                # if this is a trigger waiting from an event then we set the 
-                # id with the event name 
-                tempnode['id'] = 'Trigger' + str(l.get('event'))
-            if 'target' in l:
-                # These targers are eventstreams 
-                # Hence we can directly add a edge here 
-                tempnode['edgeto'] = l['target']
-                if l.get('event'):
-                    labelstr = l.get('event') 
-                else: 
-                    labelstr = "jump"
-                self.addOneEdge(tempnode['id'], (str(l['target']) + '0'), label=labelstr)
-            if l.get('timeout') == sys.maxint:
-                label  = label + "\n" + 'timeout: Never'
-            elif l.get('timeout') is not None:
-                label  = label + "\n" + 'timeout: ' + str(l.get('timeout')/1000) + "s"
-            tempnode['label'] = label 
-            self.nodes.append(tempnode)
-
-        tempnode = dict()
-        tempnode['type'] = 'syncnode'
-        tempnode['id'] = 'EndTList'
-        self.nodes.append(tempnode)
-        self.advanceEventCount()
-
-    def advanceEventCount(self):
-        self.eventcount = self.eventcount + 1
-
-    def __repr__(self):
-        rstr = "Cluster Graph: " + self.key + "\n"
-        for n in self.nodes:
-            for k,v in n.items():
-                rstr = rstr +  " " + str(k) + ':' + str(v) +"\n" 
-            rstr += "\n"
-        for e in self.edges:
-            for k,v in e.items():
-                rstr = rstr +  " " + str(k) + ':' + str(v) +"\n" 
-            rstr += "\n"
-        return rstr 
-
-
-# locally parse AAL file-$                                                     
 if __name__ == "__main__":
     optparser = optparse.OptionParser()
     optparser.add_option("-f", "--file", dest="file", help="AAL Events file", default=[], action="append")
     (options, args) = optparser.parse_args()
 
     x = AAL(files=options.file, dagdisplay=True)
-    print "croo event triggers", x.eventtriggers
+    print "Incoming Event triggers", x.ieventtriggers
+    print "Outgoing Event triggers", x.oeventtriggers
     #print x.__repr__()
 
 

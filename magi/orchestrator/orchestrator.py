@@ -207,6 +207,7 @@ class Orchestrator(object):
         self.streams = [StreamIterator(k, self.aal.getStream(k))
                         for k in self.aal.getStartKeys()]
         # Keep track of event triggers that as passed between streams 
+        pdb.set_trace()
         if self.aal.getTotalStreams() > 1:
             self.interes = self.aal.getInterStreamEvents()
 
@@ -339,7 +340,9 @@ class Orchestrator(object):
 #                if not ((sn == "initialization") or (sn == "exit")): 
                     # self.dagdisplay.createcallgraph() 
                     # self.dagdisplay.startToEnd(self.streams)
+                # Iterate through all the streams and work on the current event 
                 for streamIter in self.streams:
+                    # work on the current event in each stream 
                     if streamIter.isDone():
                         # Nothing left in stream, remove the stream
                         self.display.streamEnded(streamIter)
@@ -382,6 +385,7 @@ class Orchestrator(object):
                                                      updatedTrigger):
                                     self.display.triggerMatched(streamIter, 
                                                                 matchTrigger)
+                                    pdb.set_trace()
                                     self.jumpToTarget(streamIter,
                                                       matchTrigger)
                                     updatedTrigger = None
@@ -570,6 +574,7 @@ class Orchestrator(object):
         #    self.triggerCache[event][:] = [t for t in self.triggerCache[event]
         #                                   if t.shouldDelete(curTime)]
         # The cache is cleared independent of time.
+        #pdb.set_trace()
         # We remove all events that no other stream is interested in 
         log.debug("Events tracked by other stream %s", self.interes) 
         for event in self.triggerCache.iterkeys():
