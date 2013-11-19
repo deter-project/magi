@@ -20,6 +20,7 @@ parser = optparse.OptionParser()
 parser.add_option("-l", "--level", dest="loglevel", default=logging.WARNING, help="set the python logging level, defaults to 30 (WARNING)")
 parser.add_option("", "--nobase", action="store_false", dest="dobase", default=True, help="don't run the base library tests")
 parser.add_option("", "--nomodule", action="store_false", dest="domodules", default=True, help="don't run the tests in the modules dir")
+parser.add_option("-f", "--filter", dest="filter", default="*_*.py", help="Filter to apply to the testsuite files")
 
 (options, args) = parser.parse_args()
 
@@ -34,7 +35,7 @@ loader = unittest2.TestLoader()
 suite = unittest2.TestSuite()
 
 if options.dobase:
-	for f in sorted(glob.glob(os.path.join(magi.tests.__path__[0], '*_*.py'))):
+	for f in sorted(glob.glob(os.path.join(magi.tests.__path__[0], options.filter))):
 		try:
 			map(suite.addTest, loader.loadTestsFromModule(imp.load_source(os.path.basename(f[:-3]), f)))
 		except Exception:
