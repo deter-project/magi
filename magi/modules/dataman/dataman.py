@@ -66,7 +66,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         entrylog(functionName, locals())
         
         self.collectionMetadata[msg.src] = CachedItem(msg.src, collectionMetadata)
-        queryHash = digest("CollectionMetadata", msg.src)
+        queryHash = self.digest("CollectionMetadata", msg.src)
         self.events[queryHash].set()
         self.events[queryHash].clear()
         
@@ -160,8 +160,8 @@ class DataManAgent(NonBlockingDispatchAgent):
         call = {'version': 1.0, 'method': 'getData', 'args': args}
         querymsg = MAGIMessage(nodes=neighbor, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
         
-        queryHash = digest(collectionname, node, filters, timestampChunks, visited_copy)
-        log.debug("Query Hash: " + queryHash)
+        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited_copy)
+        log.debug("getData Query Hash: " + queryHash)
         
         self.events[queryHash] = threading.Event()
         
@@ -184,7 +184,9 @@ class DataManAgent(NonBlockingDispatchAgent):
         if timestampChunks == None:
             timestampChunks = [(0, time.time())]
         
-        queryHash = digest(collectionname, node, filters, timestampChunks, visited)
+        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited)
+        log.debug("putData Query Hash: " + queryHash)
+        
         self.dataShelf[queryHash] = data
         self.events[queryHash].set()
         
@@ -220,7 +222,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         if timestampChunks == None:
             timestampChunks = [(0, time.time())]
         
-        cacheHash = digest(collectionname, node, filters)
+        cacheHash = self.digest(collectionname, node, filters)
         log.debug("Cache Hash: " + cacheHash)
         
         if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
@@ -280,15 +282,15 @@ class DataManAgent(NonBlockingDispatchAgent):
         call = {'version': 1.0, 'method': 'getShortestDistance', 'args': args}
         querymsg = MAGIMessage(nodes=neighborsToVisit, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
         
-        queryHash = digest(collectionname, node, filters, chunksNotCached, visited_copy)
-        log.debug("Query Hash: " + queryHash)
+        queryHash = self.digest(collectionname, node, filters, chunksNotCached, visited_copy)
+        log.debug("getShortestDistance Query Hash: " + queryHash)
 
         queryWaitSet = set()
         for neighbor in neighborsToVisit:
-            queryWaitSet.add(digest(queryHash, neighbor))
+            queryWaitSet.add(self.digest(queryHash, neighbor))
                     
         for entry in queryWaitSet:
-            #todo
+            #TODO: 
             self.events[entry] = threading.Event()
         
         self.messenger.send(querymsg)
@@ -327,7 +329,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         distance = distance + nx.dijkstra_path_length(self.topoGraph, testbed.getNodeName(), reporterNode)
         log.debug("Distance: " + str(distance))
         
-        cacheHash = digest(collectionname, node, filters)
+        cacheHash = self.digest(collectionname, node, filters)
         log.debug("Cache Hash: " + cacheHash)
         
         if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
@@ -337,10 +339,12 @@ class DataManAgent(NonBlockingDispatchAgent):
         else:
             self.distanceCache[cacheHash] = CachedItem(cacheHash, (distance, reporterNode))
     
-        queryHash = digest(collectionname, node, filters, timestampChunks, visited)
-        log.debug("Query Hash: " + queryHash)
+        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited)
+        log.debug("putShortestDistance Query Hash: " + queryHash)
         
-        self.events[digest(queryHash, reporterNode)].set()
+        key = self.digest(queryHash, reporterNode)
+        if key in self.events:
+            self.events[key].set()
  
     def getCollector(self, node, collectionname):
         functionName = self.getCollector.__name__
@@ -365,8 +369,8 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         call = {'version': 1.0, 'method': 'getCollectionMetadata'}
         querymsg = MAGIMessage(nodes=node, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-        queryHash = digest("CollectionMetadata", node)
-        log.debug("Query Hash: " + queryHash)
+        queryHash = self.digest("CollectionMetadata", node)
+        log.debug("getCollectionMetadata Query Hash: " + queryHash)
         self.events[queryHash] = threading.Event()
         self.messenger.send(querymsg)
         self.events[queryHash].wait()
@@ -465,18 +469,26 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         return result
             
+    def digest(self, *args):
+        functionName = self.digest.__name__
+        entrylog(functionName, locals())
+        m = hashlib.md5()
+        for arg in args:
+            if type(arg) is set:
+                arg = list(arg)
+            if type(arg) is list:
+                arg.sort()
+            m.update(str(arg))
+        result = m.hexdigest()
+        exitlog(functionName, result)
+        return result
     
 def entrylog(functionName, arguments):
     log.debug("Entering function %s with arguments: %s", functionName, arguments)
 
 def exitlog(functionName, returnValue=None):
     log.debug("Exiting function %s with return value: %s", functionName, returnValue)
-            
-def digest(*args):
-    m = hashlib.md5()
-    for arg in args:
-        m.update(str(arg))
-    return m.hexdigest()
+
 
 class CachedItem(object):
     def __init__(self, key, value, duration=60):

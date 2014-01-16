@@ -207,7 +207,7 @@ class Orchestrator(object):
         self.streams = [StreamIterator(k, self.aal.getStream(k))
                         for k in self.aal.getStartKeys()]
         # Keep track of event triggers that as passed between streams 
-        pdb.set_trace()
+        #pdb.set_trace()
         if self.aal.getTotalStreams() > 1:
             self.interes = self.aal.getInterStreamEvents()
 
@@ -278,7 +278,7 @@ class Orchestrator(object):
                     #    self.display.waitingForMessage(3.0)
                     try: 
                         #pdb.set_trace()
-                        msg = self.messaging.nextMessage(True, 3.0)
+                        msg = self.messaging.nextMessage(True, min(waitfor, 3.0))
                     except Queue.Empty: 
                         pass
 
@@ -333,13 +333,13 @@ class Orchestrator(object):
             while progress:
                 progress = False
                 finishedStreams = 0 
-                if self.streams:
-                    sn = self.streams[0].getName()
-                else:
-                    sn = "otherstream" 
+#                if self.streams:
+#                    sn = self.streams[0].getName()
+#                else:
+#                    sn = "otherstream" 
 #                if not ((sn == "initialization") or (sn == "exit")): 
-                    # self.dagdisplay.createcallgraph() 
-                    # self.dagdisplay.startToEnd(self.streams)
+#                     self.dagdisplay.createcallgraph() 
+#                     self.dagdisplay.startToEnd(self.streams)
                 # Iterate through all the streams and work on the current event 
                 for streamIter in self.streams:
                     # work on the current event in each stream 
@@ -373,7 +373,7 @@ class Orchestrator(object):
                         if timedout is not None:
                             self.jumpToTarget(streamIter, timedout, True)
                             progress = True
-                        # Try just matchingwith updated value. Remember we are 
+                        # Try just matching with updated value. Remember we are 
                         # looking at a new trigger across all streams.
                         elif updatedTrigger is not None:
                             # log this below debug @ 5. Use -l all on command
@@ -385,7 +385,7 @@ class Orchestrator(object):
                                                      updatedTrigger):
                                     self.display.triggerMatched(streamIter, 
                                                                 matchTrigger)
-                                    pdb.set_trace()
+                                    #pdb.set_trace()
                                     self.jumpToTarget(streamIter,
                                                       matchTrigger)
                                     updatedTrigger = None
@@ -403,13 +403,13 @@ class Orchestrator(object):
                                     break
                     else:
                         log.error("unknown object in stream")
-                if self.streams:
-                    sn = self.streams[0].getName()
-                else:
-                    sn = "otherstream" 
+#                if self.streams:
+#                    sn = self.streams[0].getName()
+#                else:
+#                    sn = "otherstream" 
 #                if not ((sn == "initialization") or (sn == "exit")): 
-                  #  self.dagdisplay.startToIndex(self.streams)
-                  #  self.dagdisplay.writecallgraph('events')
+#                    self.dagdisplay.startToIndex(self.streams)
+#                    self.dagdisplay.writecallgraph('events')
 
                 if finishedStreams == numberofStreams:
                     progress = False

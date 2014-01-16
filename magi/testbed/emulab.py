@@ -110,18 +110,18 @@ class EmulabTestbed(Testbed):
         """ return true if I am a virtual node (i.e. not a physical node or virtual host) """
         return len(execAndRead(["/usr/local/etc/emulab/tmcc", "jailconfig"])[0]) > 0
 
-    def getInterfaceInfo(self, ip=None, name=None):
+    def getInterfaceInfo(self, matchip=None, matchname=None):
         """ return IFObj for ip or name"""
-        if not ip and not name:
+        if not matchip and not matchname:
             raise KeyError("Either IP or interface name should be provided")
         if self.iflist is None:
             self.loadIfConfig()
-        if ip:
+        if matchip:
             for i in self.iflist:
-                if i.ip == ip:
+                if i.ip == matchip:
                     return i
         for i in self.iflist:
-            if i.name == name:
+            if i.name == matchname:
                 return i
         raise KeyError("Invalid IP or interface name provided.")
     

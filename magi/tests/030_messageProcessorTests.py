@@ -70,17 +70,17 @@ class MessageProcessorTest(unittest2.TestCase):
 		self.assertEquals(msg.msgid, firstid+2)
 
 		# First message should pass, second should get dropped as a duplicate
-		ret = proc.processIN([msg], time.time())
+		ret = proc.processPRE([msg], time.time())
 		self.assertEquals([msg], ret)
 		
-		ret = proc.processIN([msg], time.time())
+		ret = proc.processPRE([msg], time.time())
 		self.assertEquals([], ret)
 
 		# Fill idlist buffer, force it to clean and make sure it still works
 		for ii in range(1, 300):
 			msg = MAGIMessage(src="n1")
 			msg.msgid = ii
-			ret = proc.processIN([msg], time.time())
+			ret = proc.processPRE([msg], time.time())
 			self.assertEquals([msg], ret)
 			self.assert_(len(proc.lists["n1"]) < 200, "single id list should not reach 200")
 
@@ -170,7 +170,7 @@ class MessageProcessorTest(unittest2.TestCase):
 				self.assertEquals(len(self.store.outgoing), 4) # no more acks
 				self.assertEquals(len(proc.inflight), 0) # old messages is gone
 				self.assertEquals(len(self.store.status), 1) # error message incoming
-				self.assertEquals(self.store.status[0].status, "Dropping packet after too many restransmits")
+				self.assertEquals(self.store.status[0].status, "Dropping packet after too many retransmits")
 				self.assertEquals(self.store.status[0].isack, False)
 				self.assertEquals(self.store.status[0].msg, taggedmsg)
 				break

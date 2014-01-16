@@ -2,6 +2,9 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
+import re
+
+from magi.util.execl import pipeIn
 
 def NIE():
     """ 
@@ -105,4 +108,37 @@ class Testbed(object):
         lines = fp.readlines()
         fp.close()
         return lines
+    
+    def getInterfaceInfo(self, matchip=None, matchname=None):
+        """ Get the name and MAC address for an interface given its IP address, IP can be a regular expression """
+        if not matchip and not matchname:
+            raise KeyError("Either IP or interface name should be provided")
+        
+        (ip, name, mac, mask) = (None, None, None, None)
+
+        # TODO: linux output right now, can generalize for bsd with a couple additions
+        for line in pipeIn('ifconfig'):
+            # new interface name entry
+            if line[0].isalpha():  
+                if matchip and re.match(matchip, str(ip)): # see if we already had match on previous entry, uses re
+                    return IFObj(ip, name, mac, mask)
+                elif matchname and re.match(matchname, str(name)): # see if we already had match on previous entry, uses re
+                    return IFObj(ip, name, mac, mask)
+            
+                # Otherwise start new entry
+                (ip, name, mac, mask) = (None, None, None, None)
+                p = line.split()
+                name = p[0]
+                if p[3] == 'HWaddr': 
+                    mac = p[4]
+
+            elif 'inet addr' in line:
+                p = line.split()
+                ip = p[1].split(':')[1]
+                if 'Mask' in p[2]:
+                    mask = p[2].split(':')[1]
+                else:
+                    mask = p[3].split(':')[1]
+
+        return IFObj(matchip, None, None, None)
 

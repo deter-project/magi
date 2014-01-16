@@ -134,7 +134,7 @@ if __name__ == '__main__':
         optparser.add_option("-m", "--mesdl", dest="mesdl", action="store", default=None, help="Path to the messaging overlay configuration file")  
         optparser.add_option("-c", "--magiconf", dest="magiconf", action="store", default=None, help="Path to the local node magi configuration file. Cannot use along with -f (see above)")
         optparser.add_option("-d", "--dbconf", dest="dbconf", action="store", default=None, help="Path to the data management configuration file")
-        optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install ans setup data manager") 
+        optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=True, help="Do not install ans setup data manager") 
                 
         (options, args) = optparser.parse_args()
 
@@ -174,6 +174,7 @@ if __name__ == '__main__':
                 installPython('unittest2', 'unittest2', 'install')
                 log.info("Installing networkx")
                 installPython('networkx', 'networkx', 'install')
+#                installPython('SQLAlchemy', 'sqlalchemy', 'install')
                 magidist = 'MAGI-1'
                 log.info("Installing %s", magidist)
                 installPython(magidist, 'alwaysinstall', 'install')
@@ -275,7 +276,6 @@ if __name__ == '__main__':
 #        if testbed.nodename == testbed.getServer():
 #                mongo.startMongoConfig()
 #
-#        dbconf = config.getConfig(options.dbconf)
 #        if config.getConfig().get('isDBHost'):
 #                mongo.startMongoS()
 #                mongo.startMongoD()

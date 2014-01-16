@@ -61,7 +61,7 @@ if __name__ ==  '__main__':
     # Also needed to extend the OptionParser to ignore the options is does not understand at the command line 
     #optparse.add_option("-l", "--loggerlevel", dest="loggerlevel", nargs=2, action='append', default="magi 20", help="set logger to level 1=ALL, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR. Default: %default, ex: -l magi 1")
     optparse.add_option("-c", "--magiconf", dest="magiconf", default=config.MAGILOG+'/magi.conf', help="Specify location of the magi configuration file, Default: %default, ex: -c localconfig.conf ")
-    optparse.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install ans setup data manager") 
+    optparse.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=True, help="Do not install ans setup data manager") 
 
     (options, args) = optparse.parse_args()
 #    print options, 
@@ -117,12 +117,10 @@ if __name__ ==  '__main__':
     except:
         pass
 
-    confdata = config.getConfig(options.magiconf)
+    confdata = config.loadConfig(options.magiconf)
     transports = confdata.get('transports', [])
-    testbed = confdata.get('localinfo', [])
-    for item in testbed:
-        if item.get('nodename'):
-            localname=item.get('nodename')
+    testbedInfo = confdata.get('localinfo', {})
+    localname = testbedInfo.get('nodename')
             
     # Some system initialization
     logging.info("MAGI Version: %s", __version__)
@@ -130,5 +128,5 @@ if __name__ ==  '__main__':
     if not options.nodataman: logging.info("DB host: %s", dbhost)
     daemon = Daemon(localname, transports, not options.nodataman)
     daemon.start()
-# Application will exit once last non-daemon thread finishes
+    # Application will exit once last non-daemon thread finishes
 

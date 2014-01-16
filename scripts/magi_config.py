@@ -26,6 +26,6 @@ fp.close()
 
 # Setup args by reading the MeSDL 
 if options.mesdl: 
-    mesdl = config.getConfig(options.mesdl)
+    mesdl = config.loadYaml(options.mesdl)
     print mesdl 
 

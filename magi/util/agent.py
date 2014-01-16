@@ -204,7 +204,8 @@ class SharedServer(DispatchAgent):
         if len(self.hosts) == 0:
             log.info("Starting server")
             retVal = self.runserver()
-            self.hosts.add(msg.src)
+            
+        self.hosts.add(msg.src)
 
         return retVal
 
@@ -236,7 +237,7 @@ class TrafficClientAgent(AgentVariables):
         self.subpids = list()
         self.done = False
         # TODO: Replace hardcoded value with MAGILOG 
-        self.logfile = '/var/log/magi/%s.log' % self.__class__.__name__
+        self.logfile = '/var/log/magi/%s_%s.log' % (self.__class__.__name__, time.strftime("%Y-%m-%d_%H:%M:%S"))
         self.servers = []
         self.interval = "1"
         self.stopClient(None)
@@ -252,7 +253,7 @@ class TrafficClientAgent(AgentVariables):
         self.args = args
         while not self.done:
             try:
-                msg = self.messenger.next(True, self.nextrun - time.time())
+                msg = self.messenger.next(True, max(self.nextrun - time.time(), 0))
                 if isinstance(msg, MAGIMessage):
                     doMessageAction(self, msg, self.messenger)
 
@@ -261,14 +262,14 @@ class TrafficClientAgent(AgentVariables):
 
             if not self.running or time.time() < self.nextrun:
                 continue  # message received, not yet time to launch, reloop
-
+            
+            self.nextrun = time.time() + eval(self.interval)
+            
             try:
                 # TODO: Check memory here to avoid overload?
                 self.oneClient()
             except Exception:
                 log.error("error in client process", exc_info=1)
-
-            self.nextrun = time.time() + eval(self.interval)
 
     def stop(self):
         """ Called by daemon to inform the agent that it should shutdown """
@@ -285,7 +286,7 @@ class TrafficClientAgent(AgentVariables):
         dst = self.servers[random.randint(0, len(self.servers) - 1)]
         try:
             (output, err) = execAndRead(self.getCmd(dst))
-            fp.write(output)
+            fp.write(str(time.time()) + "\t" + output)
 #            self.collection.insert(**{"result" : output, "error" : err})
         except OSError, e:
             log.error("can't execute command: %s", e)

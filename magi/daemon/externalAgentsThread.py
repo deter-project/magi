@@ -9,6 +9,7 @@ from collections import defaultdict
 from magi.messaging.api import MAGIMessage, TCPServer, TCPTransport, DefaultCodec
 from magi.util.Collection import namedtuple
 from magi.daemon.processInterface import AgentCodec, AgentRequest
+from magi.util import config
 
 log = logging.getLogger(__name__)
 
@@ -41,8 +42,12 @@ class ExternalAgentsThread(threading.Thread):
 		self.fromNetwork = Queue.Queue()
 		self.messaging = messaging
 
+		self.commPort = config.getConfig().get('processAgentsCommPort')
+		if not self.commPort:
+			self.commPort = 18809
+		
 		# Start and add the TCP server
-		self.server = TCPServer(address="127.0.0.1", port=18809)
+		self.server = TCPServer(address="127.0.0.1", port=self.commPort)
 		self.pollMap[self.server.fileno()] = self.server
 
 

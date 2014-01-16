@@ -16,7 +16,7 @@ class AALTest(unittest2.TestCase):
     """
 
     def setUp(self):
-        self.aal = AAL(os.path.join(os.path.dirname(__file__), 'test.aal'))
+        self.aal = AAL([os.path.join(os.path.dirname(__file__), 'test.aal')])
         self.messaging = SimpleMessaging()
 
     #def tearDown(self):

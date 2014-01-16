@@ -98,6 +98,10 @@ class ContainerExperiment(Testbed):
             self.loadIfConfig()
         return self.iflist
 
+    def amAVirtualNode(self):
+        """ return true if I am a virtual node (i.e. not a physical node or virtual host) """
+        return True
+    
     def parseVarLine(self, line):
         args = {}
         for x in shlex.split(line):
@@ -156,7 +160,7 @@ class ContainerExperiment(Testbed):
         self.iflist = []
 
         try:
-            exp = re.compile('(%s-[0-9]+)' % self.nodename)
+            exp = re.compile('( %s-[0-9]+)' % self.nodename)
             fp = open(self._confdir+'hosts')
             for line in fp:
                 match = exp.search(line)
@@ -165,6 +169,7 @@ class ContainerExperiment(Testbed):
             fp.close()
         except Exception, e:
             log.error("Can't load interface list: %s", e)
+
 
     def getTextPipes(self):
         """ Find all of my thread children and their pipes """

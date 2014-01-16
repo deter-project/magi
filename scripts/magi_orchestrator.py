@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+import logging.handlers
 import optparse
 import signal
 from sys import exit
@@ -106,13 +107,22 @@ if __name__ == '__main__':
     }
     log_format = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
     log_datefmt = '%m-%d %H:%M:%S'
+    
     if options.logfile:
-        logging.basicConfig(filename=options.logfile,
-                            filemode='w',
-                            format=log_format,
-                            datefmt=log_datefmt,
-                            level=logLevels[options.loglevel],
-                            stream=None)
+        # Roll over the old log and create a new one
+        # Note here that we will have at most 5 logs 
+        if os.path.isfile(options.logfile):
+            needroll = True
+        else:
+            needroll = False
+        handler = logging.handlers.RotatingFileHandler(options.logfile, backupCount=5)
+        if needroll:
+            handler.doRollover()
+        handler.setFormatter(logging.Formatter(log_format, log_datefmt))
+        root = logging.getLogger()
+        root.setLevel(logLevels[options.loglevel])
+        root.handlers = []
+        root.addHandler(handler)
     else:
         logging.basicConfig(format=log_format,
                             datefmt=log_datefmt,

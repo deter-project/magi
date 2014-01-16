@@ -223,7 +223,6 @@ class WorkerThread(threading.Thread):
 			self.placeInTransports(msg) # generated locally, don't pass through FWD processors
 
 
-
 	def placeInTransports(self, msg):
 		"""
 			Take a message that has been routed and place it in the appropriate socket buffers.  Messages destined
@@ -241,7 +240,6 @@ class WorkerThread(threading.Thread):
 				continue
 
 			log.error("Message routed to fd %s, but no such transport", fd)
-
 
 
 	def addTransport(self, newTransport, required=False):
@@ -269,7 +267,6 @@ class WorkerThread(threading.Thread):
 		if not newTransport.serverOnly():
 			for proc in self.processors:
 				proc.transportAdded(newTransport)
-
 
 
 	def removeTransport(self, fd, curTransport):
@@ -300,7 +297,6 @@ class WorkerThread(threading.Thread):
 		# Notify processors
 		for proc in self.processors:
 			proc.transportRemoved(fd, curTransport)
-
 
 
 	def readdTransport(self, oldTransport):
@@ -356,31 +352,11 @@ class WorkerThread(threading.Thread):
 
 		return passed
 	
-
-
-	def loop(self):
+	
+	def processMsgQueues(self):
 		"""
-			Main processing that takes place on each thread loop iteration.
-			- Check transport layer for new messages from network
-			- Check user queue for new commands or messages to send
-			- Do our queue/chain processing
+			Run all of our processing chains until their input queues are empty
 		"""
-		# Check for closed sockets so routing doesn't try and route out them
-		for fd, transport in self.pollMap.items():
-			if getattr(transport, 'closed', False):
-				log.info("Transport %s closed, removing from map", transport)
-				lock = threading.Lock()
-				lock.acquire() 
-				self.removeTransport(fd, transport)
-				lock.release()
-
-		# Process receiving sockets
-		self.processRXSockets()
-
-		# Process transmit queue from user
-		self.processUserRequests()
-
-		# Run all of our processing chains until their input queues are empty
 		now = time.time()
 		runs = 10 # safety break, just in case
 		while runs > 0 and any([q.flag for q in self.queues.itervalues()]):
@@ -418,7 +394,32 @@ class WorkerThread(threading.Thread):
 
 		if runs <= 0:
 			log.warning("Ran the queues 10 times, still not empty, can't be right")
-			
+
+
+	def loop(self):
+		"""
+			Main processing that takes place on each thread loop iteration.
+			- Check transport layer for new messages from network
+			- Check user queue for new commands or messages to send
+			- Do our queue/chain processing
+		"""
+		# Check for closed sockets so routing doesn't try and route out them
+		for fd, transport in self.pollMap.items():
+			if getattr(transport, 'closed', False):
+				log.info("Transport %s closed, removing from map", transport)
+				lock = threading.Lock()
+				lock.acquire() 
+				self.removeTransport(fd, transport)
+				lock.release()
+
+		# Process receiving sockets
+		self.processRXSockets()
+
+		# Process transmit queue from user
+		self.processUserRequests()
+		
+		# Run all of our processing chains until their input queues are empty
+		self.processMsgQueues()
 
 
 	#def run(self):

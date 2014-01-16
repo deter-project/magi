@@ -71,7 +71,7 @@ def run(cmd, log = locallog, **kwargs):
 	ret = 0
 	try:
 		if log is not None:
-			log.info("Running (%s)" % (cmd))
+			log.debug("Running (%s)" % (cmd))
 		if execDebug:
 			execCalls.append(cmd)
 			return ret
@@ -91,11 +91,13 @@ def execAndRead(cmd, log = locallog, **kwargs):
 	err = None
 	try:
 		if log is not None:
-			log.info("Running (%s)" % (cmd))
+			log.debug("Executing (%s)" % (cmd))
 		if needsplit(cmd):
 			(output, err) = Popen(cmd.split(), stdout=PIPE, stderr=PIPE, **kwargs).communicate()
 		else:
 			(output, err) = Popen(cmd, stdout=PIPE, stderr=PIPE, **kwargs).communicate()
+		if log is not None:
+			log.debug("Successfully executed (%s)" % (cmd))			
 	finally:
 		exlock.release()
 	if output is None:

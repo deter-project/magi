@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 
 import unittest2
-import logging
-import os
-import pdb
 
-from magi.messaging.api import MAGIMessage
 from magi.tests.util import *
 from magi.orchestrator.parse import *
-from magi.orchestrator.orchestrator import Orchestrator
 
 log = logging.getLogger(__name__)
 

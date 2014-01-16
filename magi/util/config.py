@@ -56,6 +56,7 @@ DEFAULT_KEYDIR="/proj/%s/exp/%s/tbdata/" % (testbed.project, testbed.experiment)
 DEFAULT_DBCONF=MAGILOG+"/db.conf"
 
 # logging.basicConfig(filename = MAGILOG +'/daemon.log', level=logging.INFO)
+config = dict()
 log = logging.getLogger(__name__)
 
 def makeDir(name):
@@ -91,16 +92,30 @@ def toDirected(graph, root):
             
     return d
 
-def getConfig(filename=None):
+def getConfig():
+    global config
+    if not config:
+        config = loadConfig()
+    return config
+
+def loadConfig(filename=None):
     """ Load the configuration data from file, filename can be overriden """
+    global config
     if filename is None:
         filename = DEFAULT_MAGICONF 
+    fp = open(filename, 'r')
+    config = yaml.load(fp)
+    fp.close()
+    return config
+
+def loadYaml(filename):
+    """ Load the configuration data from file """
     fp = open(filename, 'r')
     data = yaml.load(fp)
     fp.close()
     return data
 
-def createMESDL_old():
+def createMESDL():
     """ Create a default mesdl with one shared TCP based overlay and one external server """
     log.info("Creating mesdl file.....") 
     node = testbed.getServer() 
@@ -118,7 +133,7 @@ def createMESDL_old():
     fp.close()
     return DEFAULT_EXPMESDL  
 
-def createMESDL():
+def createMESDL_experiment():
     """ Create a default mesdl with one shared TCP based overlay and one external server """
     log.info("Creating mesdl file.....") 
     
@@ -153,7 +168,7 @@ def createMESDL():
 def validateDBConf(dbconf=None):
     """ Chekcing if a valid db config exists """
     if dbconf:
-        expdbconf = getConfig(dbconf)
+        expdbconf = loadYaml(dbconf)
     else:
         expdbconf = dict()
         
@@ -258,28 +273,49 @@ def _intval(x, y):
 def _str2byte(strin):
     return reduce(_intval, strin, 0) % 255
 
-def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT_MAGICONF, rootdir=None, enable_dataman=True):
+def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT_MAGICONF, rootdir=None, enable_dataman=False):
     """
-        Create a basic configuration
+        Create a per experiment node magi configuration file
         rootdir - for the magi code distribution 
         keydir - location of key dir if specifying SSL Transport.
     """
-
+    
+    global config
+    
     keydir = None
 
-    # Create a per experiment node magi configuration file 
-    config = dict()
+#    # Information about the local node for reference 
+#    config['localinfo'] = list()
+#    config['localinfo'].append({ 'nodename': testbed.nodename })
+#    config['localinfo'].append({ 'hostname': platform.uname()[1] })
+#    config['localinfo'].append({ 'distribution': str(platform.dist()[0]+" "+platform.dist()[1]+" ("+platform.dist()[2]+")") }) 
+#    config['localinfo'].append({ 'controlip': testbed.controlip , 'controlif': testbed.controlif })
+#    # Would it be possible to write the link name the interface is associated with? 
+#    for ip in testbed.getLocalIPList():
+#        config['localinfo'].append({ 'expip': ip, 'expif': testbed.getInterfaceInfo(ip).name, 'expmac': testbed.getInterfaceInfo(ip).mac })
 
     # Information about the local node for reference 
-    config['localinfo'] = list()
-    config['localinfo'].append({ 'nodename': testbed.nodename })
-    config['localinfo'].append({ 'hostname': platform.uname()[1] })
-    config['localinfo'].append({ 'distribution': str(platform.dist()[0]+" "+platform.dist()[1]+" ("+platform.dist()[2]+")") }) 
-    config['localinfo'].append({ 'controlip': testbed.controlip , 'controlif': testbed.controlif })
+    localinfo = dict()
+    localinfo['nodename'] = testbed.nodename
+    localinfo['hostname'] = platform.uname()[1]
+    localinfo['distribution'] = str(platform.dist()[0]+" "+platform.dist()[1]+" ("+platform.dist()[2]+")")
+    localinfo['controlip'] = testbed.controlip
+    localinfo['controlif'] = testbed.controlif
+    
+    interfaceInfo = dict()
     # Would it be possible to write the link name the interface is associated with? 
     for ip in testbed.getLocalIPList():
-        config['localinfo'].append({ 'expip': ip, 'expif': testbed.getInterfaceInfo(ip).name, 'expmac': testbed.getInterfaceInfo(ip).mac })
-
+        linkname = 'unknown'
+        for link in topoGraph.node[testbed.nodename]['links']:
+            if link['ip'] == ip:
+                linkname = link['name']
+        interfaceInfo[ip] = { 'expip': ip, 'expif': testbed.getInterfaceInfo(ip).name, 'expmac': testbed.getInterfaceInfo(ip).mac, 'linkname': linkname }
+    
+    localinfo['interfaceInfo'] = interfaceInfo
+    config['localinfo'] = localinfo
+    
+    config['processAgentsCommPort'] = None
+    
     # Information about the location of the software libaries 
     config['software'] = list()
     if keydir is None:
@@ -311,7 +347,7 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     # REad the messaging overlay description for the experiment and create 
     # the required transports for this node 
     config['transports'] = list()
-    expmesdl = getConfig(mesdl)    
+    expmesdl = loadYaml(mesdl)    
     log.info("Mesdl for file %s: %s", mesdl, expmesdl)
     
     # For each external connection, add a TCPServer transport    
@@ -364,7 +400,7 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     
     if enable_dataman:
         config['isDatamanSetup'] = True
-        expdbconf = getConfig(dbconf)
+        expdbconf = loadYaml(dbconf)
         config['collector_mapping'] = expdbconf['collector_mapping']
         config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
         config['dbhost'] = expdbconf['collector_mapping'][testbed.nodename]
