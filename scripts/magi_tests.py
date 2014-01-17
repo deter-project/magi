@@ -21,11 +21,18 @@ parser.add_option("-l", "--level", dest="loglevel", default=logging.WARNING, hel
 parser.add_option("", "--nobase", action="store_false", dest="dobase", default=True, help="don't run the base library tests")
 parser.add_option("", "--nomodule", action="store_false", dest="domodules", default=True, help="don't run the tests in the modules dir")
 parser.add_option("-f", "--filter", dest="filter", default="*_*.py", help="Filter to apply to the testsuite files")
-
+parser.add_option("-o", "--logfile", dest="logfile", help="If given, log to the file instead of the console (stdout).")
 (options, args) = parser.parse_args()
 
-hdlr = logging.StreamHandler()
-hdlr.setFormatter(logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(threadName)s %(message)s', '%m-%d %H:%M:%S'))
+log_format = '%(asctime)s %(name)-12s %(levelname)-8s %(threadName)s %(message)s'
+log_datefmt = '%m-%d %H:%M:%S'
+
+if options.logfile:
+	hdlr = logging.FileHandler(options.logfile)
+else:
+	hdlr = logging.StreamHandler()
+	
+hdlr.setFormatter(logging.Formatter(log_format, log_datefmt))
 root = logging.getLogger()
 root.handlers = []
 root.addHandler(hdlr)

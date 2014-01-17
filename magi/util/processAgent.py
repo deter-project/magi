@@ -10,6 +10,7 @@ from magi.messaging.api import MAGIMessage
 from magi.util.calls import dispatchCall
 from magi.util.agent import agentmethod
 from magi.testbed import testbed
+from magi.util import config
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +66,11 @@ class ProcessDispatchAgent:
 		root.addHandler(handler)
 
 		log.info('argv: %s', argv)
-
+		
+		self.commPort = config.getConfig().get('processAgentsCommPort')
+		if not self.commPort:
+			self.commPort = 18809
+			
 		infd, outfd = self._getIOHandles()
 		self.daemon_interface = AgentInterface(infd, outfd, blocking=True)
 
@@ -134,7 +139,7 @@ class ProcessDispatchAgent:
 		
 		elif self.execute == 'socket':
 			self.magi_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			self.magi_socket.connect(('localhost', 18809))
+			self.magi_socket.connect(('localhost', self.commPort))
 			return self.magi_socket.fileno(), self.magi_socket.fileno()
 		else:
 			log.critical('unknown execute mode: %s. Unable to continue.')

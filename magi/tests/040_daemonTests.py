@@ -139,7 +139,7 @@ class DaemonTest(unittest2.TestCase):
 			'method': 'loadAgent',
 			'args': { 'name': 'thp', 'code': 'testhttppipe', 'dock': 'HTTPP', 'execargs': {'arg1':1, 'arg2':2} }
 		}
-		self.doMessages(request, 'testPipe', False)
+		self.doMessages(request, 'testPipe', True)
 
 
 	def test_ExecSocket(self):
@@ -149,7 +149,7 @@ class DaemonTest(unittest2.TestCase):
 			'method': 'loadAgent',
 			'args': { 'name': 'ths', 'code': 'testhttpsocket', 'dock': 'HTTPC', 'execargs': {'arg1':1, 'arg2':2} }
 		}
-		self.doMessages(request, 'testSocket', False)
+		self.doMessages(request, 'testSocket', True)
 
 
 	def _waitForListen(self, dock, wait=5):
@@ -163,7 +163,7 @@ class DaemonTest(unittest2.TestCase):
 					return
 			time.sleep(0.1)
 
-		self.assert_(False, "Failed to listen for dock withing %d seconds" % wait)
+		self.assert_(False, "Failed to listen for dock within %d seconds" % wait)
 
 
 	def doMessages(self, request, dirname, needTrigger):

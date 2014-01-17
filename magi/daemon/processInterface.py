@@ -50,7 +50,7 @@ class AgentRequest(object):
 		return AgentRequest(request=AgentRequest.LISTEN_DOCK, data=dock)
 
 	@classmethod
-	def UnlistenDock(cls, grp):
+	def UnlistenDock(cls, dock):
 		return AgentRequest(request=AgentRequest.UNLISTEN_DOCK, data=dock)
 
 	@classmethod
