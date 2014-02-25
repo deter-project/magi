@@ -6,7 +6,7 @@ from transport import Transport
 from magimessage import DefaultCodec
 
 log = logging.getLogger(__name__)
-debug = True
+debug = False
 
 class TXTracker(object):
 
@@ -133,13 +133,14 @@ class RXTracker(object):
 	def getMessage(self):
 		try:
 			mylen = sum([len(x) for x in self.datalist])
-			leftover = list()
+			#self.leftover should be used
+			#leftover = list()
 			while mylen > self.datalen:  # Pull out left over data
-				leftover.insert(0, self.datalist.pop(-1))
+				self.leftover.insert(0, self.datalist.pop(-1))
 				mylen = sum([len(x) for x in self.datalist])
 
 			if mylen < self.datalen:  # Need part of that first (last) buffer
-				hh = leftover.pop(0)
+				hh = self.leftover.pop(0)
 				mid = self.datalen - mylen
 				self.datalist.append(hh[:mid])
 				self.leftover.insert(0, hh[mid:])

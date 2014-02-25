@@ -1,12 +1,10 @@
-
-import logging
-import struct
-import os
-import fcntl
-import yaml
-
 from magi.messaging.api import DefaultCodec, MAGIMessage as APIMagiMessage
 from magi.messaging.transportStream import RXTracker, TXTracker
+import fcntl
+import logging
+import os
+import struct
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +58,6 @@ class AgentRequest(object):
 		if data is None:
 			data = ""
 		return AgentRequest(request=AgentRequest.MESSAGE, data=hdr+data, **options)
-
 
 
 class AgentCodec(object):
@@ -164,7 +161,6 @@ class MessageSender(object):
 		return self.outgoing.isDone()
 
 
-
 class AgentInterface(object):
 	""" The python interface for an external process agent.  Used by the daemon and python based process agents """
 
@@ -174,13 +170,15 @@ class AgentInterface(object):
 		self.blocking = blocking
 		if blocking:
 			fcntl.fcntl(infd, fcntl.F_SETFL, ~os.O_NONBLOCK & fcntl.fcntl(infd, fcntl.F_GETFL))
+		self.incoming = MessageReader(self.infd, self.blocking)
 
-
-	def next(self):
+	def next(self, blocking=None, timeout=0):
 		""" Block and receive the next message """
-		incoming = MessageReader(self.infd, self.blocking)
+		#Should not be reinitialized every time next is called
+		#there is be leftover data which is otherwise get lost
+		#incoming = MessageReader(self.infd, self.blocking)
 		while True:
-			msg = incoming.poll()
+			msg = self.incoming.poll()
 			if msg is not None:
 				return msg.data  # Only MAGIMessages come in at this time
 
@@ -191,7 +189,7 @@ class AgentInterface(object):
 			pass
 
 	def trigger(self, **args):
-		'''Send a a trigger to Magi message infrestructure.'''
+		'''Send a trigger to Magi message infrastructure.'''
 		msg = APIMagiMessage(groups="control", docks="control", 
 						  contenttype=APIMagiMessage.YAML, data=yaml.dump(args))
 		self.send(msg)
@@ -220,3 +218,11 @@ class AgentInterface(object):
 		while not outgoing.poll():
 			pass
 
+	def poisinPill(self):
+		pass
+#		""" queue a poisin pill so that anyone waiting on a call to next will wake up """
+#		call = {'version': 1.0, 'method': 'poisinPill', 'args': {}}
+#		stop_msg = APIMagiMessage(contenttype=APIMagiMessage.YAML, data=yaml.safe_dump(call))
+#		outgoing = MessageSender(self.infd, AgentRequest.MAGIMessage(stop_msg))
+#		while not outgoing.poll():
+#			pass

@@ -34,7 +34,7 @@ class TCPServer(Transport):
 		return True
 
 	def __repr__(self):
-		return "TCPServer"
+		return "TCPServer %s:%d" % (self.addr[0], self.addr[1])
 	__str__ = __repr__
 
 

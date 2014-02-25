@@ -72,7 +72,10 @@ class OutputPipe(PipeBase):
 
 	def handle_expt_event(self):
 		# TODO: why is this occuring on output pipes?  Error set along with writable and everything keeps working
-		pass
+		# pass
+		# Don't know what was occurring. Changed it to closing the pipe on exception.
+		log.warning("Exception on %s", self)
+		self.handle_close()
 
 
 
@@ -90,7 +93,10 @@ class InputPipe(PipeBase):
 	def handle_read(self):
 		""" Override handle_read as we have a file descriptor, not a socket """
 		if debug: log.log(2, "starting pipe read")
-		self.rxMessage.processData(os.read(self.fd, 4096))
+		buf = os.read(self.fd, 4096)
+		if buf == "":
+			raise IOError("EOF on stream, file descriptor closed")
+		self.rxMessage.processData(buf)
 		if debug: log.log(2, "done pipe read")
 		while self.rxMessage.isDone():  # Extract all messages that are in the buffer
 			if debug: log.debug("New message received on %s", self)
