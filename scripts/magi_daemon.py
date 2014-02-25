@@ -47,7 +47,7 @@ class PassThroughOptionParser(OptionParser):
 
 
 if __name__ ==  '__main__':
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
+#    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     epilog = """  -l LOGGER LEVEL \tSet the logging level for the module LOGGER to level
                 \tLEVEL where level can be
@@ -61,7 +61,7 @@ if __name__ ==  '__main__':
     # Also needed to extend the OptionParser to ignore the options is does not understand at the command line 
     #optparse.add_option("-l", "--loggerlevel", dest="loggerlevel", nargs=2, action='append', default="magi 20", help="set logger to level 1=ALL, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR. Default: %default, ex: -l magi 1")
     optparse.add_option("-c", "--magiconf", dest="magiconf", default=config.MAGILOG+'/magi.conf', help="Specify location of the magi configuration file, Default: %default, ex: -c localconfig.conf ")
-    optparse.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=True, help="Do not install ans setup data manager") 
+    optparse.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=True, help="Data manager not setup up.") 
 
     (options, args) = optparse.parse_args()
 #    print options, 
@@ -87,12 +87,12 @@ if __name__ ==  '__main__':
     
     if not options.nodataman:
         from magi.util import database
-        from magi.mongolog.handlers import MongoHandler
-        dbname = 'magi'
-        collectionname = 'log'
         dbhost = database.getDBHost()
-        connection = database.getConnection()
-        root.addHandler(MongoHandler.to(dbname, collectionname, host=dbhost, port=27017))
+#        from magi.mongolog.handlers import MongoHandler
+#        dbname = 'magi'
+#        collectionname = 'log'
+#        connection = database.getConnection()
+#        root.addHandler(MongoHandler.to(dbname, collectionname, host=dbhost, port=27017))
 
     # Parse the positional options 
     ii=0
@@ -119,6 +119,7 @@ if __name__ ==  '__main__':
 
     confdata = config.loadConfig(options.magiconf)
     transports = confdata.get('transports', [])
+    transports_exp = confdata.get('transports_exp', [])
     testbedInfo = confdata.get('localinfo', {})
     localname = testbedInfo.get('nodename')
             
@@ -126,7 +127,7 @@ if __name__ ==  '__main__':
     logging.info("MAGI Version: %s", __version__)
     logging.info("Started magi daemon on %s with pid %s", localname, pid)
     if not options.nodataman: logging.info("DB host: %s", dbhost)
-    daemon = Daemon(localname, transports, not options.nodataman)
-    daemon.start()
+    daemon = Daemon(localname, transports, transports_exp, not options.nodataman)
+    daemon.run() 
     # Application will exit once last non-daemon thread finishes
 

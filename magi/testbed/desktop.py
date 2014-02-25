@@ -5,7 +5,6 @@
 from base import Testbed
 import logging
 import socket
-import networkx as nx
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +67,7 @@ class DesktopExperiment(Testbed):
         return self._store['topograph']
     
     def loadTopoGraph(self):
+        import networkx as nx
         graph = nx.Graph()
         graph.add_node(self.getNodeName())
         self._store['topograph'] = graph

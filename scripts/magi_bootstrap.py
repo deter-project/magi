@@ -134,7 +134,7 @@ if __name__ == '__main__':
         optparser.add_option("-m", "--mesdl", dest="mesdl", action="store", default=None, help="Path to the messaging overlay configuration file")  
         optparser.add_option("-c", "--magiconf", dest="magiconf", action="store", default=None, help="Path to the local node magi configuration file. Cannot use along with -f (see above)")
         optparser.add_option("-d", "--dbconf", dest="dbconf", action="store", default=None, help="Path to the data management configuration file")
-        optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=True, help="Do not install ans setup data manager") 
+        optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=True, help="Do not install and setup data manager") 
                 
         (options, args) = optparser.parse_args()
 
@@ -263,7 +263,7 @@ if __name__ == '__main__':
                 
                                 # The mesdl file was specified at the command line 
                                 # use it to create a new local node specific magi conf  
-                                config.createConfig( mesdl=options.mesdl, dbconf=options.dbconf, rootdir=rpath, enable_dataman=not options.nodataman) 
+                                config.createConfig(mesdl=options.mesdl, dbconf=options.dbconf, rootdir=rpath, enable_dataman=not options.nodataman) 
                                 log.info("Created a magi conf at %s....", config.DEFAULT_MAGICONF) 
                 except Exception, e:
                         log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
@@ -306,7 +306,7 @@ if __name__ == '__main__':
                 fpid = open (config.DEFAULT_MAGIPID, 'r')
                 pid = int(fpid.read())
                 try:
-                        os.kill(pid,signal.SIGKILL)
+                        os.kill(pid,signal.SIGTERM)
                 except OSError, e:
                         if e.args[0] == errno.ESRCH:
                                 log.info("No process %d found", pid)
@@ -325,7 +325,6 @@ if __name__ == '__main__':
         if options.dargs:
                 log.info("Starting daemon with debugging")
                 daemon += ['-l', 'magi', '1']
-                
                 
         # Record the process id in a file for later reference 
         pid=Popen( daemon ).pid

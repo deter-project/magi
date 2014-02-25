@@ -75,15 +75,8 @@ class Messenger(object):
 		"""
 #		self.txqueue.put(GroupRequest("leave", group, caller))
 		self.thread.processGroupRequest(GroupRequest("leave", group, caller))
-
-
-	def poisinPill(self):
-		"""
-			Puts a "PoisinPill" string into the rxqueue so that the first listener on nextMessage will
-			wake up and get the message.
-		"""
-		self.rxqueue.put("PoisinPill")
-
+	
+	
 	def nextMessage(self, block=False, timeout=None):
 		"""
 			Called to remove a received message from the queue.  block and timeout are as specified in
@@ -105,8 +98,19 @@ class Messenger(object):
 		"""
 		self.send(MAGIMessage(groups="control", docks="daemon", data=yaml.dump(kwargs), contenttype=MAGIMessage.YAML))
 
+		
+	def poisinPill(self):
+		"""
+			Puts a "PoisinPill" string into the rxqueue so that the first listener on nextMessage will
+			wake up and get the message.
+		"""
+		self.rxqueue.put("PoisinPill")
 
 
+	def stop(self):
+		self.thread.stop() # stopping the worker thread
+	
+		
 class ClientConnection(Messenger):
 	""" Wrapper to provide the basic TCP client interface """
 	def __init__(self, name, host, port):

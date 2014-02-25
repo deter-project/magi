@@ -4,6 +4,7 @@ import asyncore
 import logging
 import Queue
 import time
+import yaml
 
 from collections import defaultdict
 from magi.messaging.api import MAGIMessage, TCPServer, TCPTransport, DefaultCodec
@@ -37,7 +38,7 @@ class ExternalAgentsThread(threading.Thread):
 
 		self.pollMap = dict() # fd to Pipes, Sockets and server
 		self.dockMap = defaultdict(set) # dock to list of writable streams
-		self.invDockMap = defaultdict(list) # transport to list of dock names
+		self.invDockMap = defaultdict(set) # transport to list of dock names
 
 		self.fromNetwork = Queue.Queue()
 		self.messaging = messaging
@@ -46,11 +47,6 @@ class ExternalAgentsThread(threading.Thread):
 		if not self.commPort:
 			self.commPort = 18809
 		
-		# Start and add the TCP server
-		self.server = TCPServer(address="127.0.0.1", port=self.commPort)
-		self.pollMap[self.server.fileno()] = self.server
-
-
 	def clearMaps(self, fd, transport):
 		"""
 			Attempt to clear any links to this old transport from our maps.  Note that transport.fileno() may no longer
@@ -63,7 +59,7 @@ class ExternalAgentsThread(threading.Thread):
 
 		if transport in self.invDockMap:
 			del self.invDockMap[transport] 
-		for name, transportList in self.dockMap.iteritems():
+		for dock, transportList in self.dockMap.iteritems():
 			transportList.discard(transport)
 
 
@@ -104,31 +100,44 @@ class ExternalAgentsThread(threading.Thread):
 						self.messaing.leave(obj.data, str(transport)) # 'transport' leaves
 
 					elif obj.request == AgentRequest.LISTEN_DOCK:
-						log.debug("%s requests listen %s" % (transport, obj.data))
+						dock = obj.data
+						log.debug("%s requests listen %s" % (transport, dock))
 						if hasattr(transport, "matchingPipe"):
-							self.dockMap[obj.data].add(transport.matchingPipe)
+							self.dockMap[dock].add(transport.matchingPipe)
+							self.invDockMap[transport.matchingPipe].add(dock)
 						else:
-							self.dockMap[obj.data].add(transport)
-						self.invDockMap[transport].append(obj.data)
+							self.dockMap[dock].add(transport)
+							self.invDockMap[transport].add(dock)
 
-					elif obj.request == AgentRequest.LEAVE_GROUP:
-						log.debug("%s requests unlisten %s" % (transport, obj.data))
+					elif obj.request == AgentRequest.UNLISTEN_DOCK:
+						dock = obj.data
+						log.debug("%s requests unlisten %s" % (transport, dock))
 						if hasattr(transport, "matchingPipe"):
-							self.dockMap[obj.data].discard(transport.matchingPipe)
+							self.dockMap[dock].discard(transport.matchingPipe)
+							if len(self.dockMap[dock]) == 0:
+								del self.dockMap[dock]
+							self.invDockMap[transport.matchingPipe].discard(dock)
+							if len(self.invDockMap[transport.matchingPipe]) == 0:
+								del self.invDockMap[transport.matchingPipe]
 						else:
-							self.dockMap[obj.data].discard(transport)
-						if obj.data in self.invDockMap[transport]:
-							self.invDockMap[transport].remove(obj.data)
+							self.dockMap[dock].discard(transport)
+							if len(self.dockMap[dock]) == 0:
+								del self.dockMap[dock]
+							self.invDockMap[transport].discard(dock)
+							if len(self.invDockMap[transport]) == 0:
+								del self.invDockMap[transport]
 
 					elif obj.request == AgentRequest.MESSAGE:
 						log.debug("%s requests send message" % (transport))
-						self.sendMessage(transport, obj)	
+						if hasattr(transport, "matchingPipe"):
+							self.sendMessage(transport.matchingPipe, obj)
+						else:
+							self.sendMessage(transport, obj)	
 
 					else:
 						log.error("Unknown request from agent.  Type = '%s'", obj.request)
 	
 			transport.inmessages = []
-
 
 		# Process requests from the daemon
 		while not self.fromNetwork.empty():
@@ -137,7 +146,6 @@ class ExternalAgentsThread(threading.Thread):
 				self.dispatchMessage(obj)
 			elif isinstance(obj, PipeTuple):
 				self.addPipe(obj)
-
 
 	def addPipe(self, info):
 		"""  A new pipe (in transport and out transport) is to be added to your list of active descriptors """
@@ -151,13 +159,12 @@ class ExternalAgentsThread(threading.Thread):
 		self.pollMap[info.incoming.fileno()] = info.incoming
 		self.pollMap[info.outgoing.fileno()] = info.outgoing
 
-
 	def sendMessage(self, transport, request):
 		""" The agent requested that the following message be sent """
 		msg, hdrsize = self.msgCodec.decode(request.data)
 		msg.data = request.data[hdrsize:]
-		if msg.srcdock is None and len(self.invDockMap[transport]) > 0:
-			msg.srcdock = self.invDockMap[transport][0]  # default to first dock in list
+		if msg.srcdock is None and transport in self.invDockMap and len(self.invDockMap[transport]) > 0:
+			msg.srcdock = list(self.invDockMap[transport])[0]  # default to first dock in list
 			log.log(9, "Setting srcdock to %s", msg.srcdock)
 		self.messaging.send(msg, **request.__dict__)
 
@@ -166,24 +173,52 @@ class ExternalAgentsThread(threading.Thread):
 		log.debug("Dispatching message %s", msg)
 		request = AgentRequest.MAGIMessage(msg)
 		for dock in msg.dstdocks:
-			for agent in self.dockMap[dock]:
-				log.debug("enqueued to %s", agent)
-				agent.outmessages.append(request)
+			for transport in self.dockMap[dock]:
+				log.debug("enqueued to %s", transport)
+				transport.outmessages.append(request)
 
 	def wantsDock(self, dock):
 		return dock in self.dockMap
 
+	def unloadAll(self):
+		""" Unload all the process agents 
+		by sending a stop message on all the agent transports """
+		log.info("Unloading all external agents")
+		for transport, dockList in self.invDockMap.iteritems():
+			call = {'version': 1.0, 'method': 'stop', 'args': {}}
+			stop_msg = MAGIMessage(docks=list(dockList)[0], contenttype=MAGIMessage.YAML, 
+										   data=yaml.safe_dump(call))
+			request = AgentRequest.MAGIMessage(stop_msg)
+			log.debug('Sending stop message on transport %s, dock %s', transport, list(dockList)[0])
+			transport.outmessages.append(request)
+		#Waiting for agents to unload
+		for i in range(10):
+			if len(self.invDockMap) == 0:
+				log.debug("Agents unload done")
+				break
+			time.sleep(0.1) #waiting for the unload to be done
+					
 	def stop(self):
 		""" Shutdown the TCP server and signal the main loop to exit """
-		log.debug("starting process thread stop")
-		del self.pollMap[self.server.fileno()]
+		log.info("Stopping external agents manager thread")
+		#Unloading all agents
+		self.unloadAll()
+#		del self.pollMap[self.server.fileno()]
+		log.debug("Stopping server")
+		if self.server:
+			self.server.close() 
+		log.debug("Server stopped")
 		self.done = True
-		time.sleep(0.1)
-		self.server.close() 
-		log.debug("Done with process thread stop")
 
 	def run(self):
 		""" Called by thread main """
+		self.threadId = config.getThreadId()
+		log.info("External agents thread started. Thread id: " + str(self.threadId))
+			
+		# Start and add the TCP server
+		self.server = TCPServer(address="127.0.0.1", port=self.commPort)
+		self.pollMap[self.server.fileno()] = self.server
+		
 		self.done = False
 		while not self.done:
 			try:
@@ -192,7 +227,5 @@ class ExternalAgentsThread(threading.Thread):
 				log.error("Failure in pipe thread: %s" % e, exc_info=True)
 				log.debug("%s", self.pollMap) # Only convert to string on debug
 				time.sleep(0.5) # Don't jump into a super loop on repeatable errors
-
-
-
-
+				
+		log.info("External agents thread stopped")

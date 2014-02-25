@@ -39,13 +39,12 @@ import Queue
 import datetime
 import errno
 import logging
-import networkx as nx
 import os
 import platform
 import subprocess
 import sys
 import yaml
-
+import ctypes
 
 MAGILOG="/var/log/magi" 
 
@@ -73,9 +72,9 @@ def makePipe(name):
         if e.errno == errno.EEXIST: return
         log.warning("Couldn't create FIFO file: %s, %s", name, e)
 
-topoGraph = testbed.getTopoGraph()
-
 def toDirected(graph, root):
+    import networkx as nx
+    
     d = nx.DiGraph()
     queue = Queue.Queue()
     visited = set()
@@ -121,6 +120,19 @@ def createMESDL():
     node = testbed.getServer() 
     log.info("Using %s as control node....", node) 
     fp = open(DEFAULT_EXPMESDL, 'w')
+    mesdl = createMESDL_control()
+    fp.write(yaml.safe_dump(mesdl))
+    mesdl_exp = createMESDL_experiment()
+    fp.write(yaml.safe_dump(mesdl_exp))
+    fp.close()
+    return DEFAULT_EXPMESDL  
+
+def createMESDL_control():
+    """ Create a default mesdl for the control plane """
+    log.info("Creating control plane mesdl") 
+    node = testbed.getServer() 
+    if not '.' in node:
+        node += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
     mesdl = dict()
     mesdl['bridges'] = list()
     mesdl['bridges'].append({ 'TCPServer': node, 'port': 18808 })  
@@ -129,41 +141,29 @@ def createMESDL():
     memlist = list()
     memlist.append('__ALL__')
     mesdl['overlay'].append({ 'type': 'TCPTransport' , 'members': memlist, 'server':node, 'port': 28808 })
-    fp.write(yaml.safe_dump(mesdl))
-    fp.close()
-    return DEFAULT_EXPMESDL  
+    return mesdl  
 
 def createMESDL_experiment():
-    """ Create a default mesdl with one shared TCP based overlay and one external server """
-    log.info("Creating mesdl file.....") 
-    
+    """ Create a default mesdl for the experiment plane """
+    log.info("Creating experiment plane mesdl") 
     root = testbed.getServer() 
     log.info("Using %s as root node....", root) 
-    
-    graph = topoGraph
+    graph = testbed.getTopoGraph()
     d = toDirected(graph, root)
-    
     mesdl = dict()
-    mesdl['bridges'] = list()
-    mesdl['overlay'] = list()
-    
+    mesdl['bridges_exp'] = list()
+    mesdl['overlay_exp'] = list()
     transportClass = 'TCP'
-    
     if transportClass == 'TCP':
         for node in d.nodes():
             if d.out_degree(node) != 0:
-                mesdl['overlay'].append({ 'type': 'TCPServer', 'server': node, 'port': 28808 })
-                mesdl['overlay'].append({ 'type': 'TCPTransport', 'members': d.successors(node), 'server': node, 'port': 28808 })
+                mesdl['overlay_exp'].append({ 'type': 'TCPServer', 'server': node, 'port': 48808 })
+                mesdl['overlay_exp'].append({ 'type': 'TCPTransport', 'members': d.successors(node), 'server': node, 'port': 48808 })
     
     elif transportClass == 'Multicast':
-        mesdl['overlay'].append({ 'type': 'MulticastTransport', 'address': getMulticast(testbed.project, testbed.experiment, 0), 'port': 28808 })
-    
-    mesdl['bridges'].append({ 'TCPServer': root, 'port': 18808 }) 
-    
-    fp = open(DEFAULT_EXPMESDL, 'w')
-    fp.write(yaml.safe_dump(mesdl))
-    fp.close()
-    return DEFAULT_EXPMESDL  
+        mesdl['overlay_exp'].append({ 'type': 'MulticastTransport', 'address': getMulticast(testbed.project, testbed.experiment, 0), 'port': 48808 })
+    mesdl['bridges_exp'].append({ 'TCPServer': root, 'port': 38808 }) 
+    return mesdl  
 
 def validateDBConf(dbconf=None):
     """ Chekcing if a valid db config exists """
@@ -175,6 +175,7 @@ def validateDBConf(dbconf=None):
     if "collector" not in expdbconf.keys() or not expdbconf['collector']:
         expdbconf['collector'] = dict()
         
+    topoGraph = testbed.getTopoGraph()
     sensors = expdbconf['collector'].keys()
     for node in topoGraph.nodes():
         if node not in sensors or expdbconf['collector'][node] not in topoGraph.nodes():
@@ -204,6 +205,7 @@ def createDBConf():
     fp = open(DEFAULT_DBCONF, 'w')
     dbconf = dict()
     dbconf['collector_mapping'] = dict()
+    topoGraph = testbed.getTopoGraph()
     for node in topoGraph.nodes():
         dbconf['collector_mapping'][node] = node
     fp.write(yaml.safe_dump(dbconf))
@@ -264,6 +266,15 @@ def getArch():
     arch = "%s-%s-%s" % (name, ver, machine)  # arch string to use for cached software lookup/saving
     return arch.replace('/', '')
 
+def getThreadId():
+    if platform.system() == 'Linux':
+        if platform.architecture()[0] == '64bit':
+            return ctypes.CDLL('libc.so.6').syscall(186)
+        else:
+            return ctypes.CDLL('libc.so.6').syscall(224)
+        
+    return -1
+    
 
 chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
 def getMulticast(arg1, arg2, channel):
@@ -299,10 +310,12 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     localinfo['nodename'] = testbed.nodename
     localinfo['hostname'] = platform.uname()[1]
     localinfo['distribution'] = str(platform.dist()[0]+" "+platform.dist()[1]+" ("+platform.dist()[2]+")")
+    localinfo['architecture'] = platform.architecture()[0]
     localinfo['controlip'] = testbed.controlip
     localinfo['controlif'] = testbed.controlif
     
     interfaceInfo = dict()
+    topoGraph = testbed.getTopoGraph()
     # Would it be possible to write the link name the interface is associated with? 
     for ip in testbed.getLocalIPList():
         linkname = 'unknown'
@@ -346,14 +359,16 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     # Infomation about the transports  
     # REad the messaging overlay description for the experiment and create 
     # the required transports for this node 
-    config['transports'] = list()
     expmesdl = loadYaml(mesdl)    
     log.info("Mesdl for file %s: %s", mesdl, expmesdl)
     
+    config['transports'] = list()
+    
+    nodename_control = testbed.nodename + '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
     # For each external connection, add a TCPServer transport    
     for bridge in expmesdl['bridges']:
         log.debug("Bridge: %s", bridge)
-        if testbed.nodename == bridge['TCPServer']:
+        if nodename_control == bridge['TCPServer']:
             # A TCP server service is added on the node  
             # This is used to provide an external facing connection to the magi messaging network on port extport (typically 18808)  
             config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': bridge['port']})
@@ -362,17 +377,14 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     # Add an apporpriate transport 
     # NOTE: We are just adding TCPTransports currently 
     for t in expmesdl['overlay']:
-        log.debug("Overlay: %s", t)
-        if t['type'] == 'TCPServer' and testbed.nodename == t['server']:
+        log.debug("Control Plane Overlay: %s", t)
+        if t['type'] == 'TCPServer' and nodename_control == t['server']:
             config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': t['port']})
             
-        elif t['type'] == 'TCPTransport' and testbed.nodename != t['server'] and (testbed.nodename in t['members'] or t['members'][0] == '__ALL__'):
+        elif t['type'] == 'TCPTransport' and nodename_control != t['server'] and (nodename_control in t['members'] or t['members'][0] == '__ALL__'):
             server_name = t['server']
             # DETER/emulab DNS will resolves FQDNs to the control network address, 
-            # A FQDN or IP address wauld be required for connecting with the external world 
-            if not '.' in server_name:
-                server_name += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
-
+            # A FQDN or IP address would be required for connecting with the external world 
             try:
                 server_addr=gethostbyname(server_name)
             except gaierror:
@@ -384,6 +396,28 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
         elif t['type'] == 'MulticastTransport':
             config['transports'].append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
 
+    config['transports_exp'] = list()
+    
+    for t in expmesdl['overlay_exp']:
+        log.debug("Experiment Plane Overlay: %s", t)
+        if t['type'] == 'TCPServer' and testbed.nodename == t['server']:
+            config['transports_exp'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': t['port']})
+            
+        elif t['type'] == 'TCPTransport' and testbed.nodename != t['server'] and (testbed.nodename in t['members'] or t['members'][0] == '__ALL__'):
+            server_name = t['server']
+            # DETER/emulab DNS will resolves FQDNs to the control network address, 
+            # A FQDN or IP address wauld be required for connecting with the external world 
+            try:
+                server_addr=gethostbyname(server_name)
+            except gaierror:
+                log.critical('Using MeSDL file %s\n Unable to resolve node name %s, EXITING', mesdl, server_name)
+                sys.exit(2)
+                    
+            config['transports_exp'].append({ 'class': 'TCPTransport', 'address': server_addr, 'port': t['port'] })
+            
+        elif t['type'] == 'MulticastTransport':
+            config['transports_exp'].append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
+            
     if hasattr(testbed, 'getTextPipes'):
         for name in testbed.getTextPipes():
             filename = '/var/run/magipipes/%s.pipe'%name

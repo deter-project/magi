@@ -7,7 +7,6 @@ from base import Testbed
 from collections import deque
 import itertools
 import logging
-import networkx as nx
 import re
 import shlex
 import socket
@@ -207,6 +206,7 @@ class ContainerExperiment(Testbed):
         return self._store['topograph']
     
     def loadTopoGraph(self):
+        import networkx as nx
         linkToNodeList = dict()
         graph = nx.Graph()
         root = ET.fromstring(self.getTopoXml()[0])

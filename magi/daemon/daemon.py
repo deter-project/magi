@@ -14,16 +14,16 @@ import glob
 import errno
 import tarfile
 import shutil
+import signal
 
 from subprocess import Popen, PIPE
 
 from magi.daemon.externalAgentsThread import ExternalAgentsThread, PipeTuple
-from magi.daemon.threadInterface import ThreadedAgent
 from magi.messaging.api import *
 from magi.util.calls import doMessageAction
 from magi.util.agent import agentmethod
 from magi.util.software import requireSoftware
-
+from magi.util import config
 import magi.modules
 
 log = logging.getLogger(__name__)
@@ -35,16 +35,14 @@ class Daemon(threading.Thread):
 		messages such as 'exec'.
 	"""
 
-	def __init__(self, hostname, transports, enable_dataman_agent=False):
+	def __init__(self, hostname, transports, transports_exp, enable_dataman_agent=True):
 		threading.Thread.__init__(self, name='daemon')
 		# 9/16/2013 hostname is passed in from the magi_daemon script correctly 
 		self.hostname = hostname
 		self.messaging = Messenger(self.hostname)
+		#self.messaging_exp = Messenger(self.hostname)
 		self.forever = list()
-
 #		self.messaging.startDaemon()
-		self.pAgentThread = ExternalAgentsThread(self.messaging)
-		self.pAgentThread.start()
 		self.pAgentPids = dict()
 		self.staticAgents = list()  # statically loaded thread agents
 		self.threadAgents = list()  # dynamically loaded thread agents
@@ -52,10 +50,10 @@ class Daemon(threading.Thread):
 		if enable_dataman_agent:
 			self.startAgent(code="dataman", name="dataman", dock="dataman", static=True)
 		
-		self.configureMessaging(transports)
+		self.configureMessaging(self.messaging, transports)
+		#self.configureMessaging(self.messaging_exp, transports_exp)
 
-
-	def configureMessaging(self, transports, **kwargs):
+	def configureMessaging(self, messaging, transports, **kwargs):
 		"""
 			Called by main process to setup the local messaging system with the necessary links.
 		"""
@@ -64,7 +62,7 @@ class Daemon(threading.Thread):
 			try: 
 				clazz = entry.pop('class')
 				conn = globals()[clazz](**entry)  # assumes we have imported from messaging.api.*
-				self.messaging.addTransport(conn, True)
+				messaging.addTransport(conn, True)
 				one = True
 			except Exception, e:
 				log.error("Failed to add new transport %s: %s", entry, e)
@@ -73,170 +71,95 @@ class Daemon(threading.Thread):
 			# Couldn't make any links, might as well just quit
 			raise IOError("Unable to start any transport links, I am stranded")
 
-			
-	def stop(self):
-		"""
-			Called to shutdown the daemon nicely by stopping all agent threads, stopping external processes
-			and stopping the messaging thread.
-		"""
-		self.done = True
-		self.messaging.poisinPill()
-		log.debug("Stopping process agent loop")
-		self.pAgentThread.stop()
-		for agent in self.staticAgents + self.threadAgents:
-			log.debug("Stopping %s", agent)
-			agent.stop()
-		log.debug("Joining with process agent loop")
-		self.pAgentThread.join(3.0)  # try and be nice and wait, otherwise just move along
-		log.debug("Checking for active threaded agents")
-		for agent in self.staticAgents + self.threadAgents:
-			log.debug("Joining with %s", agent)
-			agent.join(0.5) # again, try but don't wait around forever, we are quiting anyhow
-		log.debug("daemon stop complete")
-
-
 	def run(self):
+#		import cProfile
+#		cProfile.runctx('self.runX()', globals(), locals(), '/tmp/cprofile_daemon')
+#	
+#	def runX(self):
 		"""
 			Daemon thread loop.  Continual processing of incoming messages while monitoring for the
 			stop flag.
 		"""
+		self.threadId = config.getThreadId()
+		log.info("Daemon started. Thread id: " + str(self.threadId))
+		
+		for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
+			signal.signal(sig, self.signalhandler)
+
+		self.extAgentsThread = ExternalAgentsThread(self.messaging)
+		self.extAgentsThread.start()
+		
 		self.done = False
 		while not self.done:
 			try:
-				msg = self.messaging.nextMessage(block=True)
-				if msg is None:
+				try:
+					#infinitely blocked calls will not respond to signals also
+					msg = self.messaging.nextMessage(block=True, timeout=1)
+				except Queue.Empty:
 					continue
-				if type(msg) is str and msg == 'PoisinPill': # don't cause conversion to string for every message
-					break
+#				if msg is None:
+#					continue
+#				if type(msg) is str and msg == 'PoisinPill': # don't cause conversion to string for every message
+#					break
 
 				progress = False
 				for dock in msg.dstdocks:
 					if dock == 'daemon':
-						log.log(5, "Handling daemon with local call")
+						log.log(5, "Handling message for dock daemon with local call")
 						progress = True
 						doMessageAction(self, msg, self.messaging)
 		
 					for tAgent in self.staticAgents + self.threadAgents:
 						if dock in tAgent.docklist:
-							log.log(5, "Handing %s off to threaded agent", dock)
+							log.log(5, "Handing message for dock %s off to threaded agent %s", dock, tAgent)
 							progress = True
 							tAgent.rxqueue.put(msg)
 		
-					if self.pAgentThread.wantsDock(dock):
-						log.log(5, "Handing %s off to pipes thread", dock)
+					if self.extAgentsThread.wantsDock(dock):
+						log.log(5, "Handing message for dock %s off to external agents thread", dock)
 						progress = True
-						self.pAgentThread.fromNetwork.put(msg)
+						self.extAgentsThread.fromNetwork.put(msg)
 
 					if not progress:
-						log.error("Unknown dock %s, nobody processed.", dock)
+						log.debug("Unknown dock %s, nobody processed.", dock)
 
 			except Exception, e:
 				log.error("Problems in message distribution: %s", e, exc_info=1)
 				time.sleep(0.5)
+				
+		log.info("Daemon stopped.")
 
-
-	@agentmethod()
-	def ping(self, msg):
-		"""
-			Alive like method call that will send a pong back to the caller
-		"""
-		res = {
-		        'pong': True
-		}
-		# Added a data part to the message otherwise it gets dropped by the local daemon itself 
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong',contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))
-
-	@agentmethod()
-	def getAgentsProcessInfo(self, msg):
-		processId = os.getpid()
-		result = []
-		for tAgent in self.staticAgents + self.threadAgents:
-			result.append({"name": tAgent.agentname, "processId": processId, "threadId": tAgent.tid})
-		for name in self.pAgentPids.keys():
-			result.append({"name": name, "processId": self.pAgentPids[name]})
-		res = {
-		        'result': result
-		}
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock,contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))
+	def signalhandler(self, signum, frame):
+		print "Handling kill signal. Shutting down."
+		log.info("Handling kill signal")
+		self.stop(None)
+	
 	
 	@agentmethod()
-	def joinGroup(self, msg, group, nodes):
+	def stop(self, msg):
 		"""
-			Request to join a particular group
+			Called to shutdown the daemon nicely by stopping all agent threads, stopping external processes
+			and stopping the messaging thread.
 		"""
-		if self.hostname in nodes:
-			self.messaging.join(group, "daemon")
-			# 9/14: Changed testbed.nodename to self.hostname to support desktop daemons  
-			self.messaging.trigger(event='GroupBuildDone', group=group, nodes=[self.hostname])
-
-	@agentmethod()
-	def leaveGroup(self, msg, group, nodes):
-		""""
-			Request to leave a particular group
-		"""
-		if self.hostname in nodes:
-			self.messaging.leave(group, "daemon")
-			# 9/14: Changed testbed.nodename to self.hostname to support desktop daemons  
-			self.messaging.trigger(event='GroupTeardownDone', group=group, nodes=[self.hostname])
-
-
-	@agentmethod()
-	def unloadAll(self, msg):
-		"""
-			Call to unload all dynamically started agents, generally used for testing
-		"""
-		for tAgent in self.threadAgents:
-			tAgent.stop()
-		for tAgent in self.threadAgents:
-			tAgent.join(0.5) # try but don't wait around forever
-
-		# TODO: stop process agents as well
-
-	@agentmethod()
-	def unloadAgent(self, msg, name):
-		'''
-		Unload the named agent, if it's loaded. 
-		'''
-		unloaded = []
-		for i in range(len(self.threadAgents)):
-			if name == self.threadAgents[i].agentname:
-				log.debug("Unloading agentname %s dock %s",self.threadAgents[i].agentname, self.threadAgents[i].docklist)
-				self.threadAgents[i].stop()
-				self.threadAgents[i].join(0.5)
-				# 9/14 Changed testbed.nodename to self.hostname to support desktop daemons  
-				self.messaging.trigger(event='AgentUnloadDone', agent=name, nodes=[self.hostname])
-				unloaded.append(i)
+		log.info("Stopping daemon gracefully")
 		
-		if len(unloaded):
-			self.threadAgents[:] = [a for a in self.threadAgents if a.agentname != name]
-
-		# now check for process agents. If we find a dock, send the unload message to the 
-		# agent. If it is well behaving, it'll commit harikari after cleaning up its
-		# resources. 
-		if not len(unloaded):
-			data = yaml.load(msg.data)
-			log.debug('message data: %s (%s)', data, type(data))
-			if not 'args' in data or not 'dock' in data['args']:
-				log.warning('No dock given in agentUnload. I do not know how to contact the'
-							' process agent to tell it to unload. Malformed or incomplete '
-							'message for AgentUnload')
-			else:
-				dock = data['args']['dock']
-				if not self.pAgentThread.wantsDock(dock):
-					log.warning('unloadAgent for dock I know nothing about. Ignoring.')
-				else:
-					log.debug('Sending stop message to process agent.')
-					call = {'version': 1.0, 'method': 'stop', 'args': {}}
-					stop_msg = MAGIMessage(docks=dock, contenttype=MAGIMessage.YAML, 
-										   data=yaml.safe_dump(call))
-					self.pAgentThread.fromNetwork.put(stop_msg)
-
-					# TODO: remove dock and cleanup the external agent data structures.
-					#		or confirm that external agents thread correctly discovers
-					#		the transport is down and cleans things up correctly. 
-					del self.pAgentPids[name]
+		#unload all agents
+		self.unloadAll(msg, unLoadStaticAgents=True)
+			
+		log.info("Stopping process agent loop")
+		self.extAgentsThread.stop()
+		log.info("Joining with process agent loop")
+		self.extAgentsThread.join(1.0)  # try and be nice and wait, otherwise just move along
 		
-		return True
+		log.info("stopping messaging")
+		self.messaging.stop()
+		log.info("messaging stopped")
+		
+		self.done = True
+		
+		#self.messaging.poisinPill() #without this daemon could block on nextMessage
+		log.info("daemon stop complete")
+
 		
 	@agentmethod()
 	def loadAgent(self, msg, code, name, dock, tardata=None, path=None, execargs=None, idl=None):
@@ -252,7 +175,7 @@ class Daemon(threading.Thread):
 				self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
 				return
 
-		if self.pAgentThread.wantsDock(dock):
+		if self.extAgentsThread.wantsDock(dock):
 			log.info("Agent already loaded on dock %s. Returning successful \"load\".", dock)
 			# 9/14: changed testbed.nodename to self.hostname to support desktop daemons 
 			self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
@@ -274,7 +197,140 @@ class Daemon(threading.Thread):
 			self.extractTarPath(cachepath, path)
 
 		self.startAgent(code, name, dock, execargs, idl)
+		
+	
+	@agentmethod()
+	def unloadAgent(self, msg, name):
+		'''
+		Unload the named agent, if it's loaded. 
+		'''
+		unloaded = []
+		
+		call = {'version': 1.0, 'method': 'stop', 'args': {}}
+		stop_msg = MAGIMessage(contenttype=MAGIMessage.YAML, data=yaml.safe_dump(call))
+		
+		for i in range(len(self.threadAgents)):
+			if name == self.threadAgents[i].agentname:
+				log.debug("Unloading agentname %s dock %s",self.threadAgents[i].agentname, self.threadAgents[i].docklist)
+				self.threadAgents[i].rxqueue.put(stop_msg)
+				self.threadAgents[i].join(0.5)
+				# 9/14 Changed testbed.nodename to self.hostname to support desktop daemons  
+				# 2/21 Moved to the agent code
+				# self.messaging.trigger(event='AgentUnloadDone', agent=name, nodes=[self.hostname])
+				unloaded.append(i)
+		
+		if len(unloaded):
+			self.threadAgents[:] = [a for a in self.threadAgents if a.agentname != name]
 
+		# now check for process agents. If we find a dock, send the unload message to the 
+		# agent. If it is well behaving, it'll commit harikari after cleaning up its
+		# resources. 
+		if not len(unloaded):
+			data = yaml.load(msg.data)
+			log.debug('message data: %s (%s)', data, type(data))
+			if not 'args' in data or not 'dock' in data['args']:
+				log.warning('No dock given in agentUnload. I do not know how to contact the'
+							' process agent to tell it to unload. Malformed or incomplete '
+							'message for AgentUnload')
+			else:
+				dock = data['args']['dock']
+				if not self.extAgentsThread.wantsDock(dock):
+					log.warning('unloadAgent for dock I know nothing about. Ignoring.')
+				else:
+					log.debug('Sending stop message to process agent.')
+					call = {'version': 1.0, 'method': 'stop', 'args': {}}
+					stop_msg = MAGIMessage(docks=dock, contenttype=MAGIMessage.YAML, 
+										   data=yaml.safe_dump(call))
+					self.extAgentsThread.fromNetwork.put(stop_msg)
+
+					# TODO: remove dock and cleanup the external agent data structures.
+					#		or confirm that external agents thread correctly discovers
+					#		the transport is down and cleans things up correctly. 
+					try:
+						del self.pAgentPids[name]
+					except KeyError:
+						log.error("process agent process id not available")
+						pass
+		
+		return True
+	
+	
+	@agentmethod()
+	def unloadAll(self, msg=None, unLoadStaticAgents=False):
+		"""
+			Call to unload all agents, generally used for testing
+		"""
+		call = {'version': 1.0, 'method': 'stop', 'args': {}}
+		stop_msg = MAGIMessage(contenttype=MAGIMessage.YAML, data=yaml.safe_dump(call))
+		
+		log.info("Unloading all threaded agents")			
+		for tAgent in self.threadAgents:
+			log.debug("Stopping %s", tAgent)
+			tAgent.rxqueue.put(stop_msg)
+		
+		if unLoadStaticAgents:
+			log.info("Unloading all static agents")	
+			for sAgent in self.staticAgents:
+				log.debug("Stopping %s", sAgent)
+				sAgent.rxqueue.put(stop_msg)
+			
+		for tAgent in self.threadAgents:
+			tAgent.join(0.5) # try but don't wait around forever
+			
+		if unLoadStaticAgents:
+			for sAgent in self.staticAgents:
+				sAgent.join(0.5)
+			
+		#stop process agents as well
+		self.extAgentsThread.unloadAll()
+
+	
+	@agentmethod()
+	def joinGroup(self, msg, group, nodes):
+		"""
+			Request to join a particular group
+		"""
+		if self.hostname in nodes:
+			self.messaging.join(group, "daemon")
+			# 9/14: Changed testbed.nodename to self.hostname to support desktop daemons  
+			self.messaging.trigger(event='GroupBuildDone', group=group, nodes=[self.hostname])
+
+	@agentmethod()
+	def leaveGroup(self, msg, group, nodes):
+		""""
+			Request to leave a particular group
+		"""
+		if self.hostname in nodes:
+			self.messaging.leave(group, "daemon")
+			# 9/14: Changed testbed.nodename to self.hostname to support desktop daemons  
+			self.messaging.trigger(event='GroupTeardownDone', group=group, nodes=[self.hostname])
+	
+	
+	@agentmethod()
+	def ping(self, msg):
+		"""
+			Alive like method call that will send a pong back to the caller
+		"""
+		res = {
+		        'pong': True
+		}
+		# Added a data part to the message otherwise it gets dropped by the local daemon itself 
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong',contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))
+	
+	
+	@agentmethod()
+	def getAgentsProcessInfo(self, msg):
+		processId = os.getpid()
+		result = []
+		for tAgent in self.staticAgents + self.threadAgents:
+			result.append({"name": tAgent.agentname, "processId": processId, "threadId": tAgent.tid})
+		for name in self.pAgentPids.keys():
+			result.append({"name": name, "processId": self.pAgentPids[name]})
+		res = {
+		        'result': result
+		}
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock,contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))	
+		
 
 	# Internal functions
 
@@ -308,21 +364,27 @@ class Daemon(threading.Thread):
 		execstyle = interface['execute']
 		mainfile = os.path.join(dirname, interface['mainfile'])
 
-		log.debug('Running agent from file %s' % mainfile)
+		log.info('Running agent from file %s' % mainfile)
 		
 		# GTL TODO: handle exceptions from threaded agents by removing
 		# the agents and freeing up the dock(s) for the agent.
 
 		if execstyle == 'thread':
 			# A agent should know the hostname and its own name  
+			from magi.daemon.threadInterface import ThreadedAgent
 			agent = ThreadedAgent(self.hostname, name, mainfile, dock, execargs, self.messaging)
+#			baseClass = threading.Thread
+#			agent = getAgent(baseClass, self.hostname, name, mainfile, dock, execargs, self.messaging, Queue.Queue())
+			log.info("execargs: %s", execargs)
 			agent.start()
-			log.debug("Started agent thread %s", agent)
+			log.debug("Started threaded agent %s", agent)
 			if static:
 				self.staticAgents.append(agent)
 			else:
 				self.threadAgents.append(agent)
-			self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
+			#2/13/14 Moved it to threadInterface
+			#self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
+			
 		else:
 			# Process agent, use the file as written to disk
 			# TODO Process agent need to know hostname 
@@ -330,6 +392,7 @@ class Daemon(threading.Thread):
 			if execargs and type(execargs) == dict:
 				# I apologize for this abuse
 				args = ['%s=%s' % (str(k), str(v)) for k,v in execargs.iteritems()]
+			args.append('hostname='+self.hostname)
 			os.chmod(mainfile, 00777)
 			# (stderr, stderrname) = tempfile.mkstemp(suffix='.stderr', prefix=name+"-", dir='/tmp/')
 			stderrname = os.path.join('/tmp', name + '.stderr')
@@ -339,7 +402,7 @@ class Daemon(threading.Thread):
 				args.append('execute=pipe')
 				log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
 				agent = Popen([mainfile, name, dock] + args, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
-				self.pAgentThread.fromNetwork.put(PipeTuple([dock], InputPipe(fileobj=agent.stdout), OutputPipe(fileobj=agent.stdin)))
+				self.extAgentsThread.fromNetwork.put(PipeTuple([dock], InputPipe(fileobj=agent.stdout), OutputPipe(fileobj=agent.stdin)))
 
 			elif execstyle == 'socket':
 				args.append('execute=socket')
@@ -351,7 +414,8 @@ class Daemon(threading.Thread):
 				return False
 			
 			self.pAgentPids[name] = agent.pid
-			self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname] )
+			#Process agent once up, sends the AgentLoadDone message itself
+			#self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname] )
 
 	def extractTarPath(self, cachepath, path):
 		if os.path.isdir(path):

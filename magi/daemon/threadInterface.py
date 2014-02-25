@@ -14,9 +14,8 @@ from os.path import basename
 import magi.modules
 from magi.testbed import testbed
 from magi.messaging.api import MAGIMessage
-
+from magi.util import config
 import os
-import ctypes
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ class ThreadedAgent(threading.Thread):
 	"""
 	def __init__(self, hostname, name, sourcepath, dock, args, messaging):
 		threading.Thread.__init__(self, name=name)
-		self.setDaemon(True)
+		self.daemon = True
 		log.debug("Loading source from %s with name %s", sourcepath, name)
 		# TODO: check if this is the best way to get to the module name
 		packagename = sourcepath.split("/")[-2]
@@ -85,39 +84,47 @@ class ThreadedAgent(threading.Thread):
 		self.messaging = messaging
 		self.args = args
 		
-	def run(self):
 		try:
-			self.pid = os.getpid()
-			self.tid = ctypes.CDLL('libc.so.6').syscall(224) # TODO: Is this the right way to get to thread id
-			try:
 				# create the agent here, it may install software which is time consuming
 				if self.args: 
 					self.agent = self.getAgent(**self.args)
 				else:
 					self.agent = self.getAgent()
-
-			except Exception, e:
-				log.error("Agent %s on %s threw an exception %s during agent load.", self.getName(), self.hostname, e, exc_info=1)
+					
+		except Exception, e:
+				log.error("Agent %s on %s threw an exception %s during agent load.", self.name, self.hostname, e, exc_info=1)
 				log.error("Sending back a RunTimeException event. This may cause the receiver to exit.")
 				exc_type, exc_value, exc_tb = sys.exc_info()
 				filename, line_num, func_name, text = traceback.extract_tb(exc_tb)[-1]
 				filename = basename(filename)
-				self.messaging.trigger(event='RuntimeException', func_name=func_name, agent=self.getName(), 
+				self.messaging.trigger(event='RuntimeException', func_name=func_name, agent=self.name, 
 								   nodes=[testbed.nodename], filename=filename, line_num=line_num, error=str(e))
 				return
 
-			#9/16: Moved AgentLoadDone trigger to the daemon loadAgent call  
-			#self.messaging.trigger(event='AgentLoadDone', name=self.agentname, nodes=[testbed.nodename])
+		#send the load complete event to listeners
+		#9/16: Moved AgentLoadDone trigger to the daemon loadAgent call  
+		#2/13/14: Moved it back
+		log.info("Agent %s loaded successfully", self.agentname)
+		self.messaging.trigger(event='AgentLoadDone', agent=self.agentname, nodes=[testbed.nodename])
 
+	def run(self):
+		try:
+			self.pid = os.getpid()
+			self.tid = config.getThreadId()
+			log.info("Running threaded agent. Name: %s Process Id: %d Thread Id: %d", self.agentname, self.pid, self.tid)
+			
 			try:
-				# send the load complete event to listeners
 				# call the main run function
-				self.agent.run(MessagingWrapper(self.agentname, self.messaging, self.rxqueue, self.docklist), self.args)
+				self.agent.name = self.name
+				self.agent.hostname = self.hostname
+				self.agent.docklist = self.docklist
+				self.agent.messenger = MessagingWrapper(self.agentname, self.messaging, self.rxqueue, self.docklist)
+				self.agent.run()
 			except Exception, e:
-				log.error("Agent %s on %s threw an exception %s during main loop", self.getName(), self.hostname, e, exc_info=1)
+				log.error("Agent %s on %s threw an exception %s during main loop", self.name, self.hostname, e, exc_info=1)
 				# GTL TODO: do cleanup and useful things here!
 		finally:
-			log.info("Agent %s has finished", self.getName())
+			log.info("Agent %s has finished", self)
 
 	def stop(self):
 		try:
@@ -125,5 +132,5 @@ class ThreadedAgent(threading.Thread):
 				self.agent.stop()
 				# TOOD: get list of joined groups and leave them?, lower priority as we don't generally stop agents
 		except Exception, e:
-			log.error("Agent %s threw an exception %s when stopping.", self.getName(), e, exc_info=1)
+			log.error("Agent %s threw an exception %s when stopping.", self, e, exc_info=1)
 

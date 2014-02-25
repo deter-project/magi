@@ -4,18 +4,18 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-import time
-import sys
-import logging
 import Queue
-import subprocess
-import threading
+import logging
 import random
+import subprocess
+import sys
+import threading
+import time
 
-from magi.util.calls import doMessageAction
-from magi.util.execl import spawn, execAndRead
 from magi.messaging.magimessage import MAGIMessage
 from magi.testbed import testbed
+from magi.util.calls import doMessageAction
+from magi.util.execl import spawn, execAndRead
 #from magi.util import database
 
 log = logging.getLogger(__name__)
@@ -46,13 +46,20 @@ def agentmethod(*dargs, **dkwargs):
     return decorate
 
 
-class AgentVariables(object):
+class Agent(object):
     """
         Provides the implementation of the setConfiguration which is used
         to set variables as defined in the agent's IDL. Also provides a
         configuration confirmation method for checking the validity of the
         configuration that was set.
     """
+    def __init__(self):
+        self.done = False
+        self.messenger = None
+        self.docklist = set()
+        self.name = None
+        self.hostname = None
+        
     @agentmethod()
     def setConfiguration(self, msg, **kwargs):
         '''
@@ -77,53 +84,53 @@ class AgentVariables(object):
         acceptable or not. Default is just to return True.
         '''
         return True
+    
+    @agentmethod()
+    def stop(self, msg):
+        """ Called by daemon to inform the agent that it should shutdown """
+        log.warning('Got agent unload message. Shutting down.')
+        for dock in self.docklist.copy():
+            self.messenger.unlistenDock(dock)
+        # 9/14 Changed testbed.nodename to self.hostname to support desktop daemons  
+        self.messenger.trigger(event='AgentUnloadDone', agent=self.name, nodes=[self.hostname])
+        self.done = True
+        self.messenger.poisinPill()
 
 
-class DispatchAgent(AgentVariables):
+class DispatchAgent(Agent):
     """
         Provides dispatch code for an agent that only responds/reacts
-        to incoming messages.
+        to incoming messages, synchronously.
     """
     def __init__(self):
         log.debug('In init of the root DispatchAgent')
-        self.done = False
+        Agent.__init__(self)
 
-    def run(self, messenger, args):
+    def run(self):
         """ Called by daemon in the agent's thread to perform
         the thread main"""
-        self.messenger = messenger
-        self.args = args
-        log.debug('In run of the root DispatchAgent')
+        log.info('In run of the root DispatchAgent')
         while not self.done:
             try:
                 msg = self.messenger.next(True)
                 if isinstance(msg, MAGIMessage):
                     doMessageAction(self, msg, self.messenger)
-
             except Queue.Empty:
                 pass
 
-    def stop(self):
-        """ Called by daemon to inform the agent that it should shutdown """
-        log.debug('In stop of the root of the DispatchAgent')
-        self.done = True
-        self.messenger.poisinPill()
         
-        
-class NonBlockingDispatchAgent(AgentVariables):
+class NonBlockingDispatchAgent(Agent):
     """
         Provides dispatch code for an agent that only responds/reacts
-        to incoming messages, but asynchronously.
+        to incoming messages, asynchronously.
     """
     def __init__(self):
         log.debug('In init of the root NonBlockingDispatchAgent')
-        self.done = False
+        Agent.__init__(self)
 
-    def run(self, messenger, args):
+    def run(self):
         """ Called by daemon in the agent's thread to perform
         the thread main"""
-        self.messenger = messenger
-        self.args = args
         log.debug('In run of the root NonBlockingDispatchAgent')
         while not self.done:
             try:
@@ -134,46 +141,32 @@ class NonBlockingDispatchAgent(AgentVariables):
             except Queue.Empty:
                 pass
 
-    def stop(self):
-        """ Called by daemon to inform the agent that it should shutdown """
-        log.debug('In stop of the root of the NonBlockingDispatchAgent')
-        self.done = True
-        self.messenger.poisinPill()
 
-
-class ReportingDispatchAgent(AgentVariables):
+class ReportingDispatchAgent(DispatchAgent):
     """
         Provides code for an agent that accepts incoming requests as well as
         periodic reports
     """
-
     def __init__(self):
-        self.done = False
+        log.debug('In init of the root ReportingDispatchAgent')
+        DispatchAgent.__init__(self)
 
-    def run(self, messenger, args):
+    def run(self):
         """
-        Called by daemon in the agent's thread to perform the thread main
+            Called by daemon in the agent's thread to perform the thread main
         """
-        self.messenger = messenger
-        self.args = args
+        t1 = threading.Thread(target=self.runPeriodic)
+        t1.start()
+        DispatchAgent.run(self)
+                
+    def runPeriodic(self):
         nextreport = 0
         while not self.done:
-            try:
-                now = time.time()
-                if now >= nextreport:
-                    nextreport = self.periodic(now) + now
-
-                msg = self.messenger.next(True, nextreport - now)
-                if isinstance(msg, MAGIMessage):
-                    doMessageAction(self, msg, self.messenger)
-
-            except Queue.Empty:
-                pass
-
-    def stop(self):
-        """ Called by daemon to inform the agent that it should shutdown """
-        self.done = True
-        self.messenger.poisinPill()
+            now = time.time()
+            if now >= nextreport:
+                nextreport = self.periodic(now) + time.time()
+            else:
+                time.sleep(nextreport - now)
 
     def periodic(self, now):
         """
@@ -224,7 +217,7 @@ class SharedServer(DispatchAgent):
         return retVal
 
 
-class TrafficClientAgent(AgentVariables):
+class TrafficClientAgent(Agent):
     """
         Provides a base for traffic clients that use the traffic.idl interface.
         Rather than just dispatching in the run loop, it uses that loop
@@ -234,8 +227,8 @@ class TrafficClientAgent(AgentVariables):
     """
 
     def __init__(self):
+        Agent.__init__(self)
         self.subpids = list()
-        self.done = False
         # TODO: Replace hardcoded value with MAGILOG 
         self.logfile = '/var/log/magi/%s_%s.log' % (self.__class__.__name__, time.strftime("%Y-%m-%d_%H:%M:%S"))
         self.servers = []
@@ -245,12 +238,10 @@ class TrafficClientAgent(AgentVariables):
         self.collectionname = "traffic" 
         self.collector = None
         
-    def run(self, messenger, args):
+    def run(self):
         """
         Called by daemon in the agent's thread to perform the thread main
         """
-        self.messenger = messenger
-        self.args = args
         while not self.done:
             try:
                 msg = self.messenger.next(True, max(self.nextrun - time.time(), 0))
@@ -271,11 +262,10 @@ class TrafficClientAgent(AgentVariables):
             except Exception:
                 log.error("error in client process", exc_info=1)
 
-    def stop(self):
+    def stop(self, msg):
         """ Called by daemon to inform the agent that it should shutdown """
         self.running = False
-        self.done = True
-        self.messenger.poisinPill()
+        Agent.stop(self, msg)
 
     def oneClient(self):
         """ Called when the next client should fire (after interval time) """
@@ -345,7 +335,7 @@ class ProbabilisticTrafficClientAgent(TrafficClientAgent):
                 fp.close()
 
 
-class ConnectedTrafficClientsAgent(AgentVariables):
+class ConnectedTrafficClientsAgent(Agent):
     """
         Provides a base for an agent which controls a set of agents
         which have standing connections to, and traffic between, a set
@@ -361,7 +351,7 @@ class ConnectedTrafficClientsAgent(AgentVariables):
         generateTraffic().
     """
     def __init__(self):
-        self.done = False
+        Agent.__init__(self)
         self.connectionTable = None
         self.stopTraffic(None)
 
@@ -374,10 +364,9 @@ class ConnectedTrafficClientsAgent(AgentVariables):
         self.connectionInterval = 'minMax(80,100)'  # time between connections.
         self.connectionDuration = 'minMax(10,30)'   # duration of a connection.
 
-    def run(self, messenger, args):
+    def run(self):
         """ Called by daemon in the agent's thread to perform
         the thread main """
-        self.messenger = messenger
 
         while not self.done:
             try:
@@ -420,12 +409,11 @@ class ConnectedTrafficClientsAgent(AgentVariables):
                     self.connectionTable[server][1] = nextTrafStart
                     self._setNextRunTime()
 
-    def stop(self):
+    def stop(self, msg):
         """ Called by daemon to inform the agent that it should shutdown """
         self.running = False
-        self.done = True
         self.connectionTable = {}
-        self.messenger.poisinPill()
+        Agent.stop(self, msg)
 
     @agentmethod()
     def startTraffic(self, msg):

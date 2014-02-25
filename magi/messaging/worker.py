@@ -6,7 +6,7 @@ import time
 import sys
 from collections import defaultdict
 from magi.util.scheduler import Scheduler
-
+from magi.util import config
 from magimessage import MAGIMessage
 from transport import Transport
 from routerGroup import GroupRouter
@@ -115,7 +115,7 @@ class WorkerThread(threading.Thread):
 		self.queues['PRE'].processors.extend([nameid])
 
 		self.scheduler.periodic(10, self.printStats)
-
+		
 
 	def printStats(self):
 		log.debug("%s", self.stats)
@@ -420,23 +420,33 @@ class WorkerThread(threading.Thread):
 		
 		# Run all of our processing chains until their input queues are empty
 		self.processMsgQueues()
-
-
-	#def run(self):
-	#	import cProfile
-	#	cProfile.runctx('self.runX()', globals(), locals(), 'output')
-	#
-	#def runX(self):
+		
+	def stop(self):
+		self.requiredList = set()
+		log.debug("Closing transports")
+		for transport in self.pollMap.values():
+			log.debug("Closing transport %s", transport)
+			transport.close()
+		log.debug("Transports closed")
+		self.done = True
 
 	def run(self):
+#		import cProfile
+#		cProfile.runctx('self.runX()', globals(), locals(), '/tmp/cprofile_worker')
+#	
+#	def runX(self):
 		"""
 			Run the sockets thread.  Infinite loop:
 			- run the scheduler and events, returns the time until the next future event
 			- wait for that amount of time (max 1/10th second) for events on any open sockets
 		"""
+		self.threadId = config.getThreadId()
+		log.info("Worker started. Thread id: " + str(self.threadId))
+
 		#when = time.time() + 30
 		#while time.time() < when:
-		while True:
+		self.done = False
+		while not self.done:
 			try:
 				timeout = min(0.2, self.scheduler.run()) # Max 0.2 second sleep, maybe less, we can't wait on Queue.Queue so we have to poll it
 				if len(self.pollMap) <= 0:
@@ -449,4 +459,6 @@ class WorkerThread(threading.Thread):
 					return  # We shutdown and all my variables are disappearing
 				log.error("Failed in router thread: %s", sys.exc_info()[1], exc_info=True)
 				time.sleep(0.5) # Don't jump into a super loop on repeatable errors
+				
+		log.info("Worker stopped")
 

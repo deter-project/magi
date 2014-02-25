@@ -6,7 +6,6 @@ from base import Testbed, IFObj
 from magi.util.execl import execAndRead, pipeIn
 import itertools
 import logging
-import networkx as nx
 import shlex
 import socket
 import sys
@@ -153,9 +152,9 @@ class EmulabTestbed(Testbed):
         return self._store['topograph']
     
     def loadTopoGraph(self):
+        import networkx as nx
         nodelist = False
         linkToNodeList = dict()
-    
         graph = nx.Graph()
     
         for e in self.getTopomap():
