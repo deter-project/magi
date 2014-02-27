@@ -95,6 +95,7 @@ class Agent(object):
         self.messenger.trigger(event='AgentUnloadDone', agent=self.name, nodes=[self.hostname])
         self.done = True
         self.messenger.poisinPill()
+        log.info('Unload Complete.')
 
 
 class DispatchAgent(Agent):

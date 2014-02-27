@@ -105,7 +105,7 @@ class ThreadedAgent(threading.Thread):
 		#9/16: Moved AgentLoadDone trigger to the daemon loadAgent call  
 		#2/13/14: Moved it back
 		log.info("Agent %s loaded successfully", self.agentname)
-		self.messaging.trigger(event='AgentLoadDone', agent=self.agentname, nodes=[testbed.nodename])
+		self.messaging.trigger(event='AgentLoadDone', agent=self.agentname, nodes=[self.hostname])
 
 	def run(self):
 		try:

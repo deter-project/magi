@@ -1,16 +1,17 @@
 from magi.messaging.api import DefaultCodec, MAGIMessage as APIMagiMessage
-from magi.messaging.transportStream import RXTracker, TXTracker
-import fcntl
-import logging
-import os
+
+import Queue
+import asyncore
 import struct
+import threading
 import yaml
+import logging
 
 log = logging.getLogger(__name__)
 
 class AgentRequest(object):
 	"""
-		Object form of agent request across the process boundaries
+		Object form of process agent requests
 	"""
 	JOIN_GROUP = 1
 	LEAVE_GROUP = 2
@@ -62,9 +63,8 @@ class AgentRequest(object):
 
 class AgentCodec(object):
 	"""
-		Codec for encoding and decoding messages on the agent interface.
+		Codec for encoding and decoding messages on the process agent messaging interface.
 	"""
-
 	def encode(self, msg):
 		"""
 			Return an encoded wire format version of the header for this message as it stands.
@@ -87,7 +87,6 @@ class AgentCodec(object):
 		if msg.data is not None:
 			totallen += len(msg.data)
 		return struct.pack('>IHB', totallen, headerlen, msg.request) + optionstr
-		
 
 
 	def decode(self, headerbuf):
@@ -116,77 +115,66 @@ class AgentCodec(object):
 		return newmsg, hdrlen+6
 
 
-class MessageReader(object):
-	""" Used for processing incoming agent messages from a file descriptor """
-	def __init__(self, fd, blocking):
-		self.fd = fd
-		self.blocking = blocking
+class AgentMessenger(threading.Thread):
+	""" The messaging interface for an external process agent. """
+
+	def __init__(self, inTransport, outTransport, agent):
+		threading.Thread.__init__(self, name=agent.name+"_messenger")
+		self.agent = agent
+		
 		self.codec = AgentCodec()
 		self.msgCodec = DefaultCodec()
-		self.incoming = RXTracker(codec=self.codec)
+		self.inqueue = Queue.Queue()
 
-	def poll(self):
-		buf = os.read(self.fd, 4096)
-		if self.blocking and buf == "":
-			raise IOError("EOF on stream, file descriptor closed")
-		self.incoming.processData(buf)
-		if self.incoming.isDone():
-			msg = self.incoming.getMessage()
-			log.debug("message in is %s, %s", AgentRequest.OPTIONS.get(msg.request, msg.request), msg)
-			self.incoming = RXTracker(startbuf=self.incoming.getLeftover(), codec=self.codec)
-			if msg.request == AgentRequest.MESSAGE:  # If its a MAGIMessage, decode now
-				magimsg, hdrsize = self.msgCodec.decode(msg.data)
-				log.debug("decode magi message portion (%s, %s)", hdrsize, magimsg)
-				magimsg.data = msg.data[hdrsize:]
-				msg.data = magimsg
-			return msg
-		return None
+		self.inTransport = inTransport
+		self.outTransport = outTransport
+		self.inTransport.setCodec(self.codec)
+		self.outTransport.setCodec(self.codec)
+		
+		self.pollMap = dict()
+		
+	def run(self):
+		log.info("Running messenger for agent " + self.agent.name)
 
-
-class MessageSender(object):
-	""" Used for sending agent messages out a file descriptor """
-
-	def __init__(self, fd, request):
-		self.fd = fd
-		self.outgoing = TXTracker(codec=AgentCodec(), msg=request)
-
-	def poll(self):
-		if self.outgoing.isDone():
-			log.log(1, "already done")
-			return True
-		data = self.outgoing.getData()
-		log.log(1, "attempt send %d", len(data))
-		self.outgoing.sent(os.write(self.fd, self.outgoing.getData()))
-		log.log(1, "return %s", self.outgoing.isDone())
-		return self.outgoing.isDone()
-
-
-class AgentInterface(object):
-	""" The python interface for an external process agent.  Used by the daemon and python based process agents """
-
-	def __init__(self, infd, outfd, blocking = True):
-		self.infd = infd
-		self.outfd = outfd
-		self.blocking = blocking
-		if blocking:
-			fcntl.fcntl(infd, fcntl.F_SETFL, ~os.O_NONBLOCK & fcntl.fcntl(infd, fcntl.F_GETFL))
-		self.incoming = MessageReader(self.infd, self.blocking)
-
-	def next(self, blocking=None, timeout=0):
-		""" Block and receive the next message """
-		#Should not be reinitialized every time next is called
-		#there is be leftover data which is otherwise get lost
-		#incoming = MessageReader(self.infd, self.blocking)
-		while True:
-			msg = self.incoming.poll()
-			if msg is not None:
-				return msg.data  # Only MAGIMessages come in at this time
-
+		self.pollMap[self.inTransport.fileno()] = self.inTransport
+		self.pollMap[self.outTransport.fileno()] = self.outTransport
+		
+		while not self.agent.done:
+			asyncore.poll(0.1, self.pollMap)
+			if len(self.inTransport.inmessages) > 0:
+				log.debug("%d messages from %s", len(self.inTransport.inmessages), self.inTransport)
+				for msg in self.inTransport.inmessages:
+					self.inqueue.put(msg)
+				self.inTransport.inmessages = []
+				
+		while len(self.outTransport.outmessages) > 0:
+			asyncore.poll(0, self.pollMap)
+			
+		log.info("Stopping messenger for agent " + self.agent.name)
+	
+	def next(self, block=True, timeout=None):
+		""" Received the next message """
+		msg = self.inqueue.get(block, timeout)
+		
+		# If its a MAGIMessage, decode now
+		# Only MAGIMessages come in at this time
+		if msg.request == AgentRequest.MESSAGE:  
+			log.debug("Decoding received message")
+			magimsg, hdrsize = self.msgCodec.decode(msg.data)
+			log.debug("decoded message portion (%s, %s)", hdrsize, magimsg)
+			magimsg.data = msg.data[hdrsize:]
+			log.debug("Received Message: %s", magimsg)
+			return magimsg
+		
+		log.debug("Non magi message request")
+		log.debug(msg)
+		return msg
+		
 	def send(self, msg, **args):
 		""" Block and send a message """
-		outgoing = MessageSender(self.outfd, AgentRequest.MAGIMessage(msg, **args))
-		while not outgoing.poll():
-			pass
+		log.debug("Sending msg: %s", msg)
+		request = AgentRequest.MAGIMessage(msg)
+		self.outTransport.outmessages.append(request)
 
 	def trigger(self, **args):
 		'''Send a trigger to Magi message infrastructure.'''
@@ -196,33 +184,27 @@ class AgentInterface(object):
 
 	def joinGroup(self, group):
 		""" Would like to see messages for group """
-		outgoing = MessageSender(self.outfd, AgentRequest.JoinGroup(group))
-		while not outgoing.poll():
-			pass
+		request = AgentRequest.JoinGroup(group)
+		self.outTransport.outmessages.append(request)
 
 	def leaveGroup(self, group):
-		""" No longer care about messages for group, if another agent is still listening, the group will still be received """
-		outgoing = MessageSender(self.outfd, AgentRequest.LeaveGroup(group))
-		while not outgoing.poll():
-			pass
+		""" No longer care about messages for group """
+		request = AgentRequest.LeaveGroup(group)
+		self.outTransport.outmessages.append(request)
 
 	def listenDock(self, dock):
 		""" Start listening for messages destined for 'dock' """
-		outgoing = MessageSender(self.outfd, AgentRequest.ListenDock(dock))
-		while not outgoing.poll():
-			pass
+		request = AgentRequest.ListenDock(dock)
+		self.outTransport.outmessages.append(request)
 
 	def unlistenDock(self, dock):
 		""" Stop listening for messages destined for 'dock' """
-		outgoing = MessageSender(self.outfd, AgentRequest.UnlistenDock(dock))
-		while not outgoing.poll():
-			pass
+		request = AgentRequest.UnlistenDock(dock)
+		self.outTransport.outmessages.append(request)
 
 	def poisinPill(self):
 		pass
-#		""" queue a poisin pill so that anyone waiting on a call to next will wake up """
-#		call = {'version': 1.0, 'method': 'poisinPill', 'args': {}}
-#		stop_msg = APIMagiMessage(contenttype=APIMagiMessage.YAML, data=yaml.safe_dump(call))
-#		outgoing = MessageSender(self.infd, AgentRequest.MAGIMessage(stop_msg))
-#		while not outgoing.poll():
-#			pass
+		""" queue a poisin pill so that anyone waiting on a call to next will wake up """
+		call = {'version': 1.0, 'method': 'poisinPill', 'args': {}}
+		stop_msg = APIMagiMessage(contenttype=APIMagiMessage.YAML, data=yaml.safe_dump(call))
+		self.inqueue.put(stop_msg)
