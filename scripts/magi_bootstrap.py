@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
+from os import path
 from subprocess import Popen
-import optparse
 import errno
+import glob
 import logging.handlers
+import optparse
+import os
 import signal
 import sys
-import os
-import glob
-from os import path
+import time
 
 #logging.basicConfig(level=logging.INFO)
 LOG_FILENAME = '/tmp/magi_bootstrap.log'
@@ -118,6 +119,14 @@ def is_os_64bit():
         import platform
         return platform.machine().endswith('64')
 
+def is_running(pid):        
+    try:
+        os.kill(pid, 0)
+    except OSError as err:
+        if err.errno == errno.ESRCH:
+            return False
+    return True
+
 if __name__ == '__main__':
         signal.signal(signal.SIGINT, signal.SIG_DFL)
 
@@ -134,7 +143,7 @@ if __name__ == '__main__':
         optparser.add_option("-m", "--mesdl", dest="mesdl", action="store", default=None, help="Path to the messaging overlay configuration file")  
         optparser.add_option("-c", "--magiconf", dest="magiconf", action="store", default=None, help="Path to the local node magi configuration file. Cannot use along with -f (see above)")
         optparser.add_option("-d", "--dbconf", dest="dbconf", action="store", default=None, help="Path to the data management configuration file")
-        optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=True, help="Do not install and setup data manager") 
+        optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install and setup data manager") 
                 
         (options, args) = optparser.parse_args()
 
@@ -305,13 +314,38 @@ if __name__ == '__main__':
         if os.path.exists(config.DEFAULT_MAGIPID) and os.path.getsize(config.DEFAULT_MAGIPID) > 0:
                 fpid = open (config.DEFAULT_MAGIPID, 'r')
                 pid = int(fpid.read())
+                
+                log.info("Daemon is running with pid %d", pid)
+                log.info("Trying to stop daemon gracefully. Sending SIGTERM.")
                 try:
-                        os.kill(pid,signal.SIGTERM)
+                        os.kill(pid, signal.SIGTERM)
                 except OSError, e:
                         if e.args[0] == errno.ESRCH:
                                 log.info("No process %d found", pid)
                         else:
                                 log.info("Cannot kill process %d", pid) 
+                
+                terminated = False
+                
+                #wait for daemon to terminate
+                for i in range(10):
+                    if is_running(pid):
+                        time.sleep(0.1)
+                    else:
+                        log.info("Process %d killed successfully", pid)
+                        terminated = True 
+                        break
+                
+                if not terminated:
+                    log.info("Could not stop daemon gracefully. Sending SIGKILL.")
+                    try:
+                            os.kill(pid, signal.SIGKILL)
+                    except OSError, e:
+                            if e.args[0] == errno.ESRCH:
+                                    log.info("No process %d found", pid)
+                            else:
+                                    log.info("Cannot kill process %d", pid) 
+                
         else:
                 log.info("No %s file found....", config.DEFAULT_MAGIPID)
 
