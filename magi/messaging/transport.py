@@ -1,7 +1,7 @@
 
 import socket
 from asyncore import dispatcher
-from magi.messaging.magimessage import DefaultCodec
+from magimessage import DefaultCodec
 
 class Transport(dispatcher):
 	"""

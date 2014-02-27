@@ -83,15 +83,15 @@ class TCPTransport(transportStream.StreamTransport):
 		"""
 			Override stream version so we can add hosttime to outgoing packets
 		"""
-		if self.txMessage.isDone():
-			try:
-				msg = self.outmessages.pop(0)
-				msg.hosttime = int(time.time())
-				self.txMessage = transportStream.TXTracker(codec=self.codec, msg=msg)
-			except IndexError:
-				return
+		try:
+			msg = self.outmessages.pop(0)
+			msg.hosttime = int(time.time())
+			self.txMessage = transportStream.TXTracker(codec=self.codec, msg=msg)
+		except IndexError:
+			return
 
-		self.txMessage.sent(self.send(self.txMessage.getData()))
+		while not self.txMessage.isDone():
+			self.txMessage.sent(self.send(self.txMessage.getData()))
 
 
 	def __repr__(self):

@@ -52,14 +52,14 @@ class OutputPipe(PipeBase):
 
 	def handle_write(self):
 		""" Override handle_write as we have a file descriptor, not a socket """
-		if self.txMessage.isDone():
-			try:
-				self.txMessage = transportStream.TXTracker(msg=self.outmessages.pop(0), codec=self.codec)
-			except IndexError:
-				return
-
+		try:
+			self.txMessage = transportStream.TXTracker(msg=self.outmessages.pop(0), codec=self.codec)
+		except IndexError:
+			return
+			
 		if debug: log.log(2, "starting pipe write")
-		self.txMessage.sent(os.write(self.fd, self.txMessage.getData()))
+		while not self.txMessage.isDone():
+			self.txMessage.sent(os.write(self.fd, self.txMessage.getData()))
 		if debug: log.log(2, "done pipe write")
 
 	def __repr__(self):
@@ -95,6 +95,7 @@ class InputPipe(PipeBase):
 		if debug: log.log(2, "starting pipe read")
 		buf = os.read(self.fd, 4096)
 		if buf == "":
+			log.error("EOF on stream, file descriptor closed")
 			raise IOError("EOF on stream, file descriptor closed")
 		self.rxMessage.processData(buf)
 		if debug: log.log(2, "done pipe read")
