@@ -46,6 +46,11 @@ class ExternalAgentsThread(threading.Thread):
 		self.commPort = config.getConfig().get('processAgentsCommPort')
 		if not self.commPort:
 			self.commPort = 18809
+			
+		# Start a TCP server to listen from external agents
+		self.server = TCPServer(address="127.0.0.1", port=self.commPort)
+		# Add the server to the list of transports being polled
+		self.pollMap[self.server.fileno()] = self.server
 		
 	def clearMaps(self, fd, transport):
 		"""
@@ -59,7 +64,7 @@ class ExternalAgentsThread(threading.Thread):
 
 		if transport in self.invDockMap:
 			del self.invDockMap[transport] 
-		for dock, transportList in self.dockMap.iteritems():
+		for transportList in self.dockMap.values():
 			transportList.discard(transport)
 
 
@@ -215,16 +220,12 @@ class ExternalAgentsThread(threading.Thread):
 		self.threadId = config.getThreadId()
 		log.info("External agents thread started. Thread id: " + str(self.threadId))
 			
-		# Start and add the TCP server
-		self.server = TCPServer(address="127.0.0.1", port=self.commPort)
-		self.pollMap[self.server.fileno()] = self.server
-		
 		self.done = False
 		while not self.done:
 			try:
 				self.loop()
 			except Exception, e:
-				log.error("Failure in pipe thread: %s" % e, exc_info=True)
+				log.error("Failure in external agents thread: %s" % e, exc_info=True)
 				log.debug("%s", self.pollMap) # Only convert to string on debug
 				time.sleep(0.5) # Don't jump into a super loop on repeatable errors
 				

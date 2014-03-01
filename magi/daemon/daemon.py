@@ -45,14 +45,19 @@ class Daemon(threading.Thread):
 		
 		self.staticAgents = list()  # statically loaded thread agents
 		self.threadAgents = list()  # dynamically loaded thread agents
-		self.pAgentPids = dict()
+		self.pAgentPids = dict() # process agent's process ids
+		
+		#starting the external/process agents control thread
 		self.extAgentsThread = ExternalAgentsThread(self.messaging)
+		self.extAgentsThread.start()
 
 		if enable_dataman_agent:
 			self.startAgent(code="dataman", name="dataman", dock="dataman", static=True)
 		
 		self.configureMessaging(self.messaging, transports_ctrl)
 		#self.configureMessaging(self.messaging_exp, transports_exp)
+		
+		self.done = False
 
 
 	def configureMessaging(self, messaging, transports, **kwargs):
@@ -91,9 +96,6 @@ class Daemon(threading.Thread):
 		except:
 			pass
 		
-		self.extAgentsThread.start()
-		
-		self.done = False
 		while not self.done:
 			try:
 				try:
@@ -101,10 +103,12 @@ class Daemon(threading.Thread):
 					msg = self.messaging.nextMessage(block=True, timeout=1)
 				except Queue.Empty:
 					continue
-#				if msg is None:
-#					continue
-#				if type(msg) is str and msg == 'PoisinPill': # don't cause conversion to string for every message
-#					break
+				
+				#if msg is None:
+				#	continue
+				# No longer need PoisinPill to break out of the nextMessage loop as we are using a timeout
+				#if type(msg) is str and msg == 'PoisinPill': # don't cause conversion to string for every message
+				#	break
 
 				progress = False
 				for dock in msg.dstdocks:
@@ -132,6 +136,7 @@ class Daemon(threading.Thread):
 				time.sleep(0.5)
 				
 		log.info("Daemon stopped.")
+
 
 	def signalhandler(self, signum, frame):
 		print "Handling kill signal. Shutting down."
