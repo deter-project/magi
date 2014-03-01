@@ -47,7 +47,7 @@ def startDBServer(configfile=None):
             time.sleep(1)
             if p.poll() is None:
                 break
-            log.error("Failed to start mongod server")
+            log.error("Failed to start mongod server. Will retry.")
         
         pid = p.pid
         log.info("Started mongod with pid %s", pid)
@@ -349,9 +349,10 @@ def getConnection(dbhost=None, block=True):
             log.debug("Connected to database server")
             return connectionMap[dbhost]
         except Exception:
-            log.error("Could not connect to database server")
             if not block:
+                log.error("Could not connect to database server.")
                 raise
+            log.error("Could not connect to database server. Will retry.")
             time.sleep(1)
 
 def getDBHost():

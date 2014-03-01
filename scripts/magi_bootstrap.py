@@ -17,16 +17,18 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 # Check if log exists and should therefore be rolled
+# Need to check existence of file before creating the handler instance
+# This is because handler creation creates the file if not existent 
 needRoll = False
 if path.isfile(LOG_FILENAME):
-        needRoll = True
-        
+    needRoll = True
+
 handler = logging.handlers.RotatingFileHandler(LOG_FILENAME, backupCount=5)
-handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s:%(message)s'))
+handler.setFormatter(logging.Formatter('%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'))
 log.addHandler(handler)
 
-if needRoll: 
-        handler.doRollover()
+if needRoll:
+    handler.doRollover()
 
 class BootstrapException(Exception): pass
 class TarException(BootstrapException): pass

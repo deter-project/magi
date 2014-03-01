@@ -6,7 +6,6 @@ import time
 import base64
 import yaml
 import subprocess
-import tempfile
 import os
 import sys
 import cStringIO
@@ -16,6 +15,7 @@ from magi.daemon.daemon import Daemon
 from magi.messaging.api import MAGIMessage
 from magi.tests.util import SimpleMessaging
 import magi.tests
+import magi.modules
 
 
 class DaemonTest(unittest2.TestCase):
@@ -31,7 +31,7 @@ class DaemonTest(unittest2.TestCase):
 		self.d.daemon = True # Helps us exit easier
 		self.q = SimpleMessaging()
 		self.d.messaging = self.q
-		self.d.pAgentThread.messaging = self.q
+		self.d.extAgentsThread.messaging = self.q
 		self.d.start()
 
 	def tearDown(self):
@@ -159,7 +159,7 @@ class DaemonTest(unittest2.TestCase):
 			for tAgent in self.d.threadAgents:
 				if dock in tAgent.docklist:
 					return
-			if self.d.pAgentThread.wantsDock(dock):
+			if self.d.extAgentsThread.wantsDock(dock):
 					return
 			time.sleep(0.1)
 

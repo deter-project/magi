@@ -109,6 +109,9 @@ class SimpleMessaging(object):
 	def checkMembership(self, group):
 		""" Check to see if the messaging system things it is a memeber of group X """
 		return len(self.groups[group]) > 0
+	
+	def stop(self):
+		pass
 
 
 class TestMessagingWrapper(object):

@@ -173,7 +173,7 @@ class AgentMessenger(threading.Thread):
 	def send(self, msg, **args):
 		""" Block and send a message """
 		log.debug("Sending msg: %s", msg)
-		request = AgentRequest.MAGIMessage(msg)
+		request = AgentRequest.MAGIMessage(msg, **args)
 		self.outTransport.outmessages.append(request)
 
 	def trigger(self, **args):

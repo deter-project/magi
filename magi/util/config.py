@@ -117,8 +117,6 @@ def loadYaml(filename):
 def createMESDL():
     """ Create a default mesdl with one shared TCP based overlay and one external server """
     log.info("Creating mesdl file.....") 
-    node = testbed.getServer() 
-    log.info("Using %s as control node....", node) 
     fp = open(DEFAULT_EXPMESDL, 'w')
     mesdl = createMESDL_control()
     fp.write(yaml.safe_dump(mesdl))
@@ -131,6 +129,7 @@ def createMESDL_control():
     """ Create a default mesdl for the control plane """
     log.info("Creating control plane mesdl") 
     node = testbed.getServer() 
+    log.info("Using %s as control node....", node) 
     if not '.' in node:
         node += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
     mesdl = dict()

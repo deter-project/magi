@@ -35,23 +35,25 @@ class Daemon(threading.Thread):
 		messages such as 'exec'.
 	"""
 
-	def __init__(self, hostname, transports, transports_exp, enable_dataman_agent=True):
+	def __init__(self, hostname, transports_ctrl, transports_exp=[], enable_dataman_agent=True):
 		threading.Thread.__init__(self, name='daemon')
 		# 9/16/2013 hostname is passed in from the magi_daemon script correctly 
 		self.hostname = hostname
 		self.messaging = Messenger(self.hostname)
 		#self.messaging_exp = Messenger(self.hostname)
-		self.forever = list()
-#		self.messaging.startDaemon()
-		self.pAgentPids = dict()
+		#self.messaging.startDaemon()
+		
 		self.staticAgents = list()  # statically loaded thread agents
 		self.threadAgents = list()  # dynamically loaded thread agents
+		self.pAgentPids = dict()
+		self.extAgentsThread = ExternalAgentsThread(self.messaging)
 
 		if enable_dataman_agent:
 			self.startAgent(code="dataman", name="dataman", dock="dataman", static=True)
 		
-		self.configureMessaging(self.messaging, transports)
+		self.configureMessaging(self.messaging, transports_ctrl)
 		#self.configureMessaging(self.messaging_exp, transports_exp)
+
 
 	def configureMessaging(self, messaging, transports, **kwargs):
 		"""
@@ -83,10 +85,12 @@ class Daemon(threading.Thread):
 		self.threadId = config.getThreadId()
 		log.info("Daemon started. Thread id: " + str(self.threadId))
 		
-		for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
-			signal.signal(sig, self.signalhandler)
-
-		self.extAgentsThread = ExternalAgentsThread(self.messaging)
+		try:
+			for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
+				signal.signal(sig, self.signalhandler)
+		except:
+			pass
+		
 		self.extAgentsThread.start()
 		
 		self.done = False
@@ -133,10 +137,10 @@ class Daemon(threading.Thread):
 		print "Handling kill signal. Shutting down."
 		log.info("Handling kill signal")
 		self.stop(None)
-	
+
 	
 	@agentmethod()
-	def stop(self, msg):
+	def stop(self, msg=None):
 		"""
 			Called to shutdown the daemon nicely by stopping all agent threads, stopping external processes
 			and stopping the messaging thread.
@@ -373,9 +377,6 @@ class Daemon(threading.Thread):
 			# A agent should know the hostname and its own name  
 			from magi.daemon.threadInterface import ThreadedAgent
 			agent = ThreadedAgent(self.hostname, name, mainfile, dock, execargs, self.messaging)
-#			baseClass = threading.Thread
-#			agent = getAgent(baseClass, self.hostname, name, mainfile, dock, execargs, self.messaging, Queue.Queue())
-			log.info("execargs: %s", execargs)
 			agent.start()
 			log.debug("Started threaded agent %s", agent)
 			if static:
@@ -398,6 +399,7 @@ class Daemon(threading.Thread):
 			stderrname = os.path.join('/tmp', name + '.stderr')
 			stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
 			log.debug("Starting %s, stderr sent to %s", name, stderrname)
+			
 			if execstyle == 'pipe':
 				args.append('execute=pipe')
 				log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
