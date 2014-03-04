@@ -48,7 +48,7 @@ class ExternalAgentsThread(threading.Thread):
 			self.commPort = 18809
 			
 		# Start a TCP server to listen from external agents
-		self.server = TCPServer(address="127.0.0.1", port=self.commPort)
+		self.server = TCPServer(address="0.0.0.0", port=self.commPort)
 		# Add the server to the list of transports being polled
 		self.pollMap[self.server.fileno()] = self.server
 		
@@ -203,12 +203,14 @@ class ExternalAgentsThread(threading.Thread):
 				break
 			time.sleep(0.1) #waiting for the unload to be done
 					
-	def stop(self):
+	def stop(self, unloadAgents=True):
 		""" Shutdown the TCP server and signal the main loop to exit """
 		log.info("Stopping external agents manager thread")
-		#Unloading all agents
-		self.unloadAll()
-#		del self.pollMap[self.server.fileno()]
+		if unloadAgents:
+			#Unloading all agents
+			self.unloadAll()
+		
+		#del self.pollMap[self.server.fileno()]
 		log.debug("Stopping server")
 		if self.server:
 			self.server.close() 
