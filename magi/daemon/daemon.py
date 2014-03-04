@@ -145,18 +145,19 @@ class Daemon(threading.Thread):
 
 	
 	@agentmethod()
-	def stop(self, msg=None):
+	def stop(self, msg=None, unloadAgents=True):
 		"""
 			Called to shutdown the daemon nicely by stopping all agent threads, stopping external processes
 			and stopping the messaging thread.
 		"""
 		log.info("Stopping daemon gracefully")
 		
-		#unload all agents
-		self.unloadAll(msg, unLoadStaticAgents=True)
+		if unloadAgents:
+			#unload all agents
+			self.unloadAll(msg, unLoadStaticAgents=True)
 			
 		log.info("Stopping process agent loop")
-		self.extAgentsThread.stop()
+		self.extAgentsThread.stop(unloadAgents)
 		log.info("Joining with process agent loop")
 		self.extAgentsThread.join(1.0)  # try and be nice and wait, otherwise just move along
 		
@@ -168,6 +169,8 @@ class Daemon(threading.Thread):
 		
 		#self.messaging.poisinPill() #without this daemon could block on nextMessage
 		log.info("daemon stop complete")
+		
+		return self.done
 
 		
 	@agentmethod()
