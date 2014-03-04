@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
 from optparse import OptionParser
-from magi.testbed import testbed
 from magi.util import config
+from magi.util import helpers
 import yaml
 import sys
-import os
 
 parser = OptionParser(description="Script to write a default /etc/magi.conf")
 parser.add_option("-f", "--force", dest="force", help="ovewrite a current magi config", default=False, action="store_true")
@@ -26,6 +25,6 @@ fp.close()
 
 # Setup args by reading the MeSDL 
 if options.mesdl: 
-    mesdl = config.loadYaml(options.mesdl)
+    mesdl = helpers.loadYaml(options.mesdl)
     print mesdl 
 

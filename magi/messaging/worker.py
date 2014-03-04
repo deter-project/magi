@@ -6,7 +6,7 @@ import time
 import sys
 from collections import defaultdict
 from magi.util.scheduler import Scheduler
-from magi.util import config
+from magi.util import helpers
 from magimessage import MAGIMessage
 from transport import Transport
 from routerGroup import GroupRouter
@@ -440,7 +440,7 @@ class WorkerThread(threading.Thread):
 			- run the scheduler and events, returns the time until the next future event
 			- wait for that amount of time (max 1/10th second) for events on any open sockets
 		"""
-		self.threadId = config.getThreadId()
+		self.threadId = helpers.getThreadId()
 		log.info("Worker started. Thread id: " + str(self.threadId))
 
 		#when = time.time() + 30

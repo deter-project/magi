@@ -37,14 +37,13 @@ from magi.testbed import testbed
 from socket import gethostbyname, gaierror
 import Queue
 import datetime
-import errno
 import logging
 import os
 import platform
 import subprocess
 import sys
 import yaml
-import ctypes
+import helpers
 
 MAGILOG="/var/log/magi" 
 
@@ -57,39 +56,6 @@ DEFAULT_DBCONF=MAGILOG+"/db.conf"
 # logging.basicConfig(filename = MAGILOG +'/daemon.log', level=logging.INFO)
 config = dict()
 log = logging.getLogger(__name__)
-
-def makeDir(name):
-    try:
-        os.mkdir(name)
-    except OSError, e:
-        if e.errno == errno.EEXIST: return
-        log.warning("Couldn't create FIFO dir: %s", e)
-
-def makePipe(name):
-    try:
-        os.mkfifo(name)
-    except OSError, e:
-        if e.errno == errno.EEXIST: return
-        log.warning("Couldn't create FIFO file: %s, %s", name, e)
-
-def toDirected(graph, root):
-    import networkx as nx
-    
-    d = nx.DiGraph()
-    queue = Queue.Queue()
-    visited = set()
-    
-    queue.put(root)
-    
-    while not queue.empty():
-        parent = queue.get()
-        visited.add(parent)
-        children = set(graph.neighbors(parent)) - visited
-        for child in children:
-            d.add_edge(parent, child, graph[parent][child])
-            queue.put(child)
-            
-    return d
 
 def getConfig():
     global config
@@ -106,13 +72,6 @@ def loadConfig(filename=None):
     config = yaml.load(fp)
     fp.close()
     return config
-
-def loadYaml(filename):
-    """ Load the configuration data from file """
-    fp = open(filename, 'r')
-    data = yaml.load(fp)
-    fp.close()
-    return data
 
 def createMESDL():
     """ Create a default mesdl with one shared TCP based overlay and one external server """
@@ -164,10 +123,29 @@ def createMESDL_experiment():
     mesdl['bridges_exp'].append({ 'TCPServer': root, 'port': 38808 }) 
     return mesdl  
 
+def toDirected(graph, root):
+    import networkx as nx
+    
+    d = nx.DiGraph()
+    queue = Queue.Queue()
+    visited = set()
+    
+    queue.put(root)
+    
+    while not queue.empty():
+        parent = queue.get()
+        visited.add(parent)
+        children = set(graph.neighbors(parent)) - visited
+        for child in children:
+            d.add_edge(parent, child, graph[parent][child])
+            queue.put(child)
+            
+    return d
+
 def validateDBConf(dbconf=None):
     """ Chekcing if a valid db config exists """
     if dbconf:
-        expdbconf = loadYaml(dbconf)
+        expdbconf = helpers.loadYaml(dbconf)
     else:
         expdbconf = dict()
         
@@ -226,7 +204,6 @@ def keysExist(project=None, experiment=None, keydir=None):
         return False
     return True
 
-
 def generateKeys(project=None, experiment=None, keydir=None):
     """
         Generate the ca.pem and node.pem files for the specified project/experiment. If
@@ -265,15 +242,6 @@ def getArch():
     arch = "%s-%s-%s" % (name, ver, machine)  # arch string to use for cached software lookup/saving
     return arch.replace('/', '')
 
-def getThreadId():
-    if platform.system() == 'Linux':
-        if platform.architecture()[0] == '64bit':
-            return ctypes.CDLL('libc.so.6').syscall(186)
-        else:
-            return ctypes.CDLL('libc.so.6').syscall(224)
-        
-    return -1
-    
 
 chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
 def getMulticast(arg1, arg2, channel):
@@ -326,7 +294,7 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     localinfo['interfaceInfo'] = interfaceInfo
     config['localinfo'] = localinfo
     
-    config['processAgentsCommPort'] = None
+    #config['processAgentsCommPort'] = None
     
     # Information about the location of the software libaries 
     config['software'] = list()
@@ -358,7 +326,7 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     # Infomation about the transports  
     # REad the messaging overlay description for the experiment and create 
     # the required transports for this node 
-    expmesdl = loadYaml(mesdl)    
+    expmesdl = helpers.loadYaml(mesdl)    
     log.info("Mesdl for file %s: %s", mesdl, expmesdl)
     
     config['transports'] = list()
@@ -433,7 +401,7 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     
     if enable_dataman:
         config['isDatamanSetup'] = True
-        expdbconf = loadYaml(dbconf)
+        expdbconf = helpers.loadYaml(dbconf)
         config['collector_mapping'] = expdbconf['collector_mapping']
         config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
         config['dbhost'] = expdbconf['collector_mapping'][testbed.nodename]

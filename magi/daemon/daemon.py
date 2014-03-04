@@ -23,7 +23,7 @@ from magi.messaging.api import *
 from magi.util.calls import doMessageAction
 from magi.util.agent import agentmethod
 from magi.util.software import requireSoftware
-from magi.util import config
+from magi.util import helpers
 import magi.modules
 
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class Daemon(threading.Thread):
 			Daemon thread loop.  Continual processing of incoming messages while monitoring for the
 			stop flag.
 		"""
-		self.threadId = config.getThreadId()
+		self.threadId = helpers.getThreadId()
 		log.info("Daemon started. Thread id: " + str(self.threadId))
 		
 		try:

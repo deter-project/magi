@@ -14,7 +14,7 @@ from os.path import basename
 import magi.modules
 from magi.testbed import testbed
 from magi.messaging.api import MAGIMessage
-from magi.util import config
+from magi.util import helpers
 import os
 
 log = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ class ThreadedAgent(threading.Thread):
 	def run(self):
 		try:
 			self.pid = os.getpid()
-			self.tid = config.getThreadId()
+			self.tid = helpers.getThreadId()
 			log.info("Running threaded agent. Name: %s Process Id: %d Thread Id: %d", self.agentname, self.pid, self.tid)
 			
 			try:

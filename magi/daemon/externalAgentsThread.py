@@ -11,6 +11,7 @@ from magi.messaging.api import MAGIMessage, TCPServer, TCPTransport, DefaultCode
 from magi.util.Collection import namedtuple
 from magi.daemon.processInterface import AgentCodec, AgentRequest
 from magi.util import config
+from magi.util import helpers
 
 log = logging.getLogger(__name__)
 
@@ -219,7 +220,7 @@ class ExternalAgentsThread(threading.Thread):
 
 	def run(self):
 		""" Called by thread main """
-		self.threadId = config.getThreadId()
+		self.threadId = helpers.getThreadId()
 		log.info("External agents thread started. Thread id: " + str(self.threadId))
 			
 		self.done = False
