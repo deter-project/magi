@@ -83,10 +83,6 @@ class Testbed(object):
         """ returns a list of IFObj's """
         NIE()
 
-    def getInterfaceInfo(self, ip):
-        """ returns a single IFObj for ip """
-        NIE()
-
     """ Queries for other Experiment Info """
 
     def getLocalVirtualNodes(self):
