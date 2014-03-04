@@ -2,6 +2,7 @@
 
 from magi.daemon.processInterface import AgentMessenger
 from magi.util import config
+from magi.util import helpers
 
 import logging
 import os
@@ -27,27 +28,26 @@ def initializeProcessAgent(agent, argv):
     agent.name, dock = argv[1:3]
     args = argv_to_dict(argv[3:])
     
-    setAttributes(agent, ['hostname', 'execute', 'logfile'], args)
+    setAttributes(agent, {'hostname' : None, 
+                          'execute' : 'socket', 
+                          'logfile' : os.path.join('/tmp', agent.name + '.log'), 
+                          'loglevel': 'DEBUG', 
+                          'commHost': 'localhost', 
+                          'commPort': config.getConfig().get('processAgentsCommPort', 18809)}, 
+                  args)
+    
     agent.docklist.add(dock)
     
-    if not agent.logfile:
-        agent.logfile = os.path.join('/tmp', agent.name + '.log')
-
-    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(threadName)s %(message)s'
-    log_datefmt = '%m-%d %H:%M:%S'
     handler = logging.FileHandler(agent.logfile, 'w')
-    handler.setFormatter(logging.Formatter(log_format, log_datefmt))
+    handler.setFormatter(logging.Formatter(helpers.LOG_FORMAT_MSECS, helpers.LOG_DATEFMT))
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root.setLevel(helpers.logLevels.get(agent.loglevel.lower(), logging.INFO))
     root.handlers = []
     root.addHandler(handler)
 
     log.info('argv: %s', argv)
+    log.info('agent attributes: %s', agent.__dict__)
     
-    agent.commPort = config.getConfig().get('processAgentsCommPort')
-    if not agent.commPort:
-        agent.commPort = 18809
-        
     log.info("Setting up agent messaging interface")
     inTransport, outTransport = _getIOHandles(agent)
     agent.messenger = AgentMessenger(inTransport, outTransport, agent)
@@ -77,9 +77,6 @@ def argv_to_dict(argv):
     return result
                 
 def _getIOHandles(agent):
-    if not agent.execute:
-        log.error('not told communication channel (pipe, socket), assuming socket.')
-        agent.execute = 'socket'
 
     log.debug("Transport type: %s", agent.execute)
     
@@ -87,14 +84,15 @@ def _getIOHandles(agent):
         return InputPipe(fileobj=sys.stdin), OutputPipe(fileobj=sys.stdout)
     
     elif agent.execute == 'socket':
-        transport = TCPTransport(address='localhost', port=agent.commPort)
+        log.debug("Connecting to %s:%d", agent.commHost, agent.commPort)
+        transport = TCPTransport(address=agent.commHost, port=agent.commPort)
         return transport, transport
     
     else:
         log.critical('unknown execute mode: %s. Unable to continue.')
         sys.exit(3)
 
-def setAttributes(obj, argnames, dict):
-    for arg in argnames:
-        setattr(obj, arg, dict.get(arg))
+def setAttributes(obj, defaultArgs, args):
+    for name, defaultValue in defaultArgs.iteritems():
+        setattr(obj, name, args.get(name, defaultValue))
         
