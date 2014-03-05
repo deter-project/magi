@@ -3,7 +3,6 @@
 from magi.messaging import api
 from magi.messaging.magimessage import MAGIMessage
 from magi.testbed import testbed
-# TODO: from magi.util import config
 from socket import gaierror # this should really be wrapped in daemon lib.
 import Queue
 import logging
@@ -31,7 +30,7 @@ def testCall(bridge, msgdest):
     }
     call = {'version': 1.0, 'method': 'test', 'args': args}
     
-    msg = MAGIMessage(nodes=msgdest,docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+    msg = MAGIMessage(nodes=msgdest, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
     messaging.send(msg)
 
     msg = messaging.nextMessage(True)
@@ -63,8 +62,7 @@ def getData(collectionnames, nodes, timestampChunks=None, bridge='127.0.0.1', ms
     collectionnames = toSet(collectionnames)
     
     if not nodes:
-#        config.topoGraph.nodes()
-        pass
+        testbed.getTopoGraph().nodes()
     
     if messaging == None:
         messaging = api.ClientConnection(srcdock, bridge, 18808)
@@ -173,24 +171,21 @@ if __name__ == '__main__':
             tun_proc = subprocess.Popen("ssh users.deterlab.net -L 18808:" +
                                         options.bridge + ":18808 -N", shell=True)
             bridge = '127.0.0.1'
+            print 'Tunnel setup'
         else:
             bridge = options.bridge
     except gaierror as e:
         logging.critical('Error connecting to %s: %s', options.control, str(e))
         exit(3)
-            
+        
     dbname = "magi"
-    collectionname = "log"
-    nodes = ["clientnode-2.mongocs1.montage.isi.deterlab.net"]
-    
-    collectionname = "NodeStatsReporter"
-    nodes = ["node1", "node2"]
-    nodes = "node1"
-    
+    collectionname = "nodestats"
+    nodes = ["node1"]
     timestampChunks = None
-    
     msgdest = options.bridge.split(".")[0]
-    data = getData(dbname, collectionname, nodes, timestampChunks, bridge, msgdest, int(options.timeout))
+    
+    print 'Calling getdata'
+    data = getData(collectionname, nodes, timestampChunks, bridge, msgdest, int(options.timeout))
     
     if data:
         print (' %s ' % (data))

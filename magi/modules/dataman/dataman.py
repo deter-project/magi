@@ -45,7 +45,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             "result": "success"
         }
         call = {'version': 1.0, 'method': 'test', 'args': args}
-        msg = MAGIMessage(nodes=msg.src, groups=['__ALL__'], docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
         self.messenger.send(msg)
         
     def getCollectionMetadata(self, msg):
@@ -140,7 +140,9 @@ class DataManAgent(NonBlockingDispatchAgent):
         if timestampChunks == None:
             timestampChunks = [(0, time.time())]
         
-        neighbor = self.getShortestDistanceInternal(collectionname, node, filters, timestampChunks, visited)[1]
+#        neighbor = self.getShortestDistanceInternal(collectionname, node, filters, timestampChunks, visited)[1]
+        neighbor = self.getCollector(node, collectionname)
+        
         if not neighbor:
             log.debug("No neighbor to get required data from")
             data = []
@@ -350,6 +352,10 @@ class DataManAgent(NonBlockingDispatchAgent):
         functionName = self.getCollector.__name__
         entrylog(functionName, locals())
         
+        from magi.util import helpers
+        db_conf = helpers.loadYaml('/var/log/magi/db.conf')
+        return db_conf['collector_mapping'][node]
+    
         node = node.split(".")[0]
 #        return self.collectorMapping[node]
         if node == testbed.nodename:
