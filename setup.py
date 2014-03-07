@@ -21,7 +21,7 @@ class ToShare(Command):
 		self.static = '/share/magi/tarfiles'
 
 	def finalize_options(self):
-	        # check if a directory exists at the path, if not create one 
+		# check if a directory exists at the path, if not create one 
 		if os.path.isdir(self.path) is not True:
 			try:
 				os.makedirs(self.path)
@@ -83,8 +83,9 @@ setup(name='MAGI',
 	author_email='hussain@isi.edu', 
 	download_url='git://montage.deterlab.net/montage',
 	platforms=['DeterLab', 'Emulab'], 
-	packages=['magi', 'magi.daemon', 'magi.modules', 'magi.messaging', 'magi', 'magi.testbed', 'magi.tests', 'magi.util', 'magi.orchestrator', 'magi.mongolog', 'magi.modules.dataman'],
-	package_data={'magi.modules.dataman': ['*.idl']},
+	packages=['magi', 'magi.daemon', 'magi.modules', 'magi.messaging', 'magi', 'magi.testbed', 'magi.tests', 'magi.util', 'magi.orchestrator', 
+			'magi.mongolog', 'magi.modules.dataman', 'magi.tests.testPipe', 'magi.tests.testSocket', 'magi.tests.testThread'],
+	package_data={'magi.modules.dataman': ['*.idl'], 'magi.tests': ['*.pem', '*.aal', '*/*.idl']},
 	scripts=['scripts/magi_daemon.py', 'scripts/magi_orchestrator.py', 'scripts/sendTrigger.py' ],
 	license="GPLV3",
 	cmdclass={'toshare':ToShare, 'build_py':build_py_X},
