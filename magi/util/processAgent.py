@@ -33,7 +33,8 @@ def initializeProcessAgent(agent, argv):
                           'logfile' : os.path.join('/tmp', agent.name + '.log'), 
                           'loglevel': 'DEBUG', 
                           'commHost': 'localhost', 
-                          'commPort': config.getConfig().get('processAgentsCommPort', 18809)}, 
+                          'commPort': config.getConfig().get('processAgentsCommPort', 18809), 
+                          'commGroup': None}, 
                   args)
     
     agent.docklist.add(dock)
@@ -58,6 +59,10 @@ def initializeProcessAgent(agent, argv):
     # GTL - why doesn't the Daemon just associate the dock
     # with this process?
     agent.messenger.listenDock(dock)
+    
+    if agent.commGroup:
+        agent.messenger.joinGroup(agent.commGroup)
+        #TODO: In ideal condition wait from the node to join group before proceeding further
 
     # now that we're connected, send an AgentLoaded message. 
     agent.messenger.trigger(event='AgentLoadDone', agent=agent.name, nodes=[agent.hostname])
