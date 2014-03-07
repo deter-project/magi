@@ -200,11 +200,11 @@ if __name__ == '__main__':
 
                 if not options.nodataman:
                         if is_os_64bit():
-                                call("rsync " + rpath + "/" + "mongodb-linux-x86_64-2.4.1.tgz" + " /tmp/mongodb.tgz")
+                                call("rsync " + rpath + "/tarfiles/" + "mongodb-linux-x86_64-2.4.1.tgz" + " /tmp/mongodb.tgz")
                                 call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
                                 call("sudo rsync /tmp/mongodb-linux-x86_64-2.4.1/bin/* /usr/local/bin/")
                         else:
-                                call("rsync " + rpath + "/" + "mongodb-linux-i686-2.4.1.tgz" + " /tmp/mongodb.tgz")
+                                call("rsync " + rpath + "/tarfiles/" + "mongodb-linux-i686-2.4.1.tgz" + " /tmp/mongodb.tgz")
                                 call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
                                 call("sudo rsync /tmp/mongodb-linux-i686-2.4.1/bin/* /usr/local/bin/")
 
