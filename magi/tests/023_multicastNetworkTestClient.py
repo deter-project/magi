@@ -16,6 +16,9 @@ class TransportTest(unittest2.TestCase):
 	"""
 
 	def setUp(self):
+		#TODO: Test needs to be fixed
+		return
+		
 		self.messenger = Messenger("testmessenger")
 		self.conn = MulticastTransport('239.255.1.1', 18808, testbed.controlip)
 		self.messenger.addTransport(self.conn, True)
@@ -38,12 +41,14 @@ class TransportTest(unittest2.TestCase):
 		
 	def test_BasicRequest(self):
 		""" Testing multicast transport - Client """
-		pass
-#		self.sendMsg()
-#		msg = self.messenger.nextMessage(block=True)
-#		self.assertEqual(msg.src, "servernode", "Source error, Excepted: servernode, Received: " + msg.src)
-#		self.assertEqual(msg.srcdock, "serverdock", "Dock error, Excepted: serverdock, Received: " + msg.srcdock)
-#		self.assertEqual(msg.data, "success", "Data error, Excepted: success, Received: " + msg.data)
+		#TODO: Test needs to be fixed
+		return
+		
+		self.sendMsg()
+		msg = self.messenger.nextMessage(block=True)
+		self.assertEqual(msg.src, "servernode", "Source error, Excepted: servernode, Received: " + msg.src)
+		self.assertEqual(msg.srcdock, "serverdock", "Dock error, Excepted: serverdock, Received: " + msg.srcdock)
+		self.assertEqual(msg.data, "success", "Data error, Excepted: success, Received: " + msg.data)
 		
 		
 if __name__ == '__main__':
