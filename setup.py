@@ -37,8 +37,8 @@ class ToShare(Command):
 		# Typically ['source', 'yaml-0.1.3.tar.gz', 'unittest2-0.5.1.tar.gz', 'SQLAlchemy-0.7.6.tar.gz', 'PyYAML-3.10.tar.gz']
 
 		if os.path.exists(self.static):		
-			for f in os.listdir(self.static):
-				os.symlink(os.path.join(self.static,f),os.path.join(self.path,f))
+			os.symlink(os.path.join(self.static),os.path.join(self.path, 'tarfiles'))
+			os.symlink(os.path.join(self.static, 'source'),os.path.join(self.path, 'source'))
 			print "Created a link to static files in ", self.path 
 		else:
 			print "Cannot find the static files at ", self.static 
@@ -48,13 +48,12 @@ class ToShare(Command):
 		self.call("cp scripts/magi_bootstrap.py %s" % self.path)
 		self.call("cp scripts/magi_config.py %s" % self.path)
 		self.call("cp scripts/magi_orchestrator.py %s" % self.path)
-		self.call("cp scripts/agentTool %s" % self.path)
 		self.call("cp AUTHORS %s" % self.path) 
-		self.call("cp version.py %s" % self.path) 
+		self.call("cp GPLv3-LICENSE.txt %s" % self.path) 
 		
 		# Not sure why a copy of the source code is required in the distribution 
 		# Let it stay for now 
-		self.call("cp -R . %s/backend" % self.path)
+		# self.call("cp -R . %s/backend" % self.path)
 		#self.call("ln -s %s/backend/magi %s" % (self.path, self.path))
 		self.linksrcs()                
 
