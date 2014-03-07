@@ -186,7 +186,7 @@ if __name__ == '__main__':
                 log.info("Installing networkx")
                 installPython('networkx', 'networkx', 'install')
 #                installPython('SQLAlchemy', 'sqlalchemy', 'install')
-                magidist = 'MAGI-1'
+                magidist = 'MAGI-1.5.0'
                 log.info("Installing %s", magidist)
                 installPython(magidist, 'alwaysinstall', 'install')
 
