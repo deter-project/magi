@@ -3,8 +3,7 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-import sys
-import signal
+import sys 
 import logging.handlers
 import os
 from optparse import (OptionParser,BadOptionError,AmbiguousOptionError)
@@ -64,8 +63,8 @@ if __name__ ==  '__main__':
     optparse.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Data manager not setup up.") 
 
     (options, args) = optparse.parse_args()
-#    print options, 
-#    print args 
+    print options, 
+    print args 
 
     # Roll over the old log and create a new one
     # Note here that we will have at most 5 logs 
@@ -123,7 +122,10 @@ if __name__ ==  '__main__':
     transports_ctrl = confdata.get('transports', [])
     transports_exp = confdata.get('transports_exp', [])
     testbedInfo = confdata.get('localinfo', {})
-    localname = testbedInfo.get('nodename')
+    for item in testbedInfo:
+        for k,v in item.iteritems():
+            if k == 'nodename': 
+                localname = v 
             
     # Some system initialization
     logging.info("MAGI Version: %s", __version__)
