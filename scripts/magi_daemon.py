@@ -63,8 +63,6 @@ if __name__ ==  '__main__':
     optparse.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Data manager not setup up.") 
 
     (options, args) = optparse.parse_args()
-    print options, 
-    print args 
 
     # Roll over the old log and create a new one
     # Note here that we will have at most 5 logs 
@@ -122,11 +120,8 @@ if __name__ ==  '__main__':
     transports_ctrl = confdata.get('transports', [])
     transports_exp = confdata.get('transports_exp', [])
     testbedInfo = confdata.get('localinfo', {})
-    for item in testbedInfo:
-        for k,v in item.iteritems():
-            if k == 'nodename': 
-                localname = v 
-            
+    localname = testbedInfo.get('nodename')
+
     # Some system initialization
     logging.info("MAGI Version: %s", __version__)
     logging.info("Started magi daemon on %s with pid %s", localname, pid)
