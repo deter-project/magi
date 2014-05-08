@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 
 from magi.daemon.processInterface import AgentMessenger
-from magi.util import config
-from magi.util import helpers
-
+from magi.messaging.transportPipe import InputPipe, OutputPipe
+from magi.messaging.transportTCP import TCPTransport
+from magi.util import config, helpers
 import logging
 import os
 import sys
-from magi.messaging.transportPipe import InputPipe, OutputPipe
-from magi.messaging.transportTCP import TCPTransport
+import yaml
+
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def argv_to_dict(argv):
         words = arg.split('=')
         if len(words) == 2:
             log.debug('found key=value on command line.')
-            result[words[0]] = words[1]
+            result[words[0]] = yaml.load(words[1])
     return result
                 
 def _getIOHandles(agent):

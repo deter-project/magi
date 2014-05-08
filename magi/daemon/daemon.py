@@ -400,7 +400,7 @@ class Daemon(threading.Thread):
 			args = []
 			if execargs and type(execargs) == dict:
 				# I apologize for this abuse
-				args = ['%s=%s' % (str(k), str(v)) for k,v in execargs.iteritems()]
+				args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
 			args.append('hostname='+self.hostname)
 			os.chmod(mainfile, 00777)
 			# (stderr, stderrname) = tempfile.mkstemp(suffix='.stderr', prefix=name+"-", dir='/tmp/')
