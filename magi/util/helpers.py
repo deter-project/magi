@@ -8,13 +8,13 @@ import yaml
 log = logging.getLogger(__name__)
 
 logLevels = {
-        'none': 100,
-        'all': 0,
-        'debug': logging.DEBUG,
-        'info': logging.INFO,
-        'warning': logging.WARNING,
-        'error': logging.ERROR,
-        'critical': logging.CRITICAL
+        'NONE': 100,
+        'ALL': 0,
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL
     }
 
 LOG_FORMAT = '%(asctime)s %(name)-30s %(levelname)-8s %(message)s'
@@ -42,6 +42,15 @@ def loadYaml(filename):
     fp.close()
     return data
 
+def toSet(value):
+    if type(value) is list:
+        value = set(value)
+    elif type(value) is str:    
+        value= set([s.strip() for s in value.split(',')])
+    elif value is None:
+        value= set()
+    return value
+
 def is_os_64bit():
         return platform.machine().endswith('64')
     
@@ -53,3 +62,12 @@ def getThreadId():
             return ctypes.CDLL('libc.so.6').syscall(224)
         
     return -1
+
+def readPropertiesFile(filename):
+    import ConfigParser
+    import io
+    parser = ConfigParser.RawConfigParser()
+    properties = '[root]\n' + open(filename, 'r').read()
+    parser.readfp(io.BytesIO(properties))
+    kv_pairs = parser.items('root')
+    return dict(kv_pairs)
