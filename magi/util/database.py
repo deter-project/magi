@@ -10,6 +10,7 @@ import itertools
 
 from magi.util import config
 from magi.testbed import testbed
+from magi.util import helpers
 
 import pymongo
 from pymongo import MongoClient
@@ -25,19 +26,21 @@ def startDBServer(configfile=None):
 
         if configfile is None:
             configfile = createMongoDConfig()
+            
+        mongo_conf = helpers.readPropertiesFile(configfile)
 
         try:
-            os.makedirs('/var/lib/mongodb')  # Make sure mongodb data directory is around
+            os.makedirs(mongo_conf['dbpath'])  # Make sure mongodb data directory is around
         except OSError, e:
             if e.errno != errno.EEXIST:
-                log.error("failed to created mondodb data dir: %s", e, exc_info=1)
+                log.error("failed to create mondodb data dir: %s", e, exc_info=1)
                 raise
 
         try:
-            os.makedirs('/var/log/mongodb')  # Make sure mongodb log directory is around
+            os.makedirs('/'.join(mongo_conf['logpath'].split('/')[:-1]))  # Make sure mongodb log directory is around
         except OSError, e:
             if e.errno != errno.EEXIST:
-                log.error("failed to created mondodb log dir: %s", e, exc_info=1)
+                log.error("failed to create mondodb log dir: %s", e, exc_info=1)
                 raise
 
         log.info("Starting mongod")
@@ -111,7 +114,7 @@ def getData(collectionname, filters=None, timestampRange=None, connection=None):
         except StopIteration:
             break
     
-    exitlog(functionName, result)
+    exitlog(functionName)
     return result
 
 def updateDatabase(collectionname, filters=None, timestampChunks=None, data=[], connection=None):
@@ -335,25 +338,33 @@ def insertChunks(existingChunks, newChunks):
         return result
 
     
-def getConnection(dbhost=None, block=True):
+def getConnection(dbhost=None, block=True, timeout=120):
     global connectionMap
+    
+    start = time.time()
+    stop = start + timeout 
     
     if dbhost == None:
         dbhost = getDBHost()
-    while True:
+        
+    log.info("Trying to connect to database server at %s", dbhost)
+    
+    while time.time() < stop:
         try:
-            log.debug("Trying to connect to database server")
             if dbhost not in connectionMap:
                 connection = MongoClient(dbhost, 27017)
                 connectionMap[dbhost] = connection
-            log.debug("Connected to database server")
+            log.info("Connected to database server")
             return connectionMap[dbhost]
         except Exception:
             if not block:
-                log.error("Could not connect to database server.")
+                log.error("Could not connect to database server on %s", dbhost)
                 raise
-            log.error("Could not connect to database server. Will retry.")
+            log.debug("Could not connect to database server. Will retry.")
             time.sleep(1)
+            
+    log.error("Done trying enough times. Cannot connect to database server on %s", dbhost)
+    raise pymongo.errors.ConnectionFailure("Done trying enough times. Cannot connect to database server on %s" %dbhost)
 
 def getDBHost():
     return dbhost
