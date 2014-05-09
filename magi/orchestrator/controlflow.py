@@ -2,7 +2,7 @@ import logging
 import string
 import sys 
 from collections import defaultdict
-import pdb
+#import pdb
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
@@ -20,7 +20,7 @@ class ControlGraph(object):
         self.graphOuttriggers = defaultdict(set)
 
         # Currently etup and exit nodes are represented at singleton events 
-        pdb.set_trace()
+        #pdb.set_trace()
         self.addCompositeCluster('setup')
         self.addCompositeCluster('exit')
         self.addCompositeCluster('env')
@@ -85,7 +85,7 @@ class ControlGraph(object):
             self.graphIntriggers = self.addIntraClusterTriggers(self.controlgraph[k].itriggers,self.graphIntriggers)
             self.graphOuttriggers = self.addIntraClusterTriggers(self.controlgraph[k].otriggers,self.graphOuttriggers)
 
-        pdb.set_trace()
+        #pdb.set_trace()
         # Add intraCluster Edges
         # Todo: 
         # here start with stuff from the outtrigger 
@@ -136,7 +136,7 @@ class ControlGraph(object):
 
         #if len(self.graphOuttriggers) > 0:
         #    log.critical("this should not happen")
-        pdb.set_trace()
+        #pdb.set_trace()
         if len(self.graphIntriggers) > 0:
             # These are triggers coming in from the env
             self.show.append('env')
