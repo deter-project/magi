@@ -141,7 +141,6 @@ class EmulabTestbed(Testbed):
 
     def getSwapperData(self): return self.readFirstLine(pipeIn('/usr/local/etc/emulab/tmcc creator'))
     def getNicknameData(self): return self.readFirstLine(open('/var/emulab/boot/nickname', 'r'))
-    def getHostForName(self, name): return socket.gethostbyname(name)
     def getControlIfData(self): return self.readFirstLine(open('/var/emulab/boot/controlif', 'r'))
     def getIfconfigData(self): return self.readAllLines(pipeIn('/usr/local/etc/emulab/tmcc ifconfig'))
     def getTopomap(self): return self.readAllLines(open('/var/emulab/boot/topomap'))

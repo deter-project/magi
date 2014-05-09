@@ -3,6 +3,7 @@
 # ./GPLv3-LICENSE.txt in the source distribution
 
 import re
+import socket
 
 from magi.util.execl import pipeIn
 
@@ -137,4 +138,6 @@ class Testbed(object):
                     mask = p[3].split(':')[1]
 
         return IFObj(matchip, None, None, None)
+    
+    def getHostForName(self, name): return socket.gethostbyname(name)
 
