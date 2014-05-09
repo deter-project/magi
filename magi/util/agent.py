@@ -16,6 +16,7 @@ from magi.messaging.magimessage import MAGIMessage
 from magi.testbed import testbed
 from magi.util.calls import doMessageAction
 from magi.util.execl import spawn, execAndRead
+from magi.util.distributions import *
 #from magi.util import database
 
 log = logging.getLogger(__name__)
