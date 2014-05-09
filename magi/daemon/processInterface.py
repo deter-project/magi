@@ -120,6 +120,7 @@ class AgentMessenger(threading.Thread):
 
 	def __init__(self, inTransport, outTransport, agent):
 		threading.Thread.__init__(self, name=agent.name+"_messenger")
+		self.daemon = True
 		self.agent = agent
 		
 		self.codec = AgentCodec()
