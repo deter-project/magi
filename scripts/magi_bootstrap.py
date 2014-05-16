@@ -11,42 +11,26 @@ import signal
 import sys
 import time
 
-#logging.basicConfig(level=logging.INFO)
-LOG_FILENAME = '/tmp/magi_bootstrap.log'
-log = logging.getLogger()
-log.setLevel(logging.INFO)
-
-# Check if log exists and should therefore be rolled
-# Need to check existence of file before creating the handler instance
-# This is because handler creation creates the file if not existent 
-needRoll = False
-if path.isfile(LOG_FILENAME):
-    needRoll = True
-
-handler = logging.handlers.RotatingFileHandler(LOG_FILENAME, backupCount=5)
-handler.setFormatter(logging.Formatter('%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'))
-log.addHandler(handler)
-
-if needRoll:
-    handler.doRollover()
-
 class BootstrapException(Exception): pass
 class TarException(BootstrapException): pass
 class PBuildException(BootstrapException): pass
 class CBuildException(BootstrapException): pass
+class PackageInstallException(BootstrapException): pass
 class DException(BootstrapException): pass
 
 def call(*popenargs, **kwargs):
         log.info("Calling %s" % (popenargs))
         if "shell" not in kwargs:
                 kwargs["shell"] = True
-
+        
         process = Popen(*popenargs, **kwargs)
         process.wait()
         return process.returncode
 
 def installPython(base, check, commands):
         global rpath 
+        
+        log.info("Installing %s", base)
 
         try:
                 exec("import " + check)
@@ -73,10 +57,14 @@ def installPython(base, check, commands):
         os.chdir(glob.glob(os.path.join("/tmp", base+'*'))[0])  # Need glob as os.chdir doesn't expand
         if call("python setup.py %s -f" % commands):
                 log.error("Failed to install %s with commands %s", base, commands)
-                raise PBuildException("Unabled to install with %s,%s" % (base, commands))
+                raise PBuildException("Unable to install %s with commands %s" %(base, commands))
+            
+        log.info("Successfully installed %s", base)
 
 def installC(base, check):
         global rpath
+        
+        log.info("Installing %s", base)
         
         if os.path.exists(check):
                 log.info("%s already installed, found file %s", base, check)
@@ -97,7 +85,9 @@ def installC(base, check):
         os.chdir(glob.glob(os.path.join("/tmp", base+'*'))[0])  # Need glob as os.chdir doesn't expand
         if call("./configure") or call("make") or call("make install"):
                 log.error("Failed to install %s", base)
-                raise CBuildException("Unabled to install %s" % base)
+                raise CBuildException("Unable to install %s" % base)
+            
+        log.info("Successfully installed %s", base)
 
 def isInstalled(program):
         try:
@@ -107,13 +97,27 @@ def isInstalled(program):
         except:
                 return False
 
+def installPackage(yum_pkg_name, apt_pkg_name):
+    if isInstalled('yum'):
+        log.info("Installing package %s", yum_pkg_name)
+        if call("yum install -y %s", yum_pkg_name):
+            log.error("Failed to install %s", yum_pkg_name)
+            raise PackageInstallException("Unable to install %s" %yum_pkg_name)
+        log.info("Successfully installed %s", yum_pkg_name)
+    elif isInstalled('apt-get'):
+        log.info("Installing package %s", apt_pkg_name)
+        if call("apt-get -qq install -y %s" % apt_pkg_name):
+            log.error("Failed to install %s", apt_pkg_name)
+            raise PackageInstallException("Unable to install %s" %apt_pkg_name)
+        log.info("Successfully installed %s", apt_pkg_name)
+    
 def verifyPythonDevel():
         import distutils.sysconfig as c
         if not os.path.exists(os.path.join(c.get_python_inc(), 'Python.h')):
-                if isInstalled('yum'):
-                        call("yum install -y python-devel python-setuptools")
-                elif isInstalled('apt-get'):
-                        call("apt-get -qq install -y python-dev python-setuptools")
+                try:
+                    installPackage(yum_pkg_name="python-devel", apt_pkg_name="python-dev")
+                except:
+                    pass
         if not os.path.exists(os.path.join(c.get_python_inc(), 'Python.h')):
                 log.error("Python development not installed, nor can we use the local package manager to do so")
                 
@@ -137,20 +141,41 @@ if __name__ == '__main__':
         optparser = optparse.OptionParser(description="Bootstrap script that can be used to install, configure, and start MAGI")
         optparser.add_option("-n", "--nokeys", dest="nokeys", action="store_true", default=False, help="Option to ignore creation and waiting for SSL certificates")
         optparser.add_option("-p", "--path", dest="rpath", default="/share/magi/current", help="Location of the distribution") 
-        optparser.add_option("-q", "--quiet", dest="dargs", action="store_false", default=True, help="Silence debugging information; default behavior") 
+        optparser.add_option("-q", "--quiet", dest="verbose", action="store_false", default=True, help="Silence debugging information; default behavior") 
         optparser.add_option("-U", "--noupdate", dest="noupdate", action="store_true", default=False, help="Do not update the system before installing Magi")
         optparser.add_option("-N", "--noinstall", dest="noinstall", action="store_true", default=False, help="Do not install magi and the supporting libraries") 
-        optparser.add_option("-v", "--verbose", dest="dargs", action="store_true", default=False, help="Include debugging information") 
+        optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False, help="Include debugging information") 
         optparser.add_option("-f", "--force", dest="force", action="store_true",default=False, help="Recreate magi.conf even if present. Cannot use along with -c (see below)")
         optparser.add_option("-m", "--mesdl", dest="mesdl", action="store", default=None, help="Path to the messaging overlay configuration file")  
         optparser.add_option("-c", "--magiconf", dest="magiconf", action="store", default=None, help="Path to the local node magi configuration file. Cannot use along with -f (see above)")
         optparser.add_option("-d", "--dbconf", dest="dbconf", action="store", default=None, help="Path to the data management configuration file")
         optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install and setup data manager") 
+        optparser.add_option("-o", "--logfile", dest="logfile", action='store', default="/tmp/magi_bootstrap.log", help="Log file. Default: %default")
                 
         (options, args) = optparser.parse_args()
 
         if options.magiconf and options.force == True:
                 optparser.error("Options -c and -f are mutually exclusive. Please specify only one")
+                
+        log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
+        log_datefmt = '%m-%d %H:%M:%S'
+        
+        # Check if log exists and should therefore be rolled
+        # Need to check existence of file before creating the handler instance
+        # This is because handler creation creates the file if not existent 
+        needRoll = False
+        if path.isfile(options.logfile):
+            needRoll = True
+        
+        handler = logging.handlers.RotatingFileHandler(options.logfile, backupCount=5)
+        handler.setFormatter(logging.Formatter('%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'))
+        
+        if needRoll:
+            handler.doRollover()
+            
+        log = logging.getLogger()
+        log.setLevel(logging.INFO)
+        log.addHandler(handler)
 
         rpath = options.rpath 
 
@@ -181,32 +206,19 @@ if __name__ == '__main__':
                 except PBuildException:
                         installPython('PyYAML', 'yaml', '--without-libyaml install')  # try without libyaml if build error
         
-                log.info("Installing unittest2")
                 installPython('unittest2', 'unittest2', 'install')
-                log.info("Installing networkx")
                 installPython('networkx', 'networkx', 'install')
-#                installPython('SQLAlchemy', 'sqlalchemy', 'install')
+                #installPython('SQLAlchemy', 'sqlalchemy', 'install')
                 magidist = 'MAGI-1.5.0'
-                log.info("Installing %s", magidist)
                 installPython(magidist, 'alwaysinstall', 'install')
-
+                
                 if not options.nodataman:
-                        log.info("Installing pymongo")
+                        installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
                         installPython('pymongo', 'pymongo', 'install')
                 
                 #updating sys.path with the installed packages
                 import site
                 site.main()
-
-                if not options.nodataman:
-                        if is_os_64bit():
-                                call("rsync " + rpath + "/tarfiles/" + "mongodb-linux-x86_64-2.4.1.tgz" + " /tmp/mongodb.tgz")
-                                call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
-                                call("sudo rsync /tmp/mongodb-linux-x86_64-2.4.1/bin/* /usr/local/bin/")
-                        else:
-                                call("rsync " + rpath + "/tarfiles/" + "mongodb-linux-i686-2.4.1.tgz" + " /tmp/mongodb.tgz")
-                                call("tar -C /tmp/ -zxvf /tmp/mongodb.tgz")
-                                call("sudo rsync /tmp/mongodb-linux-i686-2.4.1/bin/* /usr/local/bin/")
 
         # Now that MAGI is installed on the local node, import utilities 
         from magi import __version__
@@ -280,25 +292,18 @@ if __name__ == '__main__':
                         log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
 
 
-        #MongoDB setup
-#        from magi.testbed import testbed
-#        from magi.util import mongo
-#
-#        if testbed.nodename == testbed.getServer():
-#                mongo.startMongoConfig()
-#
-#        if config.getConfig().get('isDBHost'):
-#                mongo.startMongoS()
-#                mongo.startMongoD()
-#                mongo.regsiterMongoDAsShard()
-#        elif config.getConfig().get('isCache'):
-#                mongo.startMongoD()
-#        else:
-#                log.info("mongo db not required on this node")
-
         if not options.nodataman:
                 from magi.util import database
-                if config.getConfig().get('isDBHost'):
+                if database.isDBHost:
+                        if not options.noinstall:
+                                #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
+                                #Copying prebuilt binaries for mongodb
+                                if is_os_64bit():
+                                        call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-x86_64-2.4.1.tgz")
+                                        call("sudo rsync /tmp/mongodb-linux-x86_64-2.4.1/bin/* /usr/local/bin/")
+                                else:
+                                        call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-i686-2.4.1.tgz")
+                                        call("sudo rsync /tmp/mongodb-linux-i686-2.4.1/bin/* /usr/local/bin/")
                         database.startDBServer()
                 else:
                         log.info("Database server is not required on this node")
@@ -358,9 +363,9 @@ if __name__ == '__main__':
                 log.info("Starting daemon without data manager")
                 daemon += ['-D']
                 
-        if options.dargs:
+        if options.verbose:
                 log.info("Starting daemon with debugging")
-                daemon += ['-l', 'magi', '1']
+                daemon += ['-l', 'DEBUG']
                 
         # Record the process id in a file for later reference 
         pid=Popen( daemon ).pid
