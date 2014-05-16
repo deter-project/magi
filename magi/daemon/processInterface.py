@@ -94,15 +94,21 @@ class AgentCodec(object):
 			Decodes header data and returns a new AgentRequest with header information minus data
 			headerbuf should include the same data as returned from encode
 		"""
+		log.debug("Decoding AgentRequest message")
+		
 		newmsg = AgentRequest()
 		(totallen, hdrlen, newmsg.request) = struct.unpack('>IHB', headerbuf[0:7])
+		
+		log.debug("totallen: %d", totallen)
+		log.debug("hdrlen: %d", hdrlen)
+		log.debug("newmsg.request: %d", newmsg.request)
 
 		idx = 7
 		while idx < hdrlen+6:
 			(htype, hlen) = struct.unpack('>BB', headerbuf[idx:idx+2])
 			idx += 2
 			hname = AgentRequest.OPTIONS.get(htype, None)
-			log.log(5, "setting option %s", hname)
+			log.debug("setting option %s", hname)
 
 			if hname is None: 
 				log.warning("Don't understand header option %d, skipping", htype)
