@@ -2,18 +2,17 @@
 
 from magi.messaging.magimessage import MAGIMessage
 from magi.testbed import testbed
-from magi.util import database, config
-from magi.util.agent import NonBlockingDispatchAgent
-
-import itertools
-import networkx as nx
-import time
-
-import logging
-import yaml
-import threading
-
+from magi.util import database, config, helpers
+from magi.util.agent import NonBlockingDispatchAgent, agentmethod
 import hashlib
+import logging
+import pickle
+import threading
+import time
+import yaml
+
+#import itertools
+#import networkx as nx
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         self.collectorMapping = config.getConfig().get('collector_mapping')
         self.collectors = self.collectorMapping.values()
         self.queriers = config.getConfig().get('queriers')
-        self.cacheSet = self.calculateCacheSet()
+        #self.cacheSet = self.calculateCacheSet()
         
         self.collectionMetadata= dict()
         self.distanceCache = dict()
@@ -38,63 +37,55 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         self.events = dict()
         
-        
-    def test(self, msg, *args):
-        args = {
-            "server": testbed.getNodeName(),
-            "result": "success"
-        }
-        call = {'version': 1.0, 'method': 'test', 'args': args}
-        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-        self.messenger.send(msg)
-        
-    def getCollectionMetadata(self, msg):
-        functionName = self.getCollectionMetadata.__name__
-        entrylog(functionName, locals())
-        
-        args = {
-            "collectionMetadata" : database.collectionHosts
-        }
-        call = {'version': 1.0, 'method': 'putCollectionMetadata', 'args': args}
-        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-        self.messenger.send(msg)
-        
-        exitlog(functionName)
-        
-    def putCollectionMetadata(self, msg, collectionMetadata):
-        functionName = self.putCollectionMetadata.__name__
-        entrylog(functionName, locals())
-        
-        self.collectionMetadata[msg.src] = CachedItem(msg.src, collectionMetadata)
-        queryHash = self.digest("CollectionMetadata", msg.src)
-        self.events[queryHash].set()
-        self.events[queryHash].clear()
-        
-        exitlog(functionName)
-        
-    def getData(self, msg, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
+    @agentmethod()
+    def getData(self, msg, collectionnames=None, nodes=None, filters=dict(), timestampChunks=None, visited=set()):
+        """
+            Request to fetch data
+        """
         functionName = self.getData.__name__
         entrylog(functionName, locals())
         
+        collectionnames_ = helpers.toSet(collectionnames)
+        nodes_ = helpers.toSet(nodes)
+        
+        if not nodes_:
+            nodes_ = testbed.getTopoGraph().nodes()
+            
+        if not collectionnames_:
+            if nodes:
+                collectionnames_ = self.getCollectionNames(nodes[0])
+            else:
+                raise AttributeError("Cannot query for an empty set of collections.")
+        
         if timestampChunks == None:
             timestampChunks = [(0, time.time())]
-            
-        data = self.getDataInternal(collectionname, node, filters, timestampChunks, visited)
+        
+        data = dict()
+        for collectionname in collectionnames_:
+            data[collectionname] = dict()
+            for node in nodes_:
+                data[collectionname][node] = self.getDataInternal(collectionname, node, filters, timestampChunks, visited)
+        
         args = {
-            "collectionname": collectionname,
-            "node": node,
+            "collectionnames": collectionnames,
+            "nodes": nodes,
             "filters": filters,
             "timestampChunks": timestampChunks,
             "visited": visited,
             "data": data
         }
         call = {'version': 1.0, 'method': 'putData', 'args': args}
-        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+        log.debug('Creating data message')
+        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.PICKLE, data=pickle.dumps(call))
+        log.debug('Sending message')
         self.messenger.send(msg)
         
         exitlog(functionName)
         
     def getDataInternal(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
+        """
+            Internal function to fetch data based on a given query
+        """
         functionName = self.getDataInternal.__name__
         entrylog(functionName, locals())
 
@@ -115,11 +106,12 @@ class DataManAgent(NonBlockingDispatchAgent):
         
             if self.isCollector(node, collectionname):
                 log.debug("This node is the collector for: %s:%s", node, collectionname)
+                exitlog(functionName)
                 return data
-            elif self.isCache(node, collectionname):
-                log.debug("This node is the cache for: %s:%s", node, collectionname)
-                for tsChunk in timestampChunks:
-                    chunksNotCached = chunksNotCached + database.findTimeRangeNotAvailable(collectionname, filters_copy, tsChunk)
+#            elif self.isCache(node, collectionname):
+#                log.debug("This node is the cache for: %s:%s", node, collectionname)
+#                for tsChunk in timestampChunks:
+#                    chunksNotCached = chunksNotCached + database.findTimeRangeNotAvailable(collectionname, filters_copy, tsChunk)
             else:
                 chunksNotCached = timestampChunks
         else:
@@ -128,236 +120,77 @@ class DataManAgent(NonBlockingDispatchAgent):
             
         log.debug("Chunks not available locally: " + str(chunksNotCached))
         if chunksNotCached:
-            data = data + self.getDataFromNeighbor(collectionname, node, filters, chunksNotCached, visited)
+#            data = data + self.getDataFromNeighbor(collectionname, node, filters, chunksNotCached, visited)
+            data = data + self.getDataFromCollector(collectionname, node, filters, chunksNotCached, visited)
         
-        exitlog(functionName, data)
+        exitlog(functionName)
         return data
 
-    def getDataFromNeighbor(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
-        functionName = self.getDataFromNeighbor.__name__
+    def getDataFromCollector(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
+        """
+            Internal function to fetch data from the corresponding collector
+        """
+        functionName = self.getDataFromCollector.__name__
         entrylog(functionName, locals())
+        
+        data = []
         
         if timestampChunks == None:
             timestampChunks = [(0, time.time())]
-        
-#        neighbor = self.getShortestDistanceInternal(collectionname, node, filters, timestampChunks, visited)[1]
-        neighbor = self.getCollector(node, collectionname)
-        
-        if not neighbor:
-            log.debug("No neighbor to get required data from")
-            data = []
-            exitlog(functionName, data)
-            return data
-        
-        log.debug("Neighbor to get data from: " + neighbor)
-        visited_copy = visited.copy()
-        visited_copy.add(testbed.getNodeName())
-        args = {
-            "collectionname": collectionname,
-            "node": node,
-            "filters": filters,
-            "timestampChunks": timestampChunks,
-            "visited": visited_copy
-        }
-        call = {'version': 1.0, 'method': 'getData', 'args': args}
-        querymsg = MAGIMessage(nodes=neighbor, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-        
-        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited_copy)
-        log.debug("getData Query Hash: " + queryHash)
-        
-        self.events[queryHash] = threading.Event()
-        
-        self.messenger.send(querymsg)
-        
-        self.events[queryHash].wait()
-        #while queryHash not in self.dataShelf.keys():
-        #    continue
-
-        data = self.dataShelf[queryHash]
-        del self.dataShelf[queryHash]
-        
-        exitlog(functionName, data)
-        return data
-        
-    def putData(self, msg, collectionname, node, filters=dict(), timestampChunks=None, visited=set(), data=[]):
-        functionName = self.putData.__name__
-        entrylog(functionName, locals())
-        
-        if timestampChunks == None:
-            timestampChunks = [(0, time.time())]
-        
-        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited)
-        log.debug("putData Query Hash: " + queryHash)
-        
-        self.dataShelf[queryHash] = data
-        self.events[queryHash].set()
-        
-        if self.isCache(node, collectionname):
-            filters['host'] = node
-            database.updateDatabase(collectionname, filters, timestampChunks, data)
-    
-    def getShortestDistance(self, msg, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
-        functionName = self.getShortestDistance.__name__
-        entrylog(functionName, locals())
-        
-        if timestampChunks == None:
-            timestampChunks = [(0, time.time())]
-        
-        result = self.getShortestDistanceInternal(collectionname, node, filters, timestampChunks, visited)
-        args = {
-            "collectionname": collectionname,
-            "node": node,
-            "filters": filters,
-            "timestampChunks": timestampChunks,
-            "visited": visited,
-            "distance": result[0]
-        }
-        call = {'version': 1.0, 'method': 'putShortestDistance', 'args': args}
-        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-        self.messenger.send(msg)
-        
-    
-    def getShortestDistanceInternal(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set(), checkLocalCache=True):
-        functionName = self.getShortestDistanceInternal.__name__
-        entrylog(functionName, locals())
-        
-        if timestampChunks == None:
-            timestampChunks = [(0, time.time())]
-        
-        cacheHash = self.digest(collectionname, node, filters)
-        log.debug("Cache Hash: " + cacheHash)
-        
-        if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
-            log.debug("Shortest distance value available in cache")
-            result = self.distanceCache[cacheHash].value
-            return result
-        
-        if checkLocalCache:
-            if self.isCollector(node, collectionname):
-                log.debug("This node is the collector for: " + node)
-                result = 0, None
-                return result
-            elif self.isCache(node, collectionname):
-                log.debug("This node is a cache for: " + node)
-                chunksNotCached = []
-                filters_copy = filters.copy()
-                filters_copy['host'] = node
-                for tsChunk in timestampChunks:
-                    chunksNotCached = chunksNotCached + database.findTimeRangeNotAvailable(collectionname, filters_copy, tsChunk)
-            else:
-                chunksNotCached = timestampChunks
-        else:
-            chunksNotCached = timestampChunks
-            
-        log.debug("Chunks not available locally: " + str(chunksNotCached))
-        if chunksNotCached == []:
-            result = 0, None
-            return result
-    
-        visited_copy = visited.copy()
-        visited_copy.add(testbed.getNodeName())
-        neighbors = self.topoGraph.neighbors(testbed.getNodeName())
-        neighborsNotVisited = set(neighbors) - set(visited_copy)
         
         collector = self.getCollector(node, collectionname)
+        
         if not collector:
-            log.debug("No collector for %s:%s", node, collectionname)
-            result = 999, None
-            return result
-                    
-        nodesOnPath = self.findNodesOnPath(self.topoGraph, testbed.nodename, collector)
+            log.debug("No collector to get required data from")
+            exitlog(functionName)
+            return data
         
-        neighborsToVisit = neighborsNotVisited.intersection(nodesOnPath)
+        log.debug("Collector to get data from: " + collector)
         
-        log.debug("Neighbors to visit: " + str(neighborsToVisit))
-        if not neighborsToVisit:
-            result = 999, None
-            return result
+        filters_copy = filters.copy()
+        filters_copy['host'] = node
         
-        args = {
-            "collectionname": collectionname,
-            "node": node,
-            "filters": filters,
-            "timestampChunks": chunksNotCached,
-            "visited": visited_copy
-        }
-        call = {'version': 1.0, 'method': 'getShortestDistance', 'args': args}
-        querymsg = MAGIMessage(nodes=neighborsToVisit, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-        
-        queryHash = self.digest(collectionname, node, filters, chunksNotCached, visited_copy)
-        log.debug("getShortestDistance Query Hash: " + queryHash)
-
-        queryWaitSet = set()
-        for neighbor in neighborsToVisit:
-            queryWaitSet.add(self.digest(queryHash, neighbor))
-                    
-        for entry in queryWaitSet:
-            #TODO: 
-            self.events[entry] = threading.Event()
-        
-        self.messenger.send(querymsg)
-        
-        for entry in queryWaitSet:
-            self.events[entry].wait()
-        
-        totalReqd = 0
         for tsChunk in timestampChunks:
-            totalReqd = totalReqd + (tsChunk[1] - tsChunk[0])
-        
-        totalNotCached = 0
-        for chunk in chunksNotCached:
-            totalNotCached = totalNotCached + (chunk[1] - chunk[0])
-        
-        percentNotAvailable = float(totalNotCached)/totalReqd
-        
-        if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
-            result = percentNotAvailable * self.distanceCache[cacheHash].value[0], self.distanceCache[cacheHash].value[1]
-        else:
-            result = 999, None
+            data = data + database.getData(collectionname, filters_copy, tsChunk, database.getConnection(collector))
             
-        return result
+        exitlog(functionName)
+        return data
+
+    def getCollectionNames(self, node):
+        """
+            Internal function to fetch the list of collections for a given node
+        """
+        call = {'version': 1.0, 'method': 'getCollectionMetadata'}
+        querymsg = MAGIMessage(nodes=node, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))  
+        queryHash = self.digest("CollectionMetadata", node)
+        log.debug("getCollectionMetadata Query Hash: " + queryHash)
+        self.events[queryHash] = threading.Event()
+        self.messenger.send(querymsg)
+        self.events[queryHash].wait()
+        
+        return self.collectionMetadata[node].value.keys()
+
+    def isCollector(self, node, collectionname):
+        """
+            Internal function to check if the local node is the collector for a given node and collection
+        """
+        return (self.getCollector(node, collectionname) == testbed.getNodeName())
     
-            
-    def putShortestDistance(self, msg, collectionname, node, filters=dict(), timestampChunks=None, visited=set(), distance=999):
-        functionName = self.putShortestDistance.__name__
-        entrylog(functionName, locals())
-        
-        if timestampChunks == None:
-            timestampChunks = [(0, time.time())]
-        
-        reporterNode = msg.src
-        log.debug("Reporter node: " + reporterNode)
-        
-        distance = distance + nx.dijkstra_path_length(self.topoGraph, testbed.getNodeName(), reporterNode)
-        log.debug("Distance: " + str(distance))
-        
-        cacheHash = self.digest(collectionname, node, filters)
-        log.debug("Cache Hash: " + cacheHash)
-        
-        if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
-            cachedDistance = self.distanceCache[cacheHash].value[0]
-            if distance < cachedDistance:
-                self.distanceCache[cacheHash] = CachedItem(cacheHash, (distance, reporterNode))
-        else:
-            self.distanceCache[cacheHash] = CachedItem(cacheHash, (distance, reporterNode))
-    
-        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited)
-        log.debug("putShortestDistance Query Hash: " + queryHash)
-        
-        key = self.digest(queryHash, reporterNode)
-        if key in self.events:
-            self.events[key].set()
- 
     def getCollector(self, node, collectionname):
+        """
+            Internal function to fetch the collector for a given node and collection
+        """
         functionName = self.getCollector.__name__
         entrylog(functionName, locals())
         
-        from magi.util import helpers
-        db_conf = helpers.loadYaml('/var/log/magi/db.conf')
-        return db_conf['collector_mapping'][node]
-    
         node = node.split(".")[0]
-#        return self.collectorMapping[node]
+        
+        result = self.collectorMapping.get('__ALL__')
+        if not result:
+            result = self.collectorMapping.get(node)
+        exitlog(functionName, result)
+        return result
+        
         if node == testbed.nodename:
             log.debug("Querying for local node")
             if collectionname in database.collectionHosts:
@@ -385,95 +218,355 @@ class DataManAgent(NonBlockingDispatchAgent):
             return self.collectionMetadata[node].value[collectionname]
         else:
             return None
-       
-    def isCollector(self, node, collectionname):
-        return (self.getCollector(node, collectionname) == testbed.getNodeName())
-                
-    def isCache(self, node, collectionname):
-        node = node.split(".")[0]
-        collector = self.getCollector(node, collectionname)
-        return collector in self.cacheSet
     
-    def calculateCacheSet(self):
-        result = set()
+    @agentmethod()
+    def getCollectionMetadata(self, msg):
+        """
+            Request for collector information
+        """
+        functionName = self.getCollectionMetadata.__name__
+        entrylog(functionName, locals())
         
-        if not database.isDBHost:
-            return result
+        args = {
+            "collectionMetadata" : database.collectionHosts
+        }
+        call = {'version': 1.0, 'method': 'putCollectionMetadata', 'args': args}
+        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+        self.messenger.send(msg)
         
-        if self.queriers == None:
-            return result
+        exitlog(functionName)
+    
+    @agentmethod()
+    def putCollectionMetadata(self, msg, collectionMetadata):
+        """
+            Response for collector information request
+        """
+        functionName = self.putCollectionMetadata.__name__
+        entrylog(functionName, locals())
         
-        if testbed.getNodeName() in self.queriers:
-            result.update(set(self.collectors))
-            return result
+        self.collectionMetadata[msg.src] = CachedItem(msg.src, collectionMetadata)
+        queryHash = self.digest("CollectionMetadata", msg.src)
+        self.events[queryHash].set()
+        self.events[queryHash].clear()
         
-        for collector in self.collectors:
-            if self.findIfPossibleCache(self.topoGraph, self.queriers, collector, testbed.getNodeName()):
-                result.add(collector)
-        return result
+        exitlog(functionName)
     
-    def findIfPossibleCache(self, graph, starts, end, node):
-    
-        paths = dict()
-        for start in starts:
-            paths[start] = list(nx.all_simple_paths(graph, start, end))
-        
-        for pair in list(itertools.combinations(starts, 2)):
-            paths1 = paths[pair[0]]
-            paths2 = paths[pair[1]]
-        
-            for path1 in paths1:
-                for path2 in paths2:
-                    if self.findIfIntersectionPoint(path1, path2, node):
-                        return True
-                
-        return False
-        
-    def findIfIntersectionPoint(self, path1, path2, node):
-        if node not in path1 or node not in path2:
-            return False
-    
-        if node in self.findFirstIntersectionPoint(path1, path2):
-            return True
-    
-        return False
-    
-    def findIntersectionPoints(self, graph, start1, start2, end):
-        result = set()
-    
-        paths1 = list(nx.all_simple_paths(graph, start1, end))
-        paths2 = list(nx.all_simple_paths(graph, start2, end))
-    
-        for path1 in paths1:
-            for path2 in paths2:
-                result.update(self.findFirstIntersectionPoint(path1, path2))
-    
-        return result
+    @agentmethod()
+    def ping(self, msg):
+        """
+            Alive like method call that will send a pong back to the caller
+        """
+        args = {
+            "server": testbed.getNodeName(),
+            "result": "success"
+        }
+        call = {'version': 1.0, 'method': 'pong', 'args': args}
+        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+        self.messenger.send(msg)
 
 
-    def findFirstIntersectionPoint(self, path1, path2):
-        result = set()
-    
-        for node in path1:
-            if node in path2:
-                result.add(node)
-                break
-    
-        for node in path2:
-            if node in path1:
-                result.add(node)
-                break
-    
-        return result
-
-    def findNodesOnPath(self, graph, start, end):
-        result = set()
-        paths = list(nx.all_simple_paths(graph, start, end))
-        for path in paths:
-            for node in path:
-                result.add(node)
+#    def getDataFromNeighbor(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
+#        functionName = self.getDataFromNeighbor.__name__
+#        entrylog(functionName, locals())
+#        
+#        data = []
+#        
+#        if timestampChunks == None:
+#            timestampChunks = [(0, time.time())]
+#        
+#        neighbor = self.getShortestDistanceInternal(collectionname, node, filters, timestampChunks, visited)[1]
+#        
+#        if not neighbor:
+#            log.debug("No neighbor to get required data from")
+#            exitlog(functionName)
+#            return data
+#        
+#        log.debug("Neighbor to get data from: " + neighbor)
+#        
+#        visited_copy = visited.copy()
+#        visited_copy.add(testbed.getNodeName())
+#        args = {
+#            "collectionnames": collectionname,
+#            "nodes": node,
+#            "filters": filters,
+#            "timestampChunks": timestampChunks,
+#            "visited": visited_copy
+#        }
+#        call = {'version': 1.0, 'method': 'getData', 'args': args}
+#        querymsg = MAGIMessage(nodes=neighbor, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+#        
+#        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited_copy)
+#        log.debug("getData Query Hash: " + queryHash)
+#        
+#        self.events[queryHash] = threading.Event()
+#        
+#        self.messenger.send(querymsg)
+#        
+#        self.events[queryHash].wait()
+#        #while queryHash not in self.dataShelf.keys():
+#        #    continue
+#
+#        data = self.dataShelf[queryHash]
+#        del self.dataShelf[queryHash]
+#        
+#        exitlog(functionName)
+#        return data
         
-        return result
+#    def putData(self, msg, collectionnames, nodes, filters=dict(), timestampChunks=None, visited=set(), data=[]):
+#        functionName = self.putData.__name__
+#        entrylog(functionName, locals())
+#        
+#        if timestampChunks == None:
+#            timestampChunks = [(0, time.time())]
+#            
+#        for collectionname in helpers.toSet(collectionnames):
+#            for node in helpers.toSet(nodes):
+#                queryHash = self.digest(collectionname, node, filters, timestampChunks, visited)
+#                log.debug("putData Query Hash: " + queryHash)
+#        
+#                self.dataShelf[queryHash] = data[collectionname][node]
+#                self.events[queryHash].set()
+#        
+#                if self.isCache(node, collectionname):
+#                    filters['host'] = node
+#                    database.updateDatabase(collectionname, filters, timestampChunks, data[collectionname][node])
+#    
+#    def getShortestDistance(self, msg, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
+#        functionName = self.getShortestDistance.__name__
+#        entrylog(functionName, locals())
+#        
+#        if timestampChunks == None:
+#            timestampChunks = [(0, time.time())]
+#        
+#        result = self.getShortestDistanceInternal(collectionname, node, filters, timestampChunks, visited)
+#        args = {
+#            "collectionname": collectionname,
+#            "node": node,
+#            "filters": filters,
+#            "timestampChunks": timestampChunks,
+#            "visited": visited,
+#            "distance": result[0]
+#        }
+#        call = {'version': 1.0, 'method': 'putShortestDistance', 'args': args}
+#        msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+#        self.messenger.send(msg)
+        
+    
+#    def getShortestDistanceInternal(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set(), checkLocalCache=True):
+#        functionName = self.getShortestDistanceInternal.__name__
+#        entrylog(functionName, locals())
+#        
+#        if timestampChunks == None:
+#            timestampChunks = [(0, time.time())]
+#        
+#        cacheHash = self.digest(collectionname, node, filters)
+#        log.debug("Cache Hash: " + cacheHash)
+#        
+#        if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
+#            log.debug("Shortest distance value available in cache")
+#            result = self.distanceCache[cacheHash].value
+#            return result
+#        
+#        if checkLocalCache:
+#            if self.isCollector(node, collectionname):
+#                log.debug("This node is the collector for: " + node)
+#                result = 0, None
+#                return result
+#            elif self.isCache(node, collectionname):
+#                log.debug("This node is a cache for: " + node)
+#                chunksNotCached = []
+#                filters_copy = filters.copy()
+#                filters_copy['host'] = node
+#                for tsChunk in timestampChunks:
+#                    chunksNotCached = chunksNotCached + database.findTimeRangeNotAvailable(collectionname, filters_copy, tsChunk)
+#            else:
+#                chunksNotCached = timestampChunks
+#        else:
+#            chunksNotCached = timestampChunks
+#            
+#        log.debug("Chunks not available locally: " + str(chunksNotCached))
+#        if chunksNotCached == []:
+#            result = 0, None
+#            return result
+#    
+#        visited_copy = visited.copy()
+#        visited_copy.add(testbed.getNodeName())
+#        neighbors = self.topoGraph.neighbors(testbed.getNodeName())
+#        neighborsNotVisited = set(neighbors) - set(visited_copy)
+#        
+#        collector = self.getCollector(node, collectionname)
+#        if not collector:
+#            log.debug("No collector for %s:%s", node, collectionname)
+#            result = 999, None
+#            return result
+#                    
+#        nodesOnPath = self.findNodesOnPath(self.topoGraph, testbed.nodename, collector)
+#        
+#        neighborsToVisit = neighborsNotVisited.intersection(nodesOnPath)
+#        
+#        log.debug("Neighbors to visit: " + str(neighborsToVisit))
+#        if not neighborsToVisit:
+#            result = 999, None
+#            return result
+#        
+#        args = {
+#            "collectionname": collectionname,
+#            "node": node,
+#            "filters": filters,
+#            "timestampChunks": chunksNotCached,
+#            "visited": visited_copy
+#        }
+#        call = {'version': 1.0, 'method': 'getShortestDistance', 'args': args}
+#        querymsg = MAGIMessage(nodes=neighborsToVisit, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+#        
+#        queryHash = self.digest(collectionname, node, filters, chunksNotCached, visited_copy)
+#        log.debug("getShortestDistance Query Hash: " + queryHash)
+#
+#        queryWaitSet = set()
+#        for neighbor in neighborsToVisit:
+#            queryWaitSet.add(self.digest(queryHash, neighbor))
+#                    
+#        for entry in queryWaitSet:
+#            #TODO: 
+#            self.events[entry] = threading.Event()
+#        
+#        self.messenger.send(querymsg)
+#        
+#        for entry in queryWaitSet:
+#            self.events[entry].wait()
+#        
+#        totalReqd = 0
+#        for tsChunk in timestampChunks:
+#            totalReqd = totalReqd + (tsChunk[1] - tsChunk[0])
+#        
+#        totalNotCached = 0
+#        for chunk in chunksNotCached:
+#            totalNotCached = totalNotCached + (chunk[1] - chunk[0])
+#        
+#        percentNotAvailable = float(totalNotCached)/totalReqd
+#        
+#        if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
+#            result = percentNotAvailable * self.distanceCache[cacheHash].value[0], self.distanceCache[cacheHash].value[1]
+#        else:
+#            result = 999, None
+#            
+#        return result
+#    
+#            
+#    def putShortestDistance(self, msg, collectionname, node, filters=dict(), timestampChunks=None, visited=set(), distance=999):
+#        functionName = self.putShortestDistance.__name__
+#        entrylog(functionName, locals())
+#        
+#        if timestampChunks == None:
+#            timestampChunks = [(0, time.time())]
+#        
+#        reporterNode = msg.src
+#        log.debug("Reporter node: " + reporterNode)
+#        
+#        distance = distance + nx.dijkstra_path_length(self.topoGraph, testbed.getNodeName(), reporterNode)
+#        log.debug("Distance: " + str(distance))
+#        
+#        cacheHash = self.digest(collectionname, node, filters)
+#        log.debug("Cache Hash: " + cacheHash)
+#        
+#        if cacheHash in self.distanceCache and self.distanceCache[cacheHash].isValid():
+#            cachedDistance = self.distanceCache[cacheHash].value[0]
+#            if distance < cachedDistance:
+#                self.distanceCache[cacheHash] = CachedItem(cacheHash, (distance, reporterNode))
+#        else:
+#            self.distanceCache[cacheHash] = CachedItem(cacheHash, (distance, reporterNode))
+#    
+#        queryHash = self.digest(collectionname, node, filters, timestampChunks, visited)
+#        log.debug("putShortestDistance Query Hash: " + queryHash)
+#        
+#        key = self.digest(queryHash, reporterNode)
+#        if key in self.events:
+#            self.events[key].set()
+ 
+#    def isCache(self, node, collectionname):
+#        node = node.split(".")[0]
+#        collector = self.getCollector(node, collectionname)
+#        return collector in self.cacheSet
+    
+#    def calculateCacheSet(self):
+#        result = set()
+#        
+#        if not database.isDBHost:
+#            return result
+#        
+#        if self.queriers == None:
+#            return result
+#        
+#        if testbed.getNodeName() in self.queriers:
+#            result.update(set(self.collectors))
+#            return result
+#        
+#        for collector in self.collectors:
+#            if self.findIfPossibleCache(self.topoGraph, self.queriers, collector, testbed.getNodeName()):
+#                result.add(collector)
+#        return result
+    
+#    def findIfPossibleCache(self, graph, starts, end, node):
+#    
+#        paths = dict()
+#        for start in starts:
+#            paths[start] = list(nx.all_simple_paths(graph, start, end))
+#        
+#        for pair in list(itertools.combinations(starts, 2)):
+#            paths1 = paths[pair[0]]
+#            paths2 = paths[pair[1]]
+#        
+#            for path1 in paths1:
+#                for path2 in paths2:
+#                    if self.findIfIntersectionPoint(path1, path2, node):
+#                        return True
+#                
+#        return False
+#        
+#    def findIfIntersectionPoint(self, path1, path2, node):
+#        if node not in path1 or node not in path2:
+#            return False
+#    
+#        if node in self.findFirstIntersectionPoint(path1, path2):
+#            return True
+#    
+#        return False
+#    
+#    def findIntersectionPoints(self, graph, start1, start2, end):
+#        result = set()
+#    
+#        paths1 = list(nx.all_simple_paths(graph, start1, end))
+#        paths2 = list(nx.all_simple_paths(graph, start2, end))
+#    
+#        for path1 in paths1:
+#            for path2 in paths2:
+#                result.update(self.findFirstIntersectionPoint(path1, path2))
+#    
+#        return result
+#
+#    def findFirstIntersectionPoint(self, path1, path2):
+#        result = set()
+#    
+#        for node in path1:
+#            if node in path2:
+#                result.add(node)
+#                break
+#    
+#        for node in path2:
+#            if node in path1:
+#                result.add(node)
+#                break
+#    
+#        return result
+#
+#    def findNodesOnPath(self, graph, start, end):
+#        result = set()
+#        paths = list(nx.all_simple_paths(graph, start, end))
+#        for path in paths:
+#            for node in path:
+#                result.add(node)
+#        
+#        return result
             
     def digest(self, *args):
         functionName = self.digest.__name__
@@ -489,12 +582,17 @@ class DataManAgent(NonBlockingDispatchAgent):
         exitlog(functionName, result)
         return result
     
-def entrylog(functionName, arguments):
-    log.debug("Entering function %s with arguments: %s", functionName, arguments)
+def entrylog(functionName, arguments=None):
+    if arguments == None:
+        log.debug("Entering function %s", functionName)
+    else:
+        log.debug("Entering function %s with arguments: %s", functionName, arguments)
 
 def exitlog(functionName, returnValue=None):
-    log.debug("Exiting function %s with return value: %s", functionName, returnValue)
-
+    if returnValue == None:
+        log.debug("Exiting function %s", functionName)
+    else:
+        log.debug("Exiting function %s with return value: %s", functionName, returnValue)
 
 class CachedItem(object):
     def __init__(self, key, value, duration=60):

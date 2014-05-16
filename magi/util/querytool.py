@@ -3,196 +3,117 @@
 from magi.messaging import api
 from magi.messaging.magimessage import MAGIMessage
 from magi.testbed import testbed
-from socket import gaierror # this should really be wrapped in daemon lib.
 import Queue
 import logging
-import optparse
 import random
-import signal
-import subprocess
 import time
 import yaml
+import pickle
 
 log = logging.getLogger(__name__)
     
-messaging = None
-
-srcdock = "dataclient" + str(int(random.random() * 10000))
-
-def testCall(bridge, msgdest):
-    global messaging
-    
-    if messaging == None:
-        messaging = api.ClientConnection(srcdock, bridge, 18808)
-    
-    args = {
-        "data": "sample data"
-    }
-    call = {'version': 1.0, 'method': 'test', 'args': args}
-    
-    msg = MAGIMessage(nodes=msgdest, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-    messaging.send(msg)
-
-    msg = messaging.nextMessage(True)
-    if msg.src is not srcdock:
-        data = yaml.load(msg.data)
-        return data
-
-def getAgentsProcessInfo(node, bridge='127.0.0.1', msgdest=testbed.nodename):
-    global messaging
-    if messaging == None:
-        messaging = api.ClientConnection(srcdock, bridge, 18808)
-    
-    call = {'version': 1.0, 'method': 'getAgentsProcessInfo'}
-    msg = MAGIMessage(nodes=node, docks='daemon', contenttype=MAGIMessage.YAML, data=yaml.dump(call))  
-    messaging.send(msg)
-    while True:
-        msg = messaging.nextMessage(True)
-        if msg.src == node:
-            data = yaml.load(msg.data)
-            return data['result']
-
-def getData(collectionnames, nodes, timestampChunks=None, bridge='127.0.0.1', msgdest=testbed.nodename, timeout=30):
+def getData(collectionnames, nodes=None, filters=dict(), timestampChunks=None, bridge='127.0.0.1', msgdest=testbed.nodename, timeout=30):
+    """
+        Function to fetch data
+    """
     functionName = getData.__name__
     entrylog(functionName, locals())
+    
+    if not collectionnames:
+        raise AttributeError("Cannot query for an empty set of collections.")
         
-    global messaging
-    
-    nodes = toSet(nodes)
-    collectionnames = toSet(collectionnames)
-    
-    if not nodes:
-        testbed.getTopoGraph().nodes()
-    
-    if messaging == None:
-        messaging = api.ClientConnection(srcdock, bridge, 18808)
+    messenger = getMessenger(bridge, 18808)
 
     if timestampChunks == None:
         timestampChunks = [(0, time.time())]
     
-    count = 0
-    
-    for node in nodes:
-        for collectionname in collectionnames if collectionnames else getCollectionNames(messaging, node):
-            sendGetDataMessage(messaging, msgdest, collectionname, node, timestampChunks)
-            count += 1
-
-    result = receiveData(messaging, count, timeout)
-    
-    exitlog(functionName, result)
-    return result
-   
-def getCollectionNames(messaging, node):
-    call = {'version': 1.0, 'method': 'getCollectionMetadata'}
-    msg = MAGIMessage(nodes=node, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))  
-    messaging.send(msg)
-    while True:
-        msg = messaging.nextMessage(True)
-        if msg.src == node:
-            data = yaml.load(msg.data)
-            collectionMetadata = data['args']['collectionMetadata']
-            return collectionMetadata.keys()
-        
-def sendGetDataMessage(messaging, msgdest, collectionname, node, timestampChunks):
+    log.info("Sending data query message")
     args = {
-        "collectionname": collectionname,
-        "node": node,
+        "collectionnames": collectionnames,
+        "nodes": nodes,
+        "filters": filters,
         "timestampChunks": timestampChunks
     }
     call = {'version': 1.0, 'method': 'getData', 'args': args} 
-    
     msg = MAGIMessage(nodes=msgdest, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-    messaging.send(msg)
-        
-def receiveData(messaging, count, timeout):
-        # Wait for timeout seconds before stopping 
+    messenger.send(msg)
+    log.info("Data query message sent")
+
     start = time.time()
     stop = start + timeout
     current = start
 
     result = dict()
     
-    if count == 0:
-        return result
-    
     # Wait in a loop for timeout seconds 
     while current < stop: 
         try:
-            msg = messaging.nextMessage(True, timeout=1)
+            msg = messenger.nextMessage(True, timeout=0.2)
             if msg.src is not srcdock:
-                data = yaml.load(msg.data)
+                log.info("Received Message")
+                log.info("Loading Message")
+                if msg.contenttype == MAGIMessage.PICKLE:
+                    data = pickle.loads(msg.data)
+                elif msg.contenttype == MAGIMessage.YAML:
+                    data = yaml.load(msg.data)
+                else:
+                    raise Exception("Unknown content type")  
+                log.info("Message Loaded")
                 if 'method' in data and data['method'] == 'putData':
-                    collectionname = data['args']['collectionname']
-                    node = data['args']['node']
-                    if collectionname not in result:
-                        result[collectionname] = dict()
-                    if node not in result[collectionname]:
-                        result[collectionname][node] = []
-                    result[collectionname][node] += data['args']['data']
-                    count -= 1
-                    if count == 0:
-                        break
+                    log.info("Message is a data query reply")
+                    result = data['args']['data']
+                    break
+                log.info("Message is not a data query reply")
         # If there are no messages in the Queue, just wait some more 
         except Queue.Empty:
             pass 
         current = time.time()
         
+    exitlog(functionName)
     return result
 
-def toSet(value):
-    if type(value) is list:
-        value = set(value)
-    elif type(value) is str:    
-        value = set([s.strip() for s in value.split(',')])
-    elif value is None:
-        value = set()
-    
-    return value
+messenger = dict()
+srcdock = "dataclient" + str(int(random.random() * 10000))
 
+def getMessenger(node, port):
+    global messenger
+    if messenger.get(node+str(port)) == None:
+        messenger[node+str(port)] = api.ClientConnection(srcdock, node, port)
+    return messenger[node+str(port)]
+
+def pingCall(bridge, msgdest):
+    """
+        Test call to check if data manager agent is available on a given node
+    """
+    messenger = getMessenger(bridge, 18808)
+    call = {'version': 1.0, 'method': 'ping'}
+    msg = MAGIMessage(nodes=msgdest, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+    messenger.send(msg)
+    msg = messenger.nextMessage(True)
+    while True:
+        if msg.src == msgdest and msg.dstdocks == 'dataman':
+            data = yaml.load(msg.data)
+            return data
+
+def getAgentsProcessInfo(node, bridge='127.0.0.1', msgdest=testbed.nodename):
+    """
+        Function to request process information for active agents on a given node
+    """
+    messenger = getMessenger(bridge, 18808)
+    call = {'version': 1.0, 'method': 'getAgentsProcessInfo'}
+    msg = MAGIMessage(nodes=node, docks='daemon', contenttype=MAGIMessage.YAML, data=yaml.dump(call))  
+    messenger.send(msg)
+    while True:
+        msg = messenger.nextMessage(True)
+        if msg.src == node:
+            data = yaml.load(msg.data)
+            return data['result']
+        
 def entrylog(functionName, arguments):
     log.info("Entering function %s with arguments: %s", functionName, arguments)
 
 def exitlog(functionName, returnValue=None):
-    log.info("Exiting function %s with return value: %s", functionName, returnValue)
-    
-if __name__ == '__main__':
-    optparser = optparse.OptionParser()
-    optparser.add_option("-b", "--bridge", dest="bridge", help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
-    optparser.add_option("-n", "--tunnel", dest="tunnel", help="Tell orchestrator to tunnel data through Deter Ops (users.deterlab.net).", default=False, action="store_true")
-    optparser.add_option("-t", "--timeout", dest="timeout", default = "30", help="Number of seconds to wait to receive the ping reply from the nodes on the overlay")
-    (options, args) = optparser.parse_args()
-
-    # Terminate if the user presses ctrl+c 
-    signal.signal(signal.SIGINT, signal.SIG_DFL )
-
-    tun_proc = None
-    try:
-        if options.tunnel:
-            tun_proc = subprocess.Popen("ssh users.deterlab.net -L 18808:" +
-                                        options.bridge + ":18808 -N", shell=True)
-            bridge = '127.0.0.1'
-            print 'Tunnel setup'
-        else:
-            bridge = options.bridge
-    except gaierror as e:
-        logging.critical('Error connecting to %s: %s', options.control, str(e))
-        exit(3)
-        
-    dbname = "magi"
-    collectionname = "nodestats"
-    nodes = ["node1"]
-    timestampChunks = None
-    msgdest = options.bridge.split(".")[0]
-    
-    print 'Calling getdata'
-    data = getData(collectionname, nodes, timestampChunks, bridge, msgdest, int(options.timeout))
-    
-    if data:
-        print (' %s ' % (data))
+    if returnValue:
+        log.info("Exiting function %s with return value: %s", functionName, returnValue)
     else:
-        print (' Empty data in message ')
-        
-    if tun_proc:
-        tun_proc.terminate()
-        
-    exit(0)
+        log.info("Exiting function %s", functionName)
