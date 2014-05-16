@@ -109,7 +109,8 @@ class TriggerData(object):
             # If the current time is passed this value, the trigger
             # can be deleted.
             return True
-        return False
+        ## Todo: current not checking for count 
+        return True
 
    # def shouldDelete(self, curTime):
    #     if self.selfDestructTime is None:
