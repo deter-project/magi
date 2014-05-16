@@ -213,9 +213,9 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def unloadAgent(self, msg, name):
-		'''
-		Unload the named agent, if it's loaded. 
-		'''
+		"""
+			Unload the named agent, if it's loaded. 
+		"""
 		unloaded = []
 		
 		call = {'version': 1.0, 'method': 'stop', 'args': {}}
@@ -332,6 +332,9 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def getAgentsProcessInfo(self, msg):
+		"""
+			Request for process information about the active agents
+		"""
 		processId = os.getpid()
 		result = []
 		for tAgent in self.staticAgents + self.threadAgents:
@@ -347,6 +350,9 @@ class Daemon(threading.Thread):
 	# Internal functions
 
 	def startAgent(self, code=None, name=None, dock=None, execargs=None, idl=None, static=False):
+		"""
+			Internal function to invoke an agent
+		"""
 		# Now find the interface definition and load it
 		try:
 			log.debug('startAgent code: %s, idl: %s' % (code, idl))
@@ -428,6 +434,9 @@ class Daemon(threading.Thread):
 			#self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname] )
 
 	def extractTarPath(self, cachepath, path):
+		"""
+			Internal function to extract a tar file
+		"""
 		if os.path.isdir(path):
 			# Copy all files to cache
 			# TODO: make our own recursive copy that overwrites
@@ -448,6 +457,9 @@ class Daemon(threading.Thread):
 
 
 	def extractTarBuffer(self, cachepath, tardata):
+		"""
+			Internal function to extract files to disk from a tar data buffer
+		"""
 		# cache data to file
 		log.debug("Extracting source to %s", cachepath)
 		if os.path.exists(cachepath):
