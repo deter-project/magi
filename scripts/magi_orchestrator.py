@@ -105,19 +105,19 @@ if __name__ == '__main__':
         'error': logging.ERROR,
         'critical': logging.CRITICAL
     }
-    log_format = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
+    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
     log_datefmt = '%m-%d %H:%M:%S'
     
     if options.logfile:
         # Roll over the old log and create a new one
-        # Note here that we will have at most 5 logs 
+        # Note here that we will have at most 5 logs
         if os.path.isfile(options.logfile):
             needroll = True
         else:
             needroll = False
         handler = logging.handlers.RotatingFileHandler(options.logfile, backupCount=5)
         if needroll:
-            handler.doRollover()
+            handler.doRollover() 
         handler.setFormatter(logging.Formatter(log_format, log_datefmt))
         root = logging.getLogger()
         root.setLevel(logLevels[options.loglevel])
