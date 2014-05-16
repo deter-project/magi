@@ -1,11 +1,13 @@
 
 import yaml
+import cPickle
 import logging
 import inspect
 import traceback
 import sys
 from os.path import basename
 from magi.testbed import testbed
+from magi.messaging.magimessage import MAGIMessage
 
 log = logging.getLogger(__name__)
 
@@ -102,8 +104,16 @@ def doMessageAction(obj, msg, messaging=None):
 	"""
 	
 	log.debug("In doMessageAction %s %s", str(obj), str(msg))
-	# First deyamlify the message and switch on the action. 
-	data = yaml.load(msg.data)
+	log.info("Content type: %d", msg.contenttype)
+	
+	#First deserialize the message and then switch on the action. 
+	if msg.contenttype == MAGIMessage.PICKLE:
+		log.info("Content type: Pickle")
+		data = cPickle.loads(msg.data)
+	else:
+		# Default data type is YAML
+		data = yaml.load(msg.data)
+		
 	if 'method' in data:
 		try: 
 			retVal = dispatchCall(obj, msg, data)

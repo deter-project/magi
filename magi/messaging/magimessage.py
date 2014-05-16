@@ -17,6 +17,7 @@ class MAGIMessage(object):
 	PROTOBUF = 4
 	YAML = 5
 	XML = 6
+	PICKLE = 7
 
 	ISACK = 1
 	NOAGG = 2
@@ -166,10 +167,18 @@ class DefaultCodec(object):
 			Decodes header data and returns a new MAGIMessage with header information in a tuple with the total header size
 			headerbuf should include the same data as returned from encode
 		"""
+		log.debug("Decoding MAGI message")
+		
 		newmsg = MAGIMessage()
 		(totallen, hdrlen, newmsg.msgid, newmsg.flags, newmsg.contenttype) = struct.unpack('>IHIBB', headerbuf[0:12])
 		newmsg._orighdrlen = hdrlen
-
+		
+		log.debug("totallen: %d", totallen)
+		log.debug("hdrlen: %d", hdrlen)
+		log.debug("newmsg.msgid: %d", newmsg.msgid)
+		log.debug("newmsg.flags: %d", newmsg.flags)
+		log.debug("newmsg.contenttype: %d", newmsg.contenttype)
+		
 		idx = 12
 		while idx < hdrlen+6:
 			(htype, hlen) = struct.unpack('>BB', headerbuf[idx:idx+2])
