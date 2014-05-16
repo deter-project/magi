@@ -149,19 +149,22 @@ def validateDBConf(dbconf=None):
     else:
         expdbconf = dict()
         
-    if "collector" not in expdbconf.keys() or not expdbconf['collector']:
-        expdbconf['collector'] = dict()
+    if "collector_mapping" not in expdbconf.keys() or not expdbconf['collector_mapping']:
+        expdbconf['collector_mapping'] = dict()
         
     topoGraph = testbed.getTopoGraph()
-    sensors = expdbconf['collector'].keys()
-    for node in topoGraph.nodes():
-        if node not in sensors or expdbconf['collector'][node] not in topoGraph.nodes():
-            expdbconf['collector'][node] = node
-        
-    for sensor in sensors:
-        if sensor not in topoGraph.nodes():
-            del expdbconf['collector'][sensor]
+    if '__ALL__' in expdbconf['collector_mapping']:
+        expdbconf['collector_mapping'] = {'__ALL__' : expdbconf['collector_mapping']['__ALL__']}
+    else:
+        sensors = expdbconf['collector_mapping'].keys()
+        for node in topoGraph.nodes():
+            if node not in sensors or expdbconf['collector_mapping'][node] not in topoGraph.nodes():
+                expdbconf['collector_mapping'][node] = node
             
+        for sensor in sensors:
+            if sensor not in topoGraph.nodes():
+                del expdbconf['collector_mapping'][sensor]
+                
     if "queriers" not in expdbconf.keys() or not expdbconf['queriers']:
         expdbconf['queriers'] = []
         
@@ -404,8 +407,13 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
         expdbconf = helpers.loadYaml(dbconf)
         config['collector_mapping'] = expdbconf['collector_mapping']
         config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
-        config['dbhost'] = expdbconf['collector_mapping'][testbed.nodename]
-        config['isDBHost'] = (expdbconf['collector_mapping'][testbed.nodename] == testbed.nodename)
+        config['dbhost'] = expdbconf['collector_mapping'].get('__ALL__')
+        if not config['dbhost']:
+            config['dbhost'] = expdbconf['collector_mapping'][testbed.nodename]
+        #In case of a single node experiment /etc/hosts does not get populated
+        if config['dbhost'] == testbed.nodename:
+            config['dbhost'] = 'localhost'
+        config['isDBHost'] = (testbed.nodename in expdbconf['collector_mapping'].values())
         
         if testbed.nodename in config['queriers']:
             config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
