@@ -104,11 +104,11 @@ def doMessageAction(obj, msg, messaging=None):
 	"""
 	
 	log.debug("In doMessageAction %s %s", str(obj), str(msg))
-	log.info("Content type: %d", msg.contenttype)
+	log.debug("Content type: %d", msg.contenttype)
 	
 	#First deserialize the message and then switch on the action. 
 	if msg.contenttype == MAGIMessage.PICKLE:
-		log.info("Content type: Pickle")
+		log.debug("Content type: Pickle")
 		data = cPickle.loads(msg.data)
 	else:
 		# Default data type is YAML
