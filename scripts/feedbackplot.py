@@ -30,7 +30,7 @@ if __name__ == '__main__':
         tun_proc = None
         try:
             if options.tunnel:
-                tun_proc = subprocess.Popen("ssh alefiya@users.deterlab.net -L 18808:" +
+                tun_proc = subprocess.Popen("ssh users.deterlab.net -L 18808:" +
                                             options.bridge + ":18808 -N", shell=True)
                 bridge = '127.0.0.1'
                 time.sleep(1)
