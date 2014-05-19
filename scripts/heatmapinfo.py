@@ -1,14 +1,26 @@
 #!/usr/bin/env python
 
 from magi.util import querytool
-from matplotlib import animation, pyplot as plt
-import subprocess
-import time
-import optparse
-import sys
-import logging
-import signal
 from socket import gaierror
+import datetime
+import logging
+import optparse
+import signal
+import subprocess
+import sys
+import time
+
+def _color(code, s):
+    return '\033[%d;1m%s\033[0m' % (code, s)
+
+def _red(s):
+    return _color(31, s)
+
+def _green(s):
+    return _color(32, s)
+
+def _yellow(s):
+    return _color(33, s)
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
@@ -67,11 +79,13 @@ if __name__ == '__main__':
 #            print timestampChunks
 #            print expstats
             
+            dataFlag = False
             flag = False
             
             for node in expstats.keys():
                 nodestats = expstats[node]
                 for processstat in nodestats:
+                    dataFlag = True
                     if (processstat['cpu_usage'] > options.threshold):
                         flag = True
                         processName = "Not Known"
@@ -83,18 +97,20 @@ if __name__ == '__main__':
                                 processName = entry['name']
                                 break
             
-                        print "Node %s, Process Id: %d, Thread Id: %d, Process Name: %s, CPU: %f, Time: %f" % (node, 
+                        print _red("Node %s, Process Id: %d, Thread Id: %d, Process Name: %s, CPU: %f, Time: %s" % (node, 
                                                                                                                processstat['process_id'], 
-                                                                                                               processstat.get('thread_id', 'NA'), 
+                                                                                                               processstat.get('thread_id', -1), 
                                                                                                                processName, 
                                                                                                                processstat['cpu_usage'], 
-                                                                                                               processstat['created'])
-                        
-            if not flag:
-                print "All processes are doing fine."
+                                                                                                               datetime.datetime.fromtimestamp(float(processstat['created'])).strftime('%Y-%m-%d %H:%M:%S')))
+            if not dataFlag:
+                print _yellow("No data received.")        
+            elif not flag:
+                print _green("All processes are doing fine.")
                 
             time.sleep(2)
 
     finally:
         if tun_proc:
             tun_proc.terminate()
+    
