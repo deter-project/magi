@@ -57,6 +57,10 @@ if __name__ == '__main__':
         ny = numProcesses
         
         fig, ax = plt.subplots()
+        ax.set_xlabel("Agents")
+        ax.set_xlim(1, numProcesses)
+        ax.set_ylabel("Nodes")
+        ax.set_ylim(1, numNodes)
         data = np.zeros((nx, ny))
         cax = ax.imshow(data, interpolation='nearest', cmap=cm.coolwarm, vmin=0, vmax=0.1)
 #        ax.set_title('Heatmap')
