@@ -35,7 +35,7 @@ if __name__ == '__main__':
                 tun_proc = subprocess.Popen("ssh users.deterlab.net -L 18808:" +
                                             options.bridge + ":18808 -N", shell=True)
                 bridge = '127.0.0.1'
-                time.sleep(1)
+                time.sleep(5)
                 logging.debug('Tunnel setup done')
             else:
                 bridge = options.bridge
