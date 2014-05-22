@@ -58,7 +58,7 @@ if __name__ == '__main__':
                 
             global uc, c, t, lasttime
             
-            now = time.time()
+            now = time.time() - 4 
             timestampChunks = [(lasttime, now)]
             lasttime = now
             
