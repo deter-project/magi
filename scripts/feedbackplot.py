@@ -2,14 +2,37 @@
 
 from magi.util import querytool
 from matplotlib import animation, pyplot as plt
-import collections
-import subprocess
-import time
-import optparse
-import sys
-import logging
-import signal
 from socket import gaierror
+import collections
+import logging
+import optparse
+import os
+import signal
+import subprocess
+import sys
+import time
+
+def create_tunnel(server, lport, rhost, rport):
+    """
+        Create a SSH tunnel and wait for it to be setup before returning.
+        Return the SSH command that can be used to terminate the connection.
+    """
+    ssh_cmd = "ssh %s -L %d:%s:%d -f -o ExitOnForwardFailure=yes -N" % (server, lport, rhost, rport)
+    tun_proc = subprocess.Popen(ssh_cmd,
+                                shell=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                stdin=subprocess.PIPE)
+    while True:
+        p = tun_proc.poll()
+        if p is not None: break
+        time.sleep(1)
+    
+    if p != 0:
+        raise RuntimeError, 'Error creating tunnel: ' + str(p) + ' :: ' + str(tun_proc.stdout.readlines())
+    
+    return ssh_cmd
+
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
@@ -24,17 +47,21 @@ if __name__ == '__main__':
         sys.exit(2)
     
     # Terminate if the user presses ctrl+c 
-    signal.signal(signal.SIGINT, signal.SIG_DFL ) 
+    signal.signal(signal.SIGINT, signal.SIG_DFL) 
+    
+    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
+    log_datefmt = '%m-%d %H:%M:%S'
+    logging.basicConfig(format=log_format,
+                            datefmt=log_datefmt,
+                            level=logging.INFO)
     
     try:    
-        tun_proc = None
         try:
+            tunnel_cmd = None
             if options.tunnel:
-                tun_proc = subprocess.Popen("ssh users.deterlab.net -L 18808:" +
-                                            options.bridge + ":18808 -N", shell=True)
+                tunnel_cmd = create_tunnel('users.deterlab.net', 18808, options.bridge, 18808)
                 bridge = '127.0.0.1'
-                time.sleep(5)
-                logging.debug('Tunnel setup done')
+                logging.info('Tunnel setup done')
             else:
                 bridge = options.bridge
         except gaierror as e:
@@ -58,12 +85,12 @@ if __name__ == '__main__':
                 
             global uc, c, t, lasttime
             
-            now = time.time() - 4 
+            now = time.time()
             timestampChunks = [(lasttime, now)]
             lasttime = now
             
-            print "timestampChunks............"
-            print timestampChunks
+            logging.info("----------timestampChunks----------")
+            logging.info(timestampChunks)
             
             data = querytool.getData(collectionnames=collectionnames, 
                                          nodes=nodes, 
@@ -74,8 +101,8 @@ if __name__ == '__main__':
         
             records = data['pktcounter']['rc']
             
-            print "records............"
-            print records
+            logging.info("----------records----------")
+            logging.info(records)
         
             for record in records:
                 #print record['created'], record['port'], record['bytes']
@@ -90,11 +117,11 @@ if __name__ == '__main__':
             uc = collections.OrderedDict(sorted(uc.items()))
             c = collections.OrderedDict(sorted(c.items()))
             t = collections.OrderedDict(sorted(t.items()))
-        
-#            print "data............"
-#            print uc
-#            print c
-#            print t
+            
+            #logging.info("----------data----------")
+            #logging.info(uc)
+            #logging.info(c)
+            #logging.info(t)
         
         update()
         
@@ -123,7 +150,5 @@ if __name__ == '__main__':
         plt.show()
     
     finally:
-        if tun_proc:
-            tun_proc.terminate()
-
-
+        if tunnel_cmd:
+            os.system("kill -9 `ps -ef | grep '" + tunnel_cmd + "' | grep -v grep | awk '{print $2}'`")

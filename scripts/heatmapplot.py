@@ -3,15 +3,35 @@
 from magi.util import querytool
 from matplotlib import animation, pyplot as plt, cm
 from socket import gaierror
-import collections
 import logging
 import numpy as np
 import optparse
-import random
+import os
 import signal
 import subprocess
 import sys
 import time
+
+def create_tunnel(server, lport, rhost, rport):
+    """
+        Create a SSH tunnel and wait for it to be setup before returning.
+        Return the SSH command that can be used to terminate the connection.
+    """
+    ssh_cmd = "ssh %s -L %d:%s:%d -f -o ExitOnForwardFailure=yes -N" % (server, lport, rhost, rport)
+    tun_proc = subprocess.Popen(ssh_cmd,
+                                shell=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                stdin=subprocess.PIPE)
+    while True:
+        p = tun_proc.poll()
+        if p is not None: break
+        time.sleep(1)
+    
+    if p != 0:
+        raise RuntimeError, 'Error creating tunnel: ' + str(p) + ' :: ' + str(tun_proc.stdout.readlines())
+    
+    return ssh_cmd
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
@@ -26,23 +46,25 @@ if __name__ == '__main__':
         sys.exit(2)
     
     # Terminate if the user presses ctrl+c 
-    signal.signal(signal.SIGINT, signal.SIG_DFL ) 
+    signal.signal(signal.SIGINT, signal.SIG_DFL) 
     
+    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
+    log_datefmt = '%m-%d %H:%M:%S'
+    logging.basicConfig(format=log_format,
+                            datefmt=log_datefmt,
+                            level=logging.INFO)
     try:    
-        tun_proc = None
         try:
+            tunnel_cmd = None
             if options.tunnel:
-                tun_proc = subprocess.Popen("ssh users.deterlab.net -L 18808:" +
-                                            options.bridge + ":18808 -N", shell=True)
+                tunnel_cmd = create_tunnel('users.deterlab.net', 18808, options.bridge, 18808)
                 bridge = '127.0.0.1'
-                time.sleep(5)
-                logging.debug('Tunnel setup done')
+                logging.info('Tunnel setup done')
             else:
                 bridge = options.bridge
         except gaierror as e:
             logging.critical('Error connecting to %s: %s', options.control, str(e))
             exit(3)
-            
         
         numNodes = 64
         numProcesses = 100
@@ -78,8 +100,8 @@ if __name__ == '__main__':
             timestampChunks = [(now-10, now)]
             lasttime = now
             
-            print "timestampChunks............"
-            print timestampChunks
+            logging.info("----------timestampChunks----------")
+            logging.info(timestampChunks)
             
             data = querytool.getData(collectionnames=collectionnames, 
                                          nodes=nodes, 
@@ -90,14 +112,15 @@ if __name__ == '__main__':
         
             expstats = data['processstats']
             
-            #print expstats
+            #logging.info("----------records----------")
+            #logging.info(expstats)
             
             d = [[0 for x in xrange(ny)] for y in xrange(nx)]
             
             for ix in range(nx):
                 nodestats = expstats["node-"+str(ix)]
-#                print "node-"+str(ix)
-#                print nodestats
+                #logging.info("node-"+str(ix))
+                #logging.info(nodestats)
                 iy=0
                 for processstat in nodestats:
                     if iy >= ny:
@@ -105,18 +128,19 @@ if __name__ == '__main__':
                     d[ix][iy] = processstat['cpu_usage']
                     iy += 1
                     
-            print d
+            logging.info("----------data----------")
+            logging.info(d)
             
             data = np.array(d)
             cax.set_data(data)
             return cax
-                    
-        
+
+                
         anim = animation.FuncAnimation(fig, animate, frames=nx * ny, interval=5000)
         plt.show()
     
     finally:
-        if tun_proc:
-            tun_proc.terminate()
+        if tunnel_cmd:
+            os.system("kill -9 `ps -ef | grep '" + tunnel_cmd + "' | grep -v grep | awk '{print $2}'`")
 
 
