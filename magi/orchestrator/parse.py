@@ -541,21 +541,21 @@ class AAL(object):
 
     def getInterStreamEvents(self):
         ies = set()
+        log.debug("ieventtriggers: %s", self.ieventtriggers)
         for k in self.ieventtriggers:
             if len(ies) == 0:
                 ies = self.ieventtriggers[k]
             else:
-                ies.union(self.ieventtriggers[k])
-
+                ies = ies.union(self.ieventtriggers[k])
+        
+        log.debug("oeventtriggers: %s", self.oeventtriggers)
         for k in self.oeventtriggers:
             if len(ies) == 0:
                 ies = self.oeventtriggers[k]
             else:
-                ies.union(self.oeventtriggers[k])
-
+                ies = ies.union(self.oeventtriggers[k])
 
         return ies 
-
 
     def __repr__(self):
         print "Setup Stream" 

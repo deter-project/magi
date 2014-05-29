@@ -209,7 +209,9 @@ class Orchestrator(object):
         # Keep track of event triggers that as passed between streams 
         #pdb.set_trace()
         if self.aal.getTotalStreams() > 1:
+            log.debug("TotalStreams: %d", self.aal.getTotalStreams())
             self.interes = self.aal.getInterStreamEvents()
+            log.debug("Events tracked by streams %s", self.interes) 
 
         self.runStreams()
 
