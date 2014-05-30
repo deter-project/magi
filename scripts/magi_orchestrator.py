@@ -1,23 +1,44 @@
 #!/usr/bin/env python
 
+from magi.messaging import api
+from magi.orchestrator import AAL, Orchestrator
+from magi.orchestrator.parse import AALParseError
+from socket import gaierror # this should really be wrapped in daemon lib.
+from sys import exit
+
 import logging
 import logging.handlers
 import optparse
-import signal
-from sys import exit
-from socket import gaierror   # this should really be wrapped in daemon lib.
 import os.path
+import signal
 import subprocess
-
-from magi.orchestrator import AAL, Orchestrator
-from magi.messaging import api
-from magi.orchestrator.parse import AALParseError
-
+import time
 
 def sigusr1_handler(signum, name):
     '''Set the flag in the Orchestrator module that causes current
     state to be printed to stdout when we get signal USR1.'''
     Orchestrator.show_state = True
+
+def create_tunnel(server, lport, rhost, rport):
+    """
+        Create a SSH tunnel and wait for it to be setup before returning.
+        Return the SSH command that can be used to terminate the connection.
+    """
+    ssh_cmd = "ssh %s -L %d:%s:%d -f -o ExitOnForwardFailure=yes -N" % (server, lport, rhost, rport)
+    tun_proc = subprocess.Popen(ssh_cmd,
+                                shell=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                stdin=subprocess.PIPE)
+    while True:
+        p = tun_proc.poll()
+        if p is not None: break
+        time.sleep(1)
+    
+    if p != 0:
+        raise RuntimeError, 'Error creating tunnel: ' + str(p) + ' :: ' + str(tun_proc.stdout.readlines())
+    
+    return ssh_cmd
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
@@ -146,31 +167,33 @@ if __name__ == '__main__':
     # Give the ability to just display the events file 
     if options.justparse:
         exit(0)
-
-    tun_proc = None
-    try:
+    
+    try:   
+        tunnel_cmd = None
         if options.tunnel:
-            localport = 18801
-            tun_proc = subprocess.Popen("ssh users.deterlab.net -L " +
-                                        str(localport) + ":" + options.control
-                                        + ":18808 -N", shell=True)
-            messaging = api.ClientConnection(options.name, "127.0.0.1", localport)
+            tunnel_cmd = create_tunnel('users.deterlab.net', 18808, options.control, 18808)
+            bridge = '127.0.0.1'
+            logging.info('Tunnel setup done')
         else:
-            messaging = api.ClientConnection(options.name, options.control, 18808)
-    except gaierror as e:
-        logging.critical('Error connecting to %s: %s', options.control, str(e))
-        exit(3)
-
-    signal.signal(signal.SIGUSR1, sigusr1_handler)
-
-    orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
-                        exitOnFailure=options.exitOnFailure,
-                        useColor=(not options.nocolor))
-    orch.run()
-
-    if tun_proc:
-        tun_proc.terminate()
-
+            bridge = options.control
+                
+        try:
+            messaging = api.ClientConnection(options.name, bridge, 18808)
+        except gaierror as e:
+            logging.critical('Error connecting to %s: %s', options.control, str(e))
+            exit(3)
+    
+        signal.signal(signal.SIGUSR1, sigusr1_handler)
+    
+        orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
+                            exitOnFailure=options.exitOnFailure,
+                            useColor=(not options.nocolor))
+        orch.run()
+        
+    finally:
+        if tunnel_cmd:
+            os.system("kill -9 `ps -ef | grep '" + tunnel_cmd + "' | grep -v grep | awk '{print $2}'`")
+            
     # GTL - we need to determine the outcome and return the
     # appropriate value here.
     exit(0)

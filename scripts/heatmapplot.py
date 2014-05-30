@@ -54,17 +54,13 @@ if __name__ == '__main__':
                             datefmt=log_datefmt,
                             level=logging.INFO)
     try:    
-        try:
-            tunnel_cmd = None
-            if options.tunnel:
-                tunnel_cmd = create_tunnel('users.deterlab.net', 18808, options.bridge, 18808)
-                bridge = '127.0.0.1'
-                logging.info('Tunnel setup done')
-            else:
-                bridge = options.bridge
-        except gaierror as e:
-            logging.critical('Error connecting to %s: %s', options.control, str(e))
-            exit(3)
+        tunnel_cmd = None
+        if options.tunnel:
+            tunnel_cmd = create_tunnel('users.deterlab.net', 18808, options.bridge, 18808)
+            bridge = '127.0.0.1'
+            logging.info('Tunnel setup done')
+        else:
+            bridge = options.bridge
         
         numNodes = 64
         numProcesses = 100
