@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 
 from magi.util import querytool
-from matplotlib import animation, pyplot as plt, cm
 import logging
-import numpy as np
 import optparse
 import os
 import subprocess
 import sys
 import time
+
+from pymongo import MongoClient
 
 def create_tunnel(server, lport, rhost, rport):
     """
@@ -68,22 +68,12 @@ if __name__ == '__main__':
         
         nx = numNodes
         ny = numProcesses
-        
-        fig, ax = plt.subplots()
-        ax.set_xlabel("Agents")
-        ax.set_xlim(1, numProcesses)
-        ax.set_ylabel("Nodes")
-        ax.set_ylim(1, numNodes)
-        data = np.zeros((nx, ny))
-        cax = ax.imshow(data, interpolation='nearest', cmap=cm.coolwarm, vmin=0, vmax=0.1)
-#        ax.set_title('Heatmap')
-        
-        cbar = fig.colorbar(cax, ticks=[0, 0.05, 0.1], orientation='horizontal')
-        cbar.ax.set_xticklabels(['Low', 'Medium', 'High'])# horizontal colorbar
 
         d = [[0 for x in xrange(ny)] for y in xrange(nx)]
         
-        def animate(i):
+        mongo = MongoClient()
+        
+        while True:
                 
             now = time.time()
             timestampChunks = [(now-10, now)]
@@ -117,14 +107,21 @@ if __name__ == '__main__':
             logging.info("----------data----------")
             logging.info(d)
             
-            data = np.array(d)
-            cax.set_data(data)
-            return cax
-
-                
-        anim = animation.FuncAnimation(fig, animate, frames=nx * ny, interval=5000)
-        plt.show()
-    
+            highChartsData = []
+            for ix in range(nx):
+                for iy in range(ny):
+                    highChartsData.append([ix, iy, d[ix][iy]])
+            
+            logging.info("----------highChartsData----------")
+            logging.info(highChartsData)
+            
+            logging.info("Inserting into DB")
+            mongo['magi']['heatmap'].insert({'created': time.time(), 'data': highChartsData})
+            mongo['magi']['heatmap'].remove({'created': {'$lt': time.time()-10}})
+            logging.info("DB updation done")
+            
+            
+                         
     finally:
         if tunnel_cmd:
             logging.info("Closing tunnel")

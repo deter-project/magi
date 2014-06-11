@@ -2,12 +2,10 @@
 
 from magi.util import querytool
 from matplotlib import animation, pyplot as plt
-from socket import gaierror
 import collections
 import logging
 import optparse
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -45,9 +43,6 @@ if __name__ == '__main__':
     if options.bridge is None:
         optparser.print_help()
         sys.exit(2)
-    
-    # Terminate if the user presses ctrl+c 
-    signal.signal(signal.SIGINT, signal.SIG_DFL) 
     
     log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
     log_datefmt = '%m-%d %H:%M:%S'
@@ -147,4 +142,5 @@ if __name__ == '__main__':
     
     finally:
         if tunnel_cmd:
+            logging.info("Closing tunnel")
             os.system("kill -9 `ps -ef | grep '" + tunnel_cmd + "' | grep -v grep | awk '{print $2}'`")
