@@ -212,7 +212,19 @@ class ContainerExperiment(Testbed):
         root = ET.fromstring(self.getTopoXml()[0])
         
         for element in root.findall('elements'):
+            
+            pnode = False
             computer = element.find('computer')
+            
+            for attribute in computer.findall('attribute'):
+                if attribute.find('attribute').text == 'containers:node_type':
+                    if attribute.find('value').text == 'pnode':
+                        pnode = True
+                    break
+            
+            if pnode:
+                continue
+
             node = computer.find('name').text
             linksinfo = []
             for interface in computer.findall('interface'):
