@@ -6,6 +6,7 @@
 import logging.handlers
 import os
 import optparse
+import sys
 
 from magi.daemon.daemon import Daemon
 from magi.util import config, helpers
@@ -19,7 +20,7 @@ if __name__ ==  '__main__':
     optparser = optparse.OptionParser(description="Script to start MAGI")
     optparser.add_option("-f", "--logfile", dest="logfile", action='store', default=config.MAGILOG+'/daemon.log', help="Log to specified file, Default: %default, ex: -f file.log")
     optparser.add_option("-t" , "--timeformat", dest="timeformat", action='store', default="%m-%d %H:%M:%S", help="Set the format of the time epoch, Default: %default")     
-    optparser.add_option("-l", "--loggerlevel", dest="loggerlevel", default="INFO", help="set logger to level ALL, DEBUG, INFO, WARNING, ERROR. Default: %default, ex: -l DEBUG")
+    optparser.add_option("-l", "--loglevel", dest="loglevel", default="INFO", help="set logger to level ALL, DEBUG, INFO, WARNING, ERROR. Default: %default, ex: -l DEBUG")
     optparser.add_option("-c", "--magiconf", dest="magiconf", default=config.MAGILOG+'/magi.conf', help="Specify location of the magi configuration file, Default: %default, ex: -c localconfig.conf ")
     optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Data manager not setup up.") 
 
@@ -42,39 +43,44 @@ if __name__ ==  '__main__':
     # 08/082013: Note that to get msec time resolution we need to add change the formatter like so 
     # '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(threadName)s %(message)s', options.timeformat)
     handler.setFormatter(logging.Formatter('%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(threadName)s %(message)s', options.timeformat))
-    root = logging.getLogger()
-    root.setLevel(helpers.logLevels.get(options.loggerlevel.upper(), logging.INFO))
-    root.handlers = []
-    root.addHandler(handler)
-           
-    if not options.nodataman:
-        from magi.util import database
-        dbhost = database.getDBHost()
-        from magi.mongolog.handlers import MongoHandler
-        dbname = 'magi'
-        collectionname = 'log'
-        connection = database.getConnection()
-        root.addHandler(MongoHandler.to(dbname, collectionname, host=dbhost, port=27017))
+    log = logging.getLogger()
+    log.setLevel(helpers.logLevels.get(options.loglevel.upper(), logging.INFO))
+    log.handlers = []
+    log.addHandler(handler)
+    
+    try:       
+        if not options.nodataman:
+            from magi.util import database
+            from magi.mongolog.handlers import MongoHandler
+            dbhost = database.getDBHost()
+            dbname = 'magi'
+            collectionname = 'log'
+            #Making sure that the database server is up and running
+            connection = database.getConnection(dbhost, port=27018)
+            log.addHandler(MongoHandler.to(dbname, collectionname, host=dbhost, port=27018))
+    
+        pid = os.getpid()
+        try:
+            fpid =  open(config.DEFAULT_MAGIPID, 'w')
+            fpid.write(str(pid))
+            fpid.close()
+        except:
+            pass
+    
+        confdata = config.loadConfig(options.magiconf)
+        transports_ctrl = confdata.get('transports', [])
+        transports_exp = confdata.get('transports_exp', [])
+        testbedInfo = confdata.get('localinfo', {})
+        localname = testbedInfo.get('nodename')
+                
+        # Some system initialization
+        logging.info("MAGI Version: %s", __version__)
+        logging.info("Started magi daemon on %s with pid %s", localname, pid)
+    #    if not options.nodataman: logging.info("DB host: %s", dbhost)
+        daemon = Daemon(localname, transports_ctrl, transports_exp, not options.nodataman)
+        daemon.run() 
+        # Application will exit once last non-daemon thread finishes
 
-    pid = os.getpid()
-    try:
-        fpid =  open(config.DEFAULT_MAGIPID, 'w')
-        fpid.write(str(pid))
-        fpid.close()
-    except:
-        pass
-
-    confdata = config.loadConfig(options.magiconf)
-    transports_ctrl = confdata.get('transports', [])
-    transports_exp = confdata.get('transports_exp', [])
-    testbedInfo = confdata.get('localinfo', {})
-    localname = testbedInfo.get('nodename')
-            
-    # Some system initialization
-    logging.info("MAGI Version: %s", __version__)
-    logging.info("Started magi daemon on %s with pid %s", localname, pid)
-    if not options.nodataman: logging.info("DB host: %s", dbhost)
-    daemon = Daemon(localname, transports_ctrl, transports_exp, not options.nodataman)
-    daemon.run() 
-    # Application will exit once last non-daemon thread finishes
-
+    except Exception, e:
+        log.error("Exception while starting daemon process", e)
+        sys.exit(e)
