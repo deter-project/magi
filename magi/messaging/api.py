@@ -33,7 +33,6 @@ class Messenger(object):
 		self.thread = None
 		self.startDaemon()
 
-
 	def startDaemon(self):
 		"""
 			Start the thread that takes care of polling and scheduling for all the transports
@@ -41,7 +40,6 @@ class Messenger(object):
 		from worker import WorkerThread
 		self.thread = WorkerThread(self.name, self.txqueue, self.rxqueue)
 		self.thread.start()
-		
 		
 	def addTransport(self, transport, keepConnected=False):
 		"""
@@ -55,7 +53,6 @@ class Messenger(object):
 #		self.txqueue.put(TransportRequest(transport, keepConnected))
 		self.thread.addTransport(transport, keepConnected)
 
-
 	def join(self, group, caller = "default"):
 		""" 
 			Join the group 'group' (a string value).
@@ -66,7 +63,6 @@ class Messenger(object):
 #		self.txqueue.put(GroupRequest("join", group, caller))
 		self.thread.processGroupRequest(GroupRequest("join", group, caller))
 
-
 	def leave(self, group, caller = "default"):
 		"""
 			Leave the group 'group' (a string value).
@@ -76,7 +72,6 @@ class Messenger(object):
 #		self.txqueue.put(GroupRequest("leave", group, caller))
 		self.thread.processGroupRequest(GroupRequest("leave", group, caller))
 	
-	
 	def nextMessage(self, block=False, timeout=None):
 		"""
 			Called to remove a received message from the queue.  block and timeout are as specified in
@@ -84,20 +79,17 @@ class Messenger(object):
 		"""
 		return self.rxqueue.get(block, timeout)
 
-
 	def send(self, msg, **kwargs):
 		"""
 			Enqueue a message for transmittal, kwargs is a list of delivery request values to specify desired delivery behavior
 		"""
 		self.txqueue.put(TransmitRequest(msg, kwargs))
 
-
 	def trigger(self, **kwargs):
 		"""
 			Send a trigger event.  Single location for a common action, ick though, this is application level stuff in messaging code
 		"""
 		self.send(MAGIMessage(groups="control", docks="daemon", data=yaml.dump(kwargs), contenttype=MAGIMessage.YAML))
-
 		
 	def poisinPill(self):
 		"""
@@ -105,7 +97,6 @@ class Messenger(object):
 			wake up and get the message.
 		"""
 		self.rxqueue.put("PoisinPill")
-
 
 	def stop(self):
 		self.thread.stop() # stopping the worker thread
