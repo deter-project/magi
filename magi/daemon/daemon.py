@@ -4,27 +4,28 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-import threading
-import logging
-import time
-import tempfile
-import base64
-import cStringIO
-import glob
-import errno
-import tarfile
-import shutil
-import signal
-
-from subprocess import Popen, PIPE
-
 from magi.daemon.externalAgentsThread import ExternalAgentsThread, PipeTuple
 from magi.messaging.api import *
-from magi.util.calls import doMessageAction
-from magi.util.agent import agentmethod
-from magi.util.software import requireSoftware
 from magi.util import helpers
+from magi.util.agent import agentmethod
+from magi.util.calls import doMessageAction
+from magi.util.software import requireSoftware
+from subprocess import Popen, PIPE
+
+import base64
+import cStringIO
+import errno
+import glob
+import logging
 import magi.modules
+import magi.modules.dataman
+import shutil
+import signal
+import sys
+import tarfile
+import tempfile
+import threading
+import time
 
 log = logging.getLogger(__name__)
 
@@ -52,8 +53,14 @@ class Daemon(threading.Thread):
 		self.extAgentsThread.start()
 
 		if enable_dataman_agent:
-			self.startAgent(code="dataman", name="dataman", dock="dataman", static=True)
-		
+			try:
+				log.info("Starting Data Manager Agent")
+				self.startAgent(code=magi.modules.dataman.__path__[0], name="dataman", dock="dataman", static=True)
+			except Exception, e:
+				log.error("Exception while trying to run the data manager agent.")
+				log.error(str(e))
+				raise e
+				
 		self.configureMessaging(self.messaging, transports_ctrl)
 		#self.configureMessaging(self.messaging_exp, transports_exp)
 		
@@ -197,18 +204,25 @@ class Daemon(threading.Thread):
 
 		# TODO: 5/28/2013 
 		# code is the location of the directory where the agent module resides
-		# Current the orch generates the code variable by concating agentname and word "code"
-		#  However there are no checks, these should be present in the orch or here? 
+		# Current the orch generates the code variable by concatenating agentname and word "code"
+		# However there are no checks, these should be present in the orch or here? 
 		# if code is not specified, the tardata or path needs to be specified 
 		# If code is not specified, then find out the code name from the idl. 
 		#
-		cachepath = os.path.join(magi.modules.__path__[0], code)
+		cachepath = os.path.join(magi.modules.__path__[0], os.path.basename(os.path.normpath(code)))
 		if tardata is not None:
 			self.extractTarBuffer(cachepath, tardata)
 		elif path is not None:
 			self.extractTarPath(cachepath, path)
+		elif os.path.exists(code):
+			self.extractTarPath(cachepath, code)
+		elif os.path.exists(cachepath):
+			#In case agent is already cached
+			pass
+		else:
+			raise OSError(errno.ENOENT, "Invalid path to agent implementation: %s" % code)
 
-		self.startAgent(code, name, dock, execargs, idl)
+		self.startAgent(cachepath, name, dock, execargs, idl)
 		
 	
 	@agentmethod()
@@ -356,7 +370,7 @@ class Daemon(threading.Thread):
 		# Now find the interface definition and load it
 		try:
 			log.debug('startAgent code: %s, idl: %s' % (code, idl))
-			dirname = os.path.join(magi.modules.__path__[0], code)
+			dirname = code
 			if idl:
 				idlFile = dirname+'/%s.idl' % idl
 			else:
