@@ -126,7 +126,7 @@ class AgentMessenger(threading.Thread):
 
 	def __init__(self, inTransport, outTransport, agent):
 		threading.Thread.__init__(self, name=agent.name+"_messenger")
-		self.daemon = True
+		#self.daemon = True
 		self.agent = agent
 		
 		self.codec = AgentCodec()
@@ -153,7 +153,8 @@ class AgentMessenger(threading.Thread):
 				for msg in self.inTransport.inmessages:
 					self.inqueue.put(msg)
 				self.inTransport.inmessages = []
-				
+		
+		# send out pending outgoing messages before shutting down		
 		while len(self.outTransport.outmessages) > 0:
 			asyncore.poll(0, self.pollMap)
 			
