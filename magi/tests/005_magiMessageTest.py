@@ -1,5 +1,7 @@
+#!/usr/bin/env python
 
 import unittest2
+import logging
 from magi.messaging.magimessage import MAGIMessage, DefaultCodec
 
 class MAGIMessageTest(unittest2.TestCase):
@@ -28,6 +30,8 @@ class MAGIMessageTest(unittest2.TestCase):
 		hdr = codec.encode(msg)
 		ret, hdrsize = codec.decode(hdr)
 		ret.data = None
+		
+		self.assertEquals(hdrsize, len(hdr))
 
 		for k, v in msg.__dict__.iteritems():
 			if k[0] == '_':
@@ -35,3 +39,11 @@ class MAGIMessageTest(unittest2.TestCase):
 			self.assertEquals(getattr(ret, k), v)
 
 
+if __name__ == '__main__':
+	hdlr = logging.StreamHandler()
+	hdlr.setFormatter(logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s', '%m-%d %H:%M:%S'))
+	root = logging.getLogger()
+	root.handlers = []
+	root.addHandler(hdlr)
+	root.setLevel(logging.INFO)
+	unittest2.main(verbosity=2)
