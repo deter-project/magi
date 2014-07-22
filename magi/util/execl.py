@@ -8,7 +8,6 @@ from subprocess import Popen, PIPE, call
 from signal import SIGKILL, SIGTERM
 import time
 import logging
-import threading
 import types
 import sys
 import platform, os
@@ -19,87 +18,64 @@ import platform, os
 	has been fixed. 
 """
 
+locallog = logging.getLogger(__name__)
+execDebug = False
+execCalls = list()
+
 def needsplit(cmd, **kwargs):
 	return (type(cmd) in types.StringTypes) and not kwargs.get('shell', False)
-	
-if 'exlock' not in locals():
-	exlock = threading.RLock()
-	locallog = logging.getLogger(__name__)
-	execDebug = False
-	execCalls = list()
 
 def procOpen(cmd, log = locallog, **kwargs): 
-	exlock.acquire()
 	proc = None
-	try:
-		if log is not None:
-			log.info("Spawning (%s)" % (cmd))
-		if execDebug:
-			execCalls.append(cmd)
-			# I've got a feeling this is far from portable....
-			return Popen(['sleep', '999999999'])
-		if needsplit(cmd, **kwargs):
-			proc = Popen(cmd.split(), **kwargs)
-		else:
-			proc = Popen(cmd, **kwargs)
-	finally:
-		exlock.release()
+	log.debug("Spawning (%s)" % (cmd))
+	if execDebug:
+		execCalls.append(cmd)
+		# I've got a feeling this is far from portable....
+		return Popen(['sleep', '999999999'])
+	if needsplit(cmd, **kwargs):
+		proc = Popen(cmd.split(), **kwargs)
+	else:
+		proc = Popen(cmd, **kwargs)
 	return proc
 
 ## Spawn a program and return the PID
 def spawn(cmd, log = locallog, **kwargs):
-	exlock.acquire()
 	pid = -1
-	try:
-		if log is not None:
-			log.info("Spawning (%s)" % (cmd))
-		if execDebug:
-			execCalls.append(cmd)
-			return 1
-		if needsplit(cmd, **kwargs):
-			pid = Popen(cmd.split(), **kwargs).pid
-		else:
-			pid = Popen(cmd, **kwargs).pid
-	finally:
-		exlock.release()
+	log.debug("Spawning (%s)" % (cmd))
+	if execDebug:
+		execCalls.append(cmd)
+		return 1
+	if needsplit(cmd, **kwargs):
+		pid = Popen(cmd.split(), **kwargs).pid
+	else:
+		pid = Popen(cmd, **kwargs).pid
 	return pid
 
 
 ## Run a program and wait for it to finish
 def run(cmd, log = locallog, **kwargs):
-	exlock.acquire()
 	ret = 0
-	try:
-		if log is not None:
-			log.debug("Running (%s)" % (cmd))
-		if execDebug:
-			execCalls.append(cmd)
-			return ret
-		if needsplit(cmd, **kwargs):
-			ret = call(cmd.split(), **kwargs)
-		else:
-			ret = call(cmd, **kwargs)
-	finally:
-		exlock.release()
+	log.debug("Running (%s)" % (cmd))
+	if execDebug:
+		execCalls.append(cmd)
+		return ret
+	if needsplit(cmd, **kwargs):
+		ret = call(cmd.split(), **kwargs)
+	else:
+		ret = call(cmd, **kwargs)
 	return ret
 
 
 ## Exec a program and collect the stdout
 def execAndRead(cmd, log = locallog, **kwargs):
-	exlock.acquire()
 	output = None
 	err = None
-	try:
-		if log is not None:
-			log.debug("Executing (%s)" % (cmd))
-		if needsplit(cmd):
-			(output, err) = Popen(cmd.split(), stdout=PIPE, stderr=PIPE, **kwargs).communicate()
-		else:
-			(output, err) = Popen(cmd, stdout=PIPE, stderr=PIPE, **kwargs).communicate()
-		if log is not None:
-			log.debug("Successfully executed (%s)" % (cmd))			
-	finally:
-		exlock.release()
+	log.debug("Executing (%s)" % (cmd))
+	if needsplit(cmd):
+		(output, err) = Popen(cmd.split(), stdout=PIPE, stderr=PIPE, **kwargs).communicate()
+	else:
+		(output, err) = Popen(cmd, stdout=PIPE, stderr=PIPE, **kwargs).communicate()
+	log.debug("Successfully executed (%s)" % (cmd))			
 	if output is None:
 		output = ""
 	if err is None:
@@ -109,43 +85,24 @@ def execAndRead(cmd, log = locallog, **kwargs):
 
 ## Exec program and return a pipe for reading data
 def pipeIn(cmd, log = locallog, **kwargs):
-	exlock.acquire()
-	input = None
-	try:
-		if log is not None:
-			log.info("Spawning (%s)" % (cmd))
-		input = Popen(cmd, shell=True, stdout=PIPE, **kwargs).stdout
-	finally:
-		exlock.release()
+	log.debug("Spawning (%s)" % (cmd))
+	input = Popen(cmd, shell=True, stdout=PIPE, **kwargs).stdout
 	return input
 
 
 ## Exec program and return a pipe for sending data
 def pipeOut(cmd, log = locallog, **kwargs):
-	exlock.acquire()
-	output = None
-	try:
-		if log is not None:
-			log.info("Spawning (%s)" % (cmd))
-		output = Popen(cmd, shell=True, stdin=PIPE, **kwargs).stdin
-	finally:
-		exlock.release()
+	log.debug("Spawning (%s)" % (cmd))
+	output = Popen(cmd, shell=True, stdin=PIPE, **kwargs).stdin
 	return output
 
 
 ## Exec program and return a pipes for sending and reading data
 def pipeBoth(cmd, log = locallog, **kwargs):
-	exlock.acquire()
-	input = None
-	output = None
-	try:
-		if log is not None:
-			log.info("Spawning (%s)" % (cmd))
-		p = Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, close_fds=True, **kwargs)
-		input = p.stdout
-		output = p.stdin
-	finally:
-		exlock.release()
+	log.debug("Spawning (%s)" % (cmd))
+	p = Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, close_fds=True, **kwargs)
+	input = p.stdout
+	output = p.stdin
 	return (input, output)
 
 def adduser(username):
