@@ -65,7 +65,6 @@ def getConfig():
 
 def loadConfig(filename=None):
     """ Load the configuration data from file, filename can be overriden """
-    global config
     if filename is None:
         filename = DEFAULT_MAGICONF 
     fp = open(filename, 'r')
@@ -87,18 +86,18 @@ def createMESDL():
 def createMESDL_control():
     """ Create a default mesdl for the control plane """
     log.info("Creating control plane mesdl") 
-    node = testbed.getServer() 
-    log.info("Using %s as control node....", node) 
-    if not '.' in node:
-        node += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
+    control_node = testbed.getServer() 
+    log.info("Using %s as control node....", control_node) 
+    if not '.' in control_node:
+        control_node += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
     mesdl = dict()
     mesdl['bridges'] = list()
-    mesdl['bridges'].append({ 'TCPServer': node, 'port': 18808 })  
-    mesdl['bridges'].append({ 'TCPServer': node, 'port': 28808 })  
+    mesdl['bridges'].append({ 'TCPServer': control_node, 'port': 18808 })  
+    mesdl['bridges'].append({ 'TCPServer': control_node, 'port': 28808 })  
     mesdl['overlay'] = list()
     memlist = list()
     memlist.append('__ALL__')
-    mesdl['overlay'].append({ 'type': 'TCPTransport' , 'members': memlist, 'server':node, 'port': 28808 })
+    mesdl['overlay'].append({ 'type': 'TCPTransport' , 'members': memlist, 'server':control_node, 'port': 28808 })
     return mesdl  
 
 def createMESDL_experiment():
@@ -152,26 +151,41 @@ def validateDBConf(dbconf=None):
     if "collector_mapping" not in expdbconf.keys() or not expdbconf['collector_mapping']:
         expdbconf['collector_mapping'] = dict()
         
+    ALL = False
     topoGraph = testbed.getTopoGraph()
+    
+    #Checking if there is a valid entry for __ALL__
     if '__ALL__' in expdbconf['collector_mapping']:
-        expdbconf['collector_mapping'] = {'__ALL__' : expdbconf['collector_mapping']['__ALL__']}
-    else:
-        sensors = expdbconf['collector_mapping'].keys()
-        for node in topoGraph.nodes():
-            if node not in sensors or expdbconf['collector_mapping'][node] not in topoGraph.nodes():
+        if expdbconf['collector_mapping']['__ALL__'] in topoGraph.nodes():
+            ALL = True
+        else:
+            del expdbconf['collector_mapping']['__ALL__']
+    
+    sensors = expdbconf['collector_mapping'].keys()
+    for node in topoGraph.nodes():
+        if node not in sensors:
+            if not ALL:
                 expdbconf['collector_mapping'][node] = node
-            
-        for sensor in sensors:
-            if sensor not in topoGraph.nodes():
-                del expdbconf['collector_mapping'][sensor]
-                
-    if "queriers" not in expdbconf.keys() or not expdbconf['queriers']:
-        expdbconf['queriers'] = []
+        elif expdbconf['collector_mapping'][node] not in topoGraph.nodes():
+            del expdbconf['collector_mapping'][node]
+            if not ALL:
+                expdbconf['collector_mapping'][node] = node
         
-    queriers = expdbconf['queriers']
-    for querier in queriers:
-        if querier not in topoGraph.nodes():
-            expdbconf['queriers'].remove(querier)
+    for sensor in sensors:
+        if sensor not in topoGraph.nodes():
+            del expdbconf['collector_mapping'][sensor]
+    
+    if expdbconf.get('config_node') not in topoGraph.nodes():
+        expdbconf['config_node'] = testbed.getServer()
+    
+    
+#    if "queriers" not in expdbconf.keys() or not expdbconf['queriers']:
+#        expdbconf['queriers'] = []
+#        
+#    queriers = expdbconf['queriers']
+#    for querier in queriers:
+#        if querier not in topoGraph.nodes():
+#            expdbconf['queriers'].remove(querier)
             
     fp = open(DEFAULT_DBCONF, 'w')
     fp.write(yaml.safe_dump(expdbconf))
@@ -188,6 +202,7 @@ def createDBConf():
     topoGraph = testbed.getTopoGraph()
     for node in topoGraph.nodes():
         dbconf['collector_mapping'][node] = node
+    dbconf['config_node'] = testbed.getServer()
     fp.write(yaml.safe_dump(dbconf))
     fp.close
     return DEFAULT_DBCONF
@@ -403,22 +418,20 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     config['tempdir'] = '/tmp'
     
     if enable_dataman:
-        config['isDatamanSetup'] = True
+        config['is_dataman_setup'] = True
         expdbconf = helpers.loadYaml(dbconf)
-        config['collector_mapping'] = expdbconf['collector_mapping']
-        config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
-        config['dbhost'] = expdbconf['collector_mapping'].get('__ALL__')
+#        config['collector_mapping'] = expdbconf['collector_mapping']
+#        config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
+        config['dbhost'] = expdbconf['collector_mapping'].get(testbed.nodename)
         if not config['dbhost']:
-            config['dbhost'] = expdbconf['collector_mapping'][testbed.nodename]
-        #In case of a single node experiment /etc/hosts does not get populated
-        if config['dbhost'] == testbed.nodename:
-            config['dbhost'] = 'localhost'
-        config['isDBHost'] = (testbed.nodename in expdbconf['collector_mapping'].values())
+            config['dbhost'] = expdbconf['collector_mapping'].get('__ALL__', testbed.nodename)
+        config['is_dbhost'] = (testbed.nodename in expdbconf['collector_mapping'].values())
+        config['is_db_config_server'] = (testbed.nodename == expdbconf['config_node'])
         
-        if testbed.nodename in config['queriers']:
-            config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
+#        if testbed.nodename in config['queriers']:
+#            config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
     else:
-        config['isDatamanSetup'] = False
+        config['is_dataman_setup'] = False
         
     fp = open (magiconf, 'w') 
     fp.write(yaml.safe_dump(config))

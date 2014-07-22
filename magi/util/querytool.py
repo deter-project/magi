@@ -72,14 +72,14 @@ def getData(collectionnames, nodes=None, filters=dict(), timestampChunks=None, b
     exitlog(functionName)
     return result
 
-messenger = dict()
+msgrCache = dict()
 srcdock = "dataclient" + str(int(random.random() * 10000))
 
 def getMessenger(node, port):
-    global messenger
-    if messenger.get(node+str(port)) == None:
-        messenger[node+str(port)] = api.ClientConnection(srcdock, node, port)
-    return messenger[node+str(port)]
+    global msgrCache
+    if msgrCache.get(node+str(port)) == None:
+        msgrCache[node+str(port)] = api.ClientConnection(srcdock, node, port)
+    return msgrCache[node+str(port)]
 
 def pingCall(bridge, msgdest):
     """

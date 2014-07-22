@@ -2,8 +2,9 @@
 
 from magi.messaging.magimessage import MAGIMessage
 from magi.testbed import testbed
-from magi.util import database, config, helpers
+from magi.util import database, helpers
 from magi.util.agent import NonBlockingDispatchAgent, agentmethod
+
 import hashlib
 import logging
 import pickle
@@ -25,17 +26,20 @@ class DataManAgent(NonBlockingDispatchAgent):
     def __init__(self, *args, **kwargs):
         NonBlockingDispatchAgent.__init__(self, *args, **kwargs)
         
-        self.topoGraph = testbed.getTopoGraph()
-        self.collectorMapping = config.getConfig().get('collector_mapping')
-        self.collectors = self.collectorMapping.values()
-        self.queriers = config.getConfig().get('queriers')
-        #self.cacheSet = self.calculateCacheSet()
+        log.info("Initializing Data Manager Agent")
         
-        self.collectionMetadata= dict()
-        self.distanceCache = dict()
-        self.dataShelf = dict()
+#        self.topoGraph = testbed.getTopoGraph()
+#        self.collectors = database.collectorMapping.values()
+#        self.queriers = config.getConfig().get('queriers')
+#        self.cacheSet = self.calculateCacheSet()
+        
+        self.collectionMetadata = dict()
+#        self.distanceCache = dict()
+#        self.dataShelf = dict()
         
         self.events = dict()
+        self.rcvdPongs = set()
+        
         
     @agentmethod()
     def getData(self, msg, collectionnames=None, nodes=None, filters=dict(), timestampChunks=None, visited=set()):
@@ -64,7 +68,13 @@ class DataManAgent(NonBlockingDispatchAgent):
         for collectionname in collectionnames_:
             data[collectionname] = dict()
             for node in nodes_:
-                data[collectionname][node] = self.getDataInternal(collectionname, node, filters, timestampChunks, visited)
+                filters_copy = filters.copy()
+                filters_copy['host'] = node
+                nodedata = []
+                for tsChunk in timestampChunks:
+                    nodedata = nodedata + database.getData(collectionname, filters_copy, tsChunk, database.getConnection(database.configNode, port=27017))
+                data[collectionname][node] = nodedata
+#                data[collectionname][node] = self.getDataFromCollector(collectionname, node, filters, timestampChunks, visited)
         
         args = {
             "collectionnames": collectionnames,
@@ -82,79 +92,80 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         exitlog(functionName)
         
-    def getDataInternal(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
-        """
-            Internal function to fetch data based on a given query
-        """
-        functionName = self.getDataInternal.__name__
-        entrylog(functionName, locals())
 
-        if timestampChunks == None:
-            timestampChunks = [(0, time.time())]
-        
-        data = []
-        chunksNotCached = []
-        
-        if database.isDBHost:
-            log.debug("Database server is hosted locally")
-            
-            filters_copy = filters.copy()
-            filters_copy['host'] = node
-                
-            for tsChunk in timestampChunks:
-                data = data + database.getData(collectionname, filters_copy, tsChunk)
-        
-            if self.isCollector(node, collectionname):
-                log.debug("This node is the collector for: %s:%s", node, collectionname)
-                exitlog(functionName)
-                return data
-#            elif self.isCache(node, collectionname):
-#                log.debug("This node is the cache for: %s:%s", node, collectionname)
-#                for tsChunk in timestampChunks:
-#                    chunksNotCached = chunksNotCached + database.findTimeRangeNotAvailable(collectionname, filters_copy, tsChunk)
-            else:
-                chunksNotCached = timestampChunks
-        else:
-            log.debug("Database server is not hosted locally")
-            chunksNotCached = timestampChunks
-            
-        log.debug("Chunks not available locally: " + str(chunksNotCached))
-        if chunksNotCached:
-#            data = data + self.getDataFromNeighbor(collectionname, node, filters, chunksNotCached, visited)
-            data = data + self.getDataFromCollector(collectionname, node, filters, chunksNotCached, visited)
-        
-        exitlog(functionName)
-        return data
-
-    def getDataFromCollector(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
-        """
-            Internal function to fetch data from the corresponding collector
-        """
-        functionName = self.getDataFromCollector.__name__
-        entrylog(functionName, locals())
-        
-        data = []
-        
-        if timestampChunks == None:
-            timestampChunks = [(0, time.time())]
-        
-        collector = self.getCollector(node, collectionname)
-        
-        if not collector:
-            log.debug("No collector to get required data from")
-            exitlog(functionName)
-            return data
-        
-        log.debug("Collector to get data from: " + collector)
-        
-        filters_copy = filters.copy()
-        filters_copy['host'] = node
-        
-        for tsChunk in timestampChunks:
-            data = data + database.getData(collectionname, filters_copy, tsChunk, database.getConnection(collector))
-            
-        exitlog(functionName)
-        return data
+#    def getDataInternal(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
+#        """
+#            Internal function to fetch data based on a given query
+#        """
+#        functionName = self.getDataInternal.__name__
+#        entrylog(functionName, locals())
+#
+#        if timestampChunks == None:
+#            timestampChunks = [(0, time.time())]
+#        
+#        data = []
+#        chunksNotCached = []
+#        
+#        if database.isDBHost:
+#            log.debug("Database server is hosted locally")
+#            
+#            filters_copy = filters.copy()
+#            filters_copy['host'] = node
+#                
+#            for tsChunk in timestampChunks:
+#                data = data + database.getData(collectionname, filters_copy, tsChunk)
+#        
+#            if self.isCollector(node, collectionname):
+#                log.debug("This node is the collector for: %s:%s", node, collectionname)
+#                exitlog(functionName)
+#                return data
+##            elif self.isCache(node, collectionname):
+##                log.debug("This node is the cache for: %s:%s", node, collectionname)
+##                for tsChunk in timestampChunks:
+##                    chunksNotCached = chunksNotCached + database.findTimeRangeNotAvailable(collectionname, filters_copy, tsChunk)
+#            else:
+#                chunksNotCached = timestampChunks
+#        else:
+#            log.debug("Database server is not hosted locally")
+#            chunksNotCached = timestampChunks
+#            
+#        log.debug("Chunks not available locally: " + str(chunksNotCached))
+#        if chunksNotCached:
+##            data = data + self.getDataFromNeighbor(collectionname, node, filters, chunksNotCached, visited)
+#            data = data + self.getDataFromCollector(collectionname, node, filters, chunksNotCached, visited)
+#        
+#        exitlog(functionName)
+#        return data
+#
+#    def getDataFromCollector(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
+#        """
+#            Internal function to fetch data from the corresponding collector
+#        """
+#        functionName = self.getDataFromCollector.__name__
+#        entrylog(functionName, locals())
+#        
+#        data = []
+#        
+#        if timestampChunks == None:
+#            timestampChunks = [(0, time.time())]
+#        
+#        collector = self.getCollector(node, collectionname)
+#        
+#        if not collector:
+#            log.debug("No collector to get required data from")
+#            exitlog(functionName)
+#            return data
+#        
+#        log.debug("Collector to get data from: " + collector)
+#        
+#        filters_copy = filters.copy()
+#        filters_copy['host'] = node
+#        
+#        for tsChunk in timestampChunks:
+#            data = data + database.getData(collectionname, filters_copy, tsChunk, database.getConnection(collector))
+#            
+#        exitlog(functionName)
+#        return data
 
     def getCollectionNames(self, node):
         """
@@ -185,39 +196,37 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         node = node.split(".")[0]
         
-        result = self.collectorMapping.get('__ALL__')
-        if not result:
-            result = self.collectorMapping.get(node)
+        result = database.collectorMapping.get(node, database.collectorMapping.get('__ALL__'))
         exitlog(functionName, result)
         return result
         
-        if node == testbed.nodename:
-            log.debug("Querying for local node")
-            if collectionname in database.collectionHosts:
-                return database.collectionHosts[collectionname]
-            else:
-                return None
-            
-        if node in self.collectionMetadata:
-            if collectionname in self.collectionMetadata[node].value:
-                log.debug("Info available in cache")
-                return self.collectionMetadata[node].value[collectionname]
-            elif self.collectionMetadata[node].isValid():
-                log.debug("Info available in cache")
-                return None
-        
-        call = {'version': 1.0, 'method': 'getCollectionMetadata'}
-        querymsg = MAGIMessage(nodes=node, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
-        queryHash = self.digest("CollectionMetadata", node)
-        log.debug("getCollectionMetadata Query Hash: " + queryHash)
-        self.events[queryHash] = threading.Event()
-        self.messenger.send(querymsg)
-        self.events[queryHash].wait()
-        
-        if collectionname in self.collectionMetadata[node].value:
-            return self.collectionMetadata[node].value[collectionname]
-        else:
-            return None
+#        if node == testbed.nodename:
+#            log.debug("Querying for local node")
+#            if collectionname in database.collectionHosts:
+#                return database.collectionHosts[collectionname]
+#            else:
+#                return None
+#            
+#        if node in self.collectionMetadata:
+#            if collectionname in self.collectionMetadata[node].value:
+#                log.debug("Info available in cache")
+#                return self.collectionMetadata[node].value[collectionname]
+#            elif self.collectionMetadata[node].isValid():
+#                log.debug("Info available in cache")
+#                return None
+#        
+#        call = {'version': 1.0, 'method': 'getCollectionMetadata'}
+#        querymsg = MAGIMessage(nodes=node, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+#        queryHash = self.digest("CollectionMetadata", node)
+#        log.debug("getCollectionMetadata Query Hash: " + queryHash)
+#        self.events[queryHash] = threading.Event()
+#        self.messenger.send(querymsg)
+#        self.events[queryHash].wait()
+#        
+#        if collectionname in self.collectionMetadata[node].value:
+#            return self.collectionMetadata[node].value[collectionname]
+#        else:
+#            return None
     
     @agentmethod()
     def getCollectionMetadata(self, msg):
@@ -263,7 +272,26 @@ class DataManAgent(NonBlockingDispatchAgent):
         call = {'version': 1.0, 'method': 'pong', 'args': args}
         msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
         self.messenger.send(msg)
-
+        
+    @agentmethod()
+    def pong(self, msg, server, result):
+        self.rcvdPongs.add(server)
+        
+    def checkIfUp(self, host, timeout=5):
+        """
+            Test call to check if data manager agent is available on a given node
+        """
+        call = {'version': 1.0, 'method': 'ping'}
+        msg = MAGIMessage(nodes=host, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+        self.messenger.send(msg)
+        
+        stop = time.time() + timeout
+        while time.time() < stop:
+            if host in self.rcvdPongs:
+                return True
+            
+        return False
+            
 
 #    def getDataFromNeighbor(self, collectionname, node, filters=dict(), timestampChunks=None, visited=set()):
 #        functionName = self.getDataFromNeighbor.__name__

@@ -21,6 +21,8 @@ LOG_FORMAT = '%(asctime)s %(name)-30s %(levelname)-8s %(message)s'
 LOG_FORMAT_MSECS = '%(asctime)s.%(msecs)03d %(name)-30s %(levelname)-8s %(message)s'
 LOG_DATEFMT = '%m-%d %H:%M:%S'
 
+ALL = '__ALL__'
+
 def makeDir(name):
     try:
         os.mkdir(name)
@@ -71,3 +73,15 @@ def readPropertiesFile(filename):
     parser.readfp(io.BytesIO(properties))
     kv_pairs = parser.items('root')
     return dict(kv_pairs)
+
+def entrylog(log, functionName, arguments=None):
+    if arguments == None:
+        log.debug("Entering function %s", functionName)
+    else:
+        log.debug("Entering function %s with arguments: %s", functionName, arguments)
+
+def exitlog(log, functionName, returnValue=None):
+    if returnValue == None:
+        log.debug("Exiting function %s", functionName)
+    else:
+        log.debug("Exiting function %s with return value: %s", functionName, returnValue)

@@ -1,23 +1,132 @@
 #!/usr/bin/env python
 
-from subprocess import Popen
+from magi.messaging import api
+from magi.messaging.magimessage import MAGIMessage
+from magi.testbed import testbed
+from magi.util import config, helpers
+
+from pymongo import MongoClient
+from pymongo.database import Database
+from subprocess import Popen, call
+
+import Queue
+import ast
+import errno
+import itertools
 import logging
 import os
-import time
-import errno
-import ast
-import itertools
-
-from magi.util import config
-from magi.testbed import testbed
-from magi.util import helpers
-
+import pickle
 import pymongo
-from pymongo import MongoClient
+import random
+import time
+import yaml
 
 log = logging.getLogger(__name__)
 
-def startDBServer(configfile=None, timeout=120):
+DB_NAME = 'magi'
+COLLECTION_NAME = 'experiment_data'
+TYPE_FIELD = 'type'
+
+# TODO: timeout should be dependent on machine type 
+TIMEOUT = 900
+
+dmconfig = config.loadConfig(config.DEFAULT_DBCONF);
+configNode = dmconfig.get('config_node')
+collectorMapping = dmconfig.get('collector_mapping')
+
+nodeconfig = config.getConfig()
+dbhost = nodeconfig.get('dbhost')
+isDBHost = nodeconfig.get('is_dbhost')
+isDBConfigServer = nodeconfig.get('is_db_config_server')
+
+if 'connectionMap' not in locals():
+    connectionMap = dict()
+if 'collectionMap' not in locals():
+    collectionMap = dict()
+if 'collectionHosts' not in locals():
+    collectionHosts = dict()
+    collectionHosts['log'] = dbhost
+    
+def startConfigServer(timeout=TIMEOUT):
+    """
+        Function to start a database config server on the node
+    """
+    start = time.time()
+    stop = start + timeout
+    
+    try:
+        log.info("Checking if an instance of mongo config server is already running")
+        if isDBRunning(port=27019):
+            return
+
+        try:
+            os.makedirs('/data/configdb')  # Make sure mongodb config data directory is around
+        except OSError, e:
+            if e.errno != errno.EEXIST:
+                log.error("failed to create mondodb config data dir: %s", e, exc_info=1)
+                raise
+
+        log.info("Trying to start mongo config server")
+        mongod = ['/usr/local/bin/mongod', '--configsvr', '--dbpath', '/data/configdb', '--port', '27019']
+        log.info("Running %s", mongod)
+        
+        while time.time() < stop:
+            p = Popen(mongod)
+            time.sleep(1)
+            if p.poll() is None:
+                log.info("Started mongod config server with pid %s", p.pid)
+                return p.pid
+            log.debug("Failed to start mongod config server. Will retry.")
+            
+        log.error("Done trying enough times. Cannot start mongod config server")
+        raise pymongo.errors.PyMongoError("Done trying enough times. Cannot start mongod config server")
+    
+    except Exception, e:
+        log.error("Exception while setting up mongo db config server: %s", e)
+        raise
+
+def setBalancerState(state):
+    """
+        Function to turn on/off data balancer
+    """
+    connection = getConnection(configNode, 27019)
+    connection.config.settings.update({ "_id": "balancer" }, { "$set" : { "stopped": not state } } , True )
+    
+def startShardServer(configNode=configNode, timeout=TIMEOUT):
+    """
+        Function to start a database config server on the node
+    """
+    start = time.time()
+    stop = start + timeout
+    
+    try:
+        log.info("Checking if an instance of mongos server is already running")
+        if isDBRunning(port=27017):
+            return
+
+        log.info("Trying to connect to mongo config server")
+        getConnection(configNode, port=27019, timeout=timeout)
+        
+        log.info("Trying to start mongo shard server")
+        mongos = ['/usr/local/bin/mongos', '--configdb', configNode + ":27019", '--port', '27017', '--noAutoSplit', '--logpath', '/tmp/mongos.log']
+        log.info("Running %s", mongos)
+        
+        while time.time() < stop:
+            p = Popen(mongos)
+            time.sleep(1)
+            if p.poll() is None:
+                log.info("Started mongo shard server with pid %s", p.pid)
+                return p.pid
+            log.debug("Failed to start shard config server. Will retry.")
+            
+        log.error("Done trying enough times. Cannot start mongo shard server")
+        raise pymongo.errors.PyMongoError("Done trying enough times. Cannot start mongo shard server")
+    
+    except Exception, e:
+        log.error("Exception while setting up mongo db shard server: %s", e)
+        raise
+
+def startDBServer(configfile=None, timeout=TIMEOUT):
     """
         Function to start a database server on the node
     """
@@ -26,7 +135,7 @@ def startDBServer(configfile=None, timeout=120):
     
     try:
         log.info("Checking if an instance of mongod server is already running")
-        if isDBRunning():
+        if isDBRunning(port=27018):
             return
 
         if configfile is None:
@@ -49,7 +158,7 @@ def startDBServer(configfile=None, timeout=120):
                 raise
 
         log.info("Trying to start mongo database server")
-        mongod = ['/usr/local/bin/mongod', '--config', configfile, '--journal']
+        mongod = ['/usr/local/bin/mongod', '--config', configfile, '--shardsvr', '--journal', '--smallfiles']
         log.info("Running %s", mongod)
         
         while time.time() < stop:
@@ -58,7 +167,7 @@ def startDBServer(configfile=None, timeout=120):
             if p.poll() is None:
                 log.info("Started mongod with pid %s", p.pid)
                 return p.pid
-            log.error("Failed to start mongod server. Will retry.")
+            log.debug("Failed to start mongod server. Will retry.")
             
         log.error("Done trying enough times. Cannot start database server")
         raise pymongo.errors.PyMongoError("Done trying enough times. Cannot start database server")
@@ -84,53 +193,230 @@ def createMongoDConfig():
         raise
     return configfile
 
-def getConnection(dbhost=None, block=True, timeout=300):
+def registerShard(mongod=testbed.nodename, mongos=testbed.getServer(), timeout=TIMEOUT):
+    """
+        Function to register a database server as a shard in the database cluster
+    """
+    functionName = registerShard.__name__
+    entrylog(functionName, locals())
+    
+    start = time.time()
+    stop = start + timeout
+    log.info("Trying to register %s as a shard on %s" %(mongod, mongos))
+    connection = getConnection(mongos, port=27017, timeout=timeout) #check if mongos is up and connect to it
+    getConnection(mongod, port=27018, timeout=timeout) #check if mongod is up
+    while time.time() < stop:
+        if call("""/usr/local/bin/mongo --host %s --eval "sh.addShard('%s:27018')" """ %(mongos, mongod), shell=True):
+            log.debug("Failed to add shard. Will retry.")
+            time.sleep(1)
+            continue
+        if connection.config.shards.find({"host": "%s:27018" % mongod}).count() == 0:
+            log.debug("Failed to add shard. Will retry.")
+            time.sleep(1)
+            continue
+        log.info("Registered %s as a shard on %s" %(mongod, mongos))
+        exitlog(functionName, locals())
+        return
+    
+    log.error("Done trying enough times. Cannot add the required shard")
+    exitlog(functionName, locals())
+    raise pymongo.errors.PyMongoError("Done trying enough times. Cannot add the required shard")
+
+def isShardRegistered(dbhost=testbed.nodename, configHost=configNode, block=False):
+    """
+        Check if given mongo db host is registered as a shard
+    """
+    functionName = isShardRegistered.__name__
+    entrylog(functionName, locals())
+    
+    connection = getConnection(configHost, port=27017)
+    log.info("Checking if database server is registered as a shard")
+    while True:
+        try:
+            if connection.config.shards.find({"host": "%s:27018" % dbhost}).count() != 0:
+                exitlog(functionName, locals())
+                return True
+        except:
+            pass
+        if not block:
+            exitlog(functionName, locals())
+            return False
+        time.sleep(1)
+    
+def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
+    """
+        Shard, split and move a given collection to the corresponding collector
+    """
+    functionName = moveChunk.__name__
+    entrylog(functionName, locals())
+    
+    if collector == None:
+        collector = host
+    
+    adminConnection = getConnection(testbed.getServer(), port=27017)
+    
+    log.info("Trying to move chunk %s:%s to %s" %(host, collectionname, collector))
+    
+    while True:
+        try:
+            log.info("Enabling sharding %s.%s" %(DB_NAME, collectionname))
+            adminConnection.admin.command('enablesharding', '%s.%s' %(DB_NAME, collectionname))
+            log.info("Sharding enabled successfully.")
+            break
+        except pymongo.errors.OperationFailure, e:
+            log.error(str(e)) #sharding might already be enabled
+            if "already enabled" in str(e):
+                break
+            time.sleep(0.2)
+        
+    while True:
+        try:
+            log.info("Sharding Collection %s.%s" %(DB_NAME, collectionname))
+            adminConnection.admin.command('shardcollection', '%s.%s' %(DB_NAME, collectionname), key={"host": 1})
+            log.info("Collection sharded successfully.")
+            break
+        except pymongo.errors.OperationFailure, e:
+            log.error(str(e)) #might already be sharded
+            if "already sharded" in str(e):
+                break
+            time.sleep(0.2)
+    
+    while True:
+        try:
+            log.info("Splitting Collection %s.%s on host:%s" %(DB_NAME, collectionname, host))
+            adminConnection.admin.command("split", '%s.%s' %(DB_NAME, collectionname), middle={"host": host})
+            log.info("Collection split successfully.")
+            break
+        except pymongo.errors.OperationFailure, e:
+            log.error(str(e)) #might already be sharded
+            if "cannot split on initial or final" in str(e):
+                break
+            time.sleep(0.2)
+            
+    while True:
+        try:
+            log.info("Moving chunk %s.%s {'host': %s} to %s" %(DB_NAME, collectionname, host, collector))
+            adminConnection.admin.command('moveChunk', '%s.%s' %(DB_NAME, collectionname), find={"host": host}, to='%s:%d' %(collector, 27018))
+            log.info("Collection moved successfully.")
+            break
+        except pymongo.errors.OperationFailure, e:
+            log.error(str(e)) #might already be sharded
+            if "that chunk is already on that shard" in str(e):
+                break
+            time.sleep(0.2)
+            
+    exitlog(functionName, locals())
+
+def configureDBCluster():
+    """
+        Function to configure the mongo db setup for an experiment.
+        This is an internal function called by the bootstrap process.
+    """
+    functionName = configureDBCluster.__name__
+    entrylog(functionName, locals())
+    
+    log.info("Registering collector database servers as shards")
+    cnodes = set(collectorMapping.values())
+    for collector in cnodes:
+        registerShard(collector)
+        
+    log.info("Configuring database cluster acccording to the sensor:collector mapping")
+    snodes = set(collectorMapping.keys())
+    if helpers.ALL in collectorMapping:
+        allnodes = set(testbed.getTopoGraph().nodes())
+        snodes.remove(helpers.ALL)
+        rnodes = allnodes - snodes
+    else:
+        rnodes = set()
+        
+    for sensor in snodes:
+        moveChunk(sensor, collectorMapping[sensor])
+        
+    for sensor in rnodes:
+        moveChunk(sensor, collectorMapping[helpers.ALL])
+    
+    log.info('Creating index on field: %s' %(TYPE_FIELD))
+    getConnection(dbhost='localhost', port=27017)[DB_NAME][COLLECTION_NAME].ensure_index([(TYPE_FIELD, pymongo.ASCENDING)])
+    
+    exitlog(functionName, locals())
+        
+def checkIfAllCollectorsRegistered():
+    """
+        Check if all the collector database servers are registered as shards
+    """
+    cnodes = set(collectorMapping.values())
+    for collector in cnodes:
+        while True:
+            log.info("Waiting for %s to be added as a shard" %(collector))
+            if isShardRegistered(collector):
+                break
+            time.sleep(1)
+        
+def getConnection(dbhost=None, port=27018, block=True, timeout=TIMEOUT):
     """
         Function to get connection to a database server
     """
-    global connectionMap
+    functionName = getConnection.__name__
+    entrylog(functionName, locals())
     
-    start = time.time()
-    stop = start + timeout 
+    global connectionMap
     
     if dbhost == None:
         dbhost = getDBHost()
         
-    log.info("Trying to connect to database server at %s", dbhost)
+    if (dbhost, port) not in connectionMap:
+        log.info("Trying to connect to mongodb server at %s:%d" %(dbhost, port))
+        start = time.time()
+        stop = start + timeout 
+        while time.time() < stop:
+            try:
+                if dbhost == testbed.nodename: #In case of a single node experiment /etc/hosts does not get populated
+                    connection = MongoClient('localhost', port)
+                else:
+                    connection = MongoClient(dbhost, port)
+                connectionMap[(dbhost, port)] = connection
+                log.info("Connected to mongodb server at %s:%d" %(dbhost, port))
+                exitlog(functionName, locals())
+                return connection
+            except Exception:
+                if not block:
+                    log.error("Could not connect to mongodb server on %s:%d" %(dbhost, port))
+                    raise
+                log.debug("Could not connect to mongodb server. Will retry.")
+                time.sleep(1)
+                
+        log.error("Done trying enough times. Cannot connect to mongodb server on %s", dbhost)
+        raise pymongo.errors.ConnectionFailure("Done trying enough times. Cannot connect to mongodb server on %s" %dbhost)
     
-    while time.time() < stop:
-        try:
-            if dbhost not in connectionMap:
-                connection = MongoClient(dbhost, 27017)
-                connectionMap[dbhost] = connection
-            log.info("Connected to database server")
-            return connectionMap[dbhost]
-        except Exception:
-            if not block:
-                log.error("Could not connect to database server on %s", dbhost)
-                raise
-            log.debug("Could not connect to database server. Will retry.")
-            time.sleep(1)
+    exitlog(functionName, locals())
+    return connectionMap[(dbhost, port)]
             
-    log.error("Done trying enough times. Cannot connect to database server on %s", dbhost)
-    raise pymongo.errors.ConnectionFailure("Done trying enough times. Cannot connect to database server on %s" %dbhost)
-
-def getCollection(collectionname, dbhost=None):
+def getCollection(collection, dbhost=None):
     """
         Function to get a pointer to a given collection
     """
+    functionName = getCollection.__name__
+    entrylog(functionName, locals())
+    
+    global collectionMap
     global collectionHosts
+    
     if dbhost == None:
         dbhost = getDBHost()
-    try:
-        if collectionHosts[collectionname] != dbhost:
-            log.error("Multiple db hosts for same collection")
-            raise Exception("Multiple db hosts for same collection")
-    except KeyError:
-        collectionHosts[collectionname] = dbhost
-    return Collection(collectionname, dbhost)
+        
+    if (collection, dbhost) not in collectionMap:
+        try:
+            if collectionHosts[collection] != dbhost:
+                log.error("Multiple db hosts for same collection")
+                raise Exception("Multiple db hosts for same collection")
+        except KeyError:
+            collectionHosts[collection] = dbhost
+        collectionMap[(collection, dbhost)] = Collection(collection, dbhost)
+    
+    exitlog(functionName, locals())
+    return collectionMap[(collection, dbhost)]
 
-def getData(collectionname, filters=None, timestampRange=None, connection=None):
+def getData(collection, filters=None, timestampRange=None, connection=None):
     """
         Function to retrieve data from the local database, based on a given query
     """
@@ -151,8 +437,9 @@ def getData(collectionname, filters=None, timestampRange=None, connection=None):
     if timestampRange:
         ts_start, ts_end = timestampRange
         filters_copy['created'] = {'$gte': ts_start, '$lte': ts_end}
-        
-    cursor = connection[dbname][collectionname].find(filters_copy)
+    
+    filters_copy[TYPE_FIELD] = collection
+    cursor = connection[DB_NAME][COLLECTION_NAME].find(filters_copy)
     
     result = []
     
@@ -168,25 +455,17 @@ def getData(collectionname, filters=None, timestampRange=None, connection=None):
 def getDBHost():
     return dbhost
 
-def isDBRunning():
+def isDBRunning(host='localhost', port=None):
+    """
+        Check if a database server is running on a given host and port
+    """
     try:        
-        getConnection('localhost', False)
-        log.info("An instance of database server is already running")
+        getConnection(dbhost=host, port=port, block=False)
+        log.info("An instance of mongodb server is already running on %s:%d" %(host, port))
         return True
     except pymongo.errors.ConnectionFailure:
-        log.info("No instance of database server is already running")
+        log.info("No instance of mongodb server is already running on %s:%d" %(host, port))
         return False
-
-dbname = 'magi'
-configData = config.getConfig()
-dbhost = configData.get('dbhost')
-isDBHost = configData.get('isDBHost')
-
-if 'connectionMap' not in locals():
-    connectionMap = dict()
-if 'collectionHosts' not in locals():
-    collectionHosts = dict()
-    collectionHosts['log'] = getDBHost()
 
 def entrylog(functionName, arguments=None):
     if arguments == None:
@@ -203,19 +482,35 @@ def exitlog(functionName, returnValue=None):
 class Collection():
     """Library to use for data collection"""
 
-    def __init__(self, collectionname, dbhost=None):
+    def __init__(self, collectiontype, dbhost=None):
         if dbhost == None:
             dbhost = getDBHost()
-        connection = getConnection(dbhost)
-        self.collection = connection[dbname][collectionname]
+        connection = getConnection(dbhost, port=27018)
+        self.collection = connection[DB_NAME][COLLECTION_NAME]
+        self.type = collectiontype
 
     def insert(self, **kwargs):
+        """
+            Function to insert data. Adds the default fields before insertion.
+        """
         kwargs['host'] = testbed.nodename
         kwargs['created'] = time.time()
+        kwargs[TYPE_FIELD] = self.type
         self.collection.insert(kwargs)
         
-    def remove(self):
-        self.collection.remove()
+    def remove(self, **kwargs):
+        """
+            Function to remove data from the connection database server.
+            Only data corresponding to the class instance's host and type will be removed.
+        """
+        kwargs['host'] = testbed.nodename
+        kwargs[TYPE_FIELD] = self.type
+        self.collection.remove(kwargs)
+        
+#    def removeAll(self):
+#        kwargs = dict()
+#        kwargs[TYPE_FIELD] = self.type
+#        self.collection.remove(kwargs)
 
 
 ## Functions to activate caching of data
@@ -233,7 +528,7 @@ class Collection():
 #    if connection == None:
 #        connection = getConnection('localhost')
 #                
-#    collection = connection[dbname][collectionname]
+#    collection = connection[DB_NAME][collectionname]
 #        
 #    for record in data:
 #        try:
@@ -266,7 +561,7 @@ class Collection():
 #    if connection == None:
 #        connection = getConnection('localhost')
 #                
-#    itr = connection['cache']['metadata'].find({'db': dbname, 'collection': collectionname})        
+#    itr = connection['cache']['metadata'].find({'db': DB_NAME, 'collection': collectionname})        
 #    while True:
 #        try:
 #            record = itr.next()
@@ -286,11 +581,11 @@ class Collection():
 #        except StopIteration:
 #            break
 #
-#    itr = connection['cache']['metadata'].find({'db': dbname, 'collection': collectionname, 'filters': str(filters)})
+#    itr = connection['cache']['metadata'].find({'db': DB_NAME, 'collection': collectionname, 'filters': str(filters)})
 #    try:
 #        record = itr.next()
 #    except StopIteration:
-#        record = {"db": dbname, "collection": collectionname, 'filters': str(filters), 'ts_chunks': timestampChunks}
+#        record = {"db": DB_NAME, "collection": collectionname, 'filters': str(filters), 'ts_chunks': timestampChunks}
 #        log.debug("cache.metadata insertion: " + str(record))
 #        connection['cache']['metadata'].insert(record)
 #                
@@ -353,7 +648,7 @@ class Collection():
 #    if connection == None:
 #        connection = getConnection('localhost')
 #    
-#    itr = connection['cache']['metadata'].find({'db': dbname, 'collection': collectionname})
+#    itr = connection['cache']['metadata'].find({'db': DB_NAME, 'collection': collectionname})
 #    
 #    while True:
 #        try:

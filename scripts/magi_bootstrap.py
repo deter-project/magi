@@ -182,194 +182,213 @@ if __name__ == '__main__':
         if (sys.version_info[0] == 2) and (sys.version_info[1] < 5):
                 sys.exit("Only works with python 2.5 or greater")
 
-        if (not options.noupdate) and (not options.noinstall):  # double negative
-                if isInstalled('yum'):
-                        call("yum update")
-                elif isInstalled('apt-get'):
-                        call("apt-get -y update")
-                else:
-                        msg = 'I do not know how to update this system. Platform not supported. Run with --noupdate or on a supported platform (yum or apt-get enabled).'
-                        log.critical(msg)
-                        sys.exit(msg)  # write msg and exit with status 1
-                                
-        verifyPythonDevel()
-
-        if not options.noinstall:                 
-                try:
-                        installC('yaml', '/usr/local/lib/libyaml.so')
-                        import yaml 
-                except:
-                        log.info("unable to install libyaml, will using pure python version: %s", sys.exc_info()[1])
-
-                try:
-                        installPython('PyYAML', 'yaml', 'install')
-                except PBuildException:
-                        installPython('PyYAML', 'yaml', '--without-libyaml install')  # try without libyaml if build error
-        
-                installPython('unittest2', 'unittest2', 'install')
-                installPython('networkx', 'networkx', 'install')
-                #installPython('SQLAlchemy', 'sqlalchemy', 'install')
-                magidist = 'MAGI-1.5.0'
-                installPython(magidist, 'alwaysinstall', 'install')
-                
-                if not options.nodataman:
-                        installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
-                        installPython('pymongo', 'pymongo', 'install')
-                
-                #updating sys.path with the installed packages
-                import site
-                site.main()
-
-        # Now that MAGI is installed on the local node, import utilities 
-        from magi import __version__
-        from magi.util import config
-
         try:
-                os.makedirs('/var/log/magi')  # Make sure log directory is around
-        except OSError, e:
-                if e.errno != errno.EEXIST:
-                        log.error("Failed to create logging dir: %s", e, exc_info=1)
-
-        if not options.magiconf:
-                log.info("Magi conf not specified on the command line....")
-                log.info("Testing to see if one is present....")
-                # create a configuration file for magi on the local node only if one is not explicility 
-                # specified 
-                configFlag = False 
-                try: 
-                        # Create a magi conf file if it is not present or needs to be recreated 
-                        if config.verifyConfig(config.DEFAULT_MAGICONF) == True :
-                                log.info("Found a magi conf at %s....", config.DEFAULT_MAGICONF) 
-                                if options.force == True:
-                                        log.info("Creating a new magi conf due to -f....")  
-                                        configFlag  = True 
-                                else:
-                                        log.info("Using the magi conf at %s....", config.DEFAULT_MAGICONF)
-                        
-                        else: 
-                                # There is not default magi conf or it is not the correct lenght        
-                                configFlag = True 
-                        
-                        if configFlag== True: 
-                                log.info("Creating a new magi conf....")
-                            
-                                # 5/14/2013 The messaging overlay is now explicitly defined in a mesdl configuration file
-                                # The mesdl configuration file format is documented in magi/util/config.py
-                                # In the absense of a mesdl file, the bootstrap process defines a simple messaging overlay
-                                # that starts two servers; one externally facing for the experimenter to connect to the experiment
-                                # and one internally facing to forward magi messages to all the experiment nodes. 
-                                # It then creates a mesdl file and stores it at DEFAULT_EXPMESDL location 
-                                # The node that hosts both the servers is choosen as follows:
-                                #    - it checks to see if a node named "control" is present in the experiment 
-                                #      If present, it is choosen 
-                                #   -  else, the first node in an alphanuremically sorted  
-                                #      list of all node names is used  
-                                #
-                                log.info("Checking to see if a MeSDL file is specified....")
-                                if not options.mesdl:
-                                        log.info("No Mesdl file specified....")      
-                                        options.mesdl = config.createMESDL()
-                                        log.info("Created a mesdl file at location %s....",options.mesdl) 
-                                else:
-                                        log.info("Using MeSDL file at location %s....", options.mesdl)
-
-                                log.info("Checking to see if a db config file is specified....")
-                                
-                                if not options.nodataman:
-                                        if not options.dbconf:
-                                                log.info("No db config file specified....")
-                                                options.dbconf = config.createDBConf()
-                                                log.info("Created a db config file at location %s....",options.dbconf)
-                                        else:
-                                                log.info("Validating data config file at location %s....", options.dbconf)
-                                                options.dbconf = config.validateDBConf(options.dbconf)
-                
-                                # The mesdl file was specified at the command line 
-                                # use it to create a new local node specific magi conf  
-                                config.createConfig(mesdl=options.mesdl, dbconf=options.dbconf, rootdir=rpath, enable_dataman=not options.nodataman) 
-                                log.info("Created a magi conf at %s....", config.DEFAULT_MAGICONF) 
-                except Exception, e:
-                        log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
-
-
-        if not options.nodataman:
-                from magi.util import database
-                if database.isDBHost:
-                        if not options.noinstall:
-                                #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
-                                #Copying prebuilt binaries for mongodb
-                                if is_os_64bit():
-                                        call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-x86_64-2.4.1.tgz")
-                                        call("sudo rsync /tmp/mongodb-linux-x86_64-2.4.1/bin/* /usr/local/bin/")
-                                else:
-                                        call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-i686-2.4.1.tgz")
-                                        call("sudo rsync /tmp/mongodb-linux-i686-2.4.1/bin/* /usr/local/bin/")
-                        database.startDBServer()
-                else:
-                        log.info("Database server is not required on this node")
-                
-                
-        # Get the pid for the daemon process from the pid file 
-        # Note that if the daemon was started externally, without bootstrap, the pid file would not have 
-        # the correct pid 
-        # Note the magi_daemon.py does record the pid correctly in /var/log/mgi/magi.pid 
-        # TODO: walk the /proc directory, check the /proc/pid/status. get the name and kill process if name is magi_daemon.py 
-       
-        # currenty, check if the magi.pid file exsist, if exists, try to kill  
-        # Note the file is created by the magi_daemon.py script  
-        log.info("Testing to see if daemon is running....(pid at  %s)", config.DEFAULT_MAGIPID)
-        if os.path.exists(config.DEFAULT_MAGIPID) and os.path.getsize(config.DEFAULT_MAGIPID) > 0:
-                fpid = open (config.DEFAULT_MAGIPID, 'r')
-                pid = int(fpid.read())
-                
-                log.info("Daemon is running with pid %d", pid)
-                log.info("Trying to stop daemon gracefully. Sending SIGTERM.")
-                try:
-                        os.kill(pid, signal.SIGTERM)
-                except OSError, e:
-                        if e.args[0] == errno.ESRCH:
-                                log.info("No process %d found", pid)
-                        else:
-                                log.info("Cannot kill process %d", pid) 
-                
-                terminated = False
-                
-                #wait for daemon to terminate
-                for i in range(10):
-                    if is_running(pid):
-                        time.sleep(0.1)
+            
+            if (not options.noupdate) and (not options.noinstall):  # double negative
+                    if isInstalled('yum'):
+                            call("yum update")
+                    elif isInstalled('apt-get'):
+                            call("apt-get -y update")
                     else:
-                        log.info("Process %d killed successfully", pid)
-                        terminated = True 
-                        break
-                
-                if not terminated:
-                    log.info("Could not stop daemon gracefully. Sending SIGKILL.")
+                            msg = 'I do not know how to update this system. Platform not supported. Run with --noupdate or on a supported platform (yum or apt-get enabled).'
+                            log.critical(msg)
+                            sys.exit(msg)  # write msg and exit with status 1
+                                    
+            verifyPythonDevel()
+    
+            if not options.noinstall:                 
                     try:
-                            os.kill(pid, signal.SIGKILL)
+                            installC('yaml', '/usr/local/lib/libyaml.so')
+                            import yaml 
+                    except:
+                            log.info("unable to install libyaml, will using pure python version: %s", sys.exc_info()[1])
+    
+                    try:
+                            installPython('PyYAML', 'yaml', 'install')
+                    except PBuildException:
+                            installPython('PyYAML', 'yaml', '--without-libyaml install')  # try without libyaml if build error
+            
+                    installPython('unittest2', 'unittest2', 'install')
+                    installPython('networkx', 'networkx', 'install')
+                    #installPython('SQLAlchemy', 'sqlalchemy', 'install')
+                    magidist = 'MAGI-1.5.0'
+                    installPython(magidist, 'alwaysinstall', 'install')
+                    
+                    if not options.nodataman:
+                            installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
+                            installPython('pymongo', 'pymongo', 'install')
+                    
+                    #updating sys.path with the installed packages
+                    import site
+                    site.main()
+    
+            # Now that MAGI is installed on the local node, import utilities 
+            from magi import __version__
+            from magi.util import config
+    
+            try:
+                    os.makedirs('/var/log/magi')  # Make sure log directory is around
+            except OSError, e:
+                    if e.errno != errno.EEXIST:
+                            log.error("Failed to create logging dir: %s", e, exc_info=1)
+    
+            if not options.magiconf:
+                    log.info("Magi conf not specified on the command line....")
+                    log.info("Testing to see if one is present....")
+                    # create a configuration file for magi on the local node only if one is not explicility 
+                    # specified 
+                    configFlag = False 
+                    try: 
+                            # Create a magi conf file if it is not present or needs to be recreated 
+                            if config.verifyConfig(config.DEFAULT_MAGICONF) == True :
+                                    log.info("Found a magi conf at %s....", config.DEFAULT_MAGICONF) 
+                                    if options.force == True:
+                                            log.info("Creating a new magi conf due to -f....")  
+                                            configFlag  = True 
+                                    else:
+                                            log.info("Using the magi conf at %s....", config.DEFAULT_MAGICONF)
+                            
+                            else: 
+                                    # There is not default magi conf or it is not the correct lenght        
+                                    configFlag = True 
+                            
+                            if configFlag== True: 
+                                    log.info("Creating a new magi conf....")
+                                
+                                    # 5/14/2013 The messaging overlay is now explicitly defined in a mesdl configuration file
+                                    # The mesdl configuration file format is documented in magi/util/config.py
+                                    # In the absense of a mesdl file, the bootstrap process defines a simple messaging overlay
+                                    # that starts two servers; one externally facing for the experimenter to connect to the experiment
+                                    # and one internally facing to forward magi messages to all the experiment nodes. 
+                                    # It then creates a mesdl file and stores it at DEFAULT_EXPMESDL location 
+                                    # The node that hosts both the servers is choosen as follows:
+                                    #    - it checks to see if a node named "control" is present in the experiment 
+                                    #      If present, it is choosen 
+                                    #   -  else, the first node in an alphanuremically sorted  
+                                    #      list of all node names is used  
+                                    #
+                                    log.info("Checking to see if a MeSDL file is specified....")
+                                    if not options.mesdl:
+                                            log.info("No Mesdl file specified....")      
+                                            options.mesdl = config.createMESDL()
+                                            log.info("Created a mesdl file at location %s....",options.mesdl) 
+                                    else:
+                                            log.info("Using MeSDL file at location %s....", options.mesdl)
+    
+                                    log.info("Checking to see if a db config file is specified....")
+                                    
+                                    if not options.nodataman:
+                                            if not options.dbconf:
+                                                    log.info("No db config file specified....")
+                                                    options.dbconf = config.createDBConf()
+                                                    log.info("Created a db config file at location %s....",options.dbconf)
+                                            else:
+                                                    log.info("Validating data config file at location %s....", options.dbconf)
+                                                    options.dbconf = config.validateDBConf(options.dbconf)
+                    
+                                    # The mesdl file was specified at the command line 
+                                    # use it to create a new local node specific magi conf  
+                                    config.createConfig(mesdl=options.mesdl, dbconf=options.dbconf, rootdir=rpath, enable_dataman=not options.nodataman) 
+                                    log.info("Created a magi conf at %s....", config.DEFAULT_MAGICONF) 
+                    except Exception, e:
+                            log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
+    
+    
+            if not options.nodataman:
+                    from magi.util import database
+                    if database.isDBHost or database.isDBConfigServer:
+                            if not options.noinstall:
+                                    #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
+                                    #Copying prebuilt binaries for mongodb
+                                    if is_os_64bit():
+                                            call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-x86_64-2.6.2.tgz")
+                                            call("sudo rsync /tmp/mongodb-linux-x86_64-2.6.2/bin/* /usr/local/bin/")
+                                    else:
+                                            call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-i686-2.6.2.tgz")
+                                            call("sudo rsync /tmp/mongodb-linux-i686-2.6.2/bin/* /usr/local/bin/")
+                    else:
+                            log.info("Database server is not required on this node")
+                            
+                    if database.isDBConfigServer:
+                        database.startConfigServer()
+                        database.startShardServer()
+                        database.startDBServer()
+                        database.setBalancerState(False)
+                        log.info("Configuring database cluster")
+                        database.configureDBCluster()
+                        
+                    elif database.isDBHost:
+                        database.startDBServer()
+                    
+                    log.info("Waiting for local database to be added as a shard")
+                    database.isShardRegistered(block=True)
+                    log.info("Local database has been added as a shard")
+                    
+                    
+            # Get the pid for the daemon process from the pid file 
+            # Note that if the daemon was started externally, without bootstrap, the pid file would not have 
+            # the correct pid 
+            # Note the magi_daemon.py does record the pid correctly in /var/log/mgi/magi.pid 
+            # TODO: walk the /proc directory, check the /proc/pid/status. get the name and kill process if name is magi_daemon.py 
+           
+            # currenty, check if the magi.pid file exsist, if exists, try to kill  
+            # Note the file is created by the magi_daemon.py script  
+            log.info("Testing to see if daemon is running....(pid at  %s)", config.DEFAULT_MAGIPID)
+            if os.path.exists(config.DEFAULT_MAGIPID) and os.path.getsize(config.DEFAULT_MAGIPID) > 0:
+                    fpid = open (config.DEFAULT_MAGIPID, 'r')
+                    pid = int(fpid.read())
+                    
+                    log.info("Daemon is running with pid %d", pid)
+                    log.info("Trying to stop daemon gracefully. Sending SIGTERM.")
+                    try:
+                            os.kill(pid, signal.SIGTERM)
                     except OSError, e:
                             if e.args[0] == errno.ESRCH:
                                     log.info("No process %d found", pid)
                             else:
                                     log.info("Cannot kill process %d", pid) 
-                
-        else:
-                log.info("No %s file found....", config.DEFAULT_MAGIPID)
-
-        log.info("Starting daemon")
-        daemon = ['/usr/local/bin/magi_daemon.py']
-
-        if options.nodataman:
-                log.info("Starting daemon without data manager")
-                daemon += ['-D']
-                
-        if options.verbose:
-                log.info("Starting daemon with debugging")
-                daemon += ['-l', 'DEBUG']
-                
-        # Record the process id in a file for later reference 
-        pid=Popen( daemon ).pid
- 
-        log.info("MAGI Version: %s", __version__) 
-        log.info("Started daemon with pid %s", pid)
-
+                    
+                    terminated = False
+                    
+                    #wait for daemon to terminate
+                    for i in range(10):
+                        if is_running(pid):
+                            time.sleep(0.1)
+                        else:
+                            log.info("Process %d killed successfully", pid)
+                            terminated = True 
+                            break
+                    
+                    if not terminated:
+                        log.info("Could not stop daemon gracefully. Sending SIGKILL.")
+                        try:
+                                os.kill(pid, signal.SIGKILL)
+                        except OSError, e:
+                                if e.args[0] == errno.ESRCH:
+                                        log.info("No process %d found", pid)
+                                else:
+                                        log.info("Cannot kill process %d", pid) 
+                    
+            else:
+                    log.info("No %s file found....", config.DEFAULT_MAGIPID)
+    
+            log.info("Starting daemon")
+            daemon = ['/usr/local/bin/magi_daemon.py']
+    
+            if options.nodataman:
+                    log.info("Starting daemon without data manager")
+                    daemon += ['-D']
+                    
+            if options.verbose:
+                    log.info("Starting daemon with debugging")
+                    daemon += ['-l', 'DEBUG']
+                    
+            # Record the process id in a file for later reference 
+            pid=Popen( daemon ).pid
+     
+            log.info("MAGI Version: %s", __version__) 
+            log.info("Started daemon with pid %s", pid)
+        
+        except Exception, e:
+            log.error("Exception while bootstraping", e)
+            sys.exit(e)
