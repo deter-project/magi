@@ -170,33 +170,6 @@ class ContainerExperiment(Testbed):
             log.error("Can't load interface list: %s", e)
 
 
-    def getTextPipes(self):
-        """ Find all of my thread children and their pipes """
-        file_list = deque(['hv:hv:%s' % self.nodename])
-        children = []
-
-        # we must do this recursively since hv's host other hv's
-        while len(file_list):
-            filename = file_list.popleft()
-            try:
-                fp = open(self._confdir+'children/%s' % filename)
-                for line in fp:
-                    fullname = line.strip()
-                    parts = fullname.split(':')
-
-                    # nodes are children
-                    if parts[0] == 'node':
-                        children.append(parts[1])
-
-                    # hv's have children of their own and must be recursed into
-                    else:
-                        file_list.append(fullname)
-                fp.close()
-            except Exception:
-                pass
-
-        return children
-    
     def getTopoXml(self): return self.readAllLines(open(self._confdir+'topo.xml'))
     def getPhysTopoXml(self): return self.readAllLines(open(self._confdir+'phys_topo.xml'))
     

@@ -270,16 +270,6 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     
     keydir = None
 
-#    # Information about the local node for reference 
-#    config['localinfo'] = list()
-#    config['localinfo'].append({ 'nodename': testbed.nodename })
-#    config['localinfo'].append({ 'hostname': platform.uname()[1] })
-#    config['localinfo'].append({ 'distribution': str(platform.dist()[0]+" "+platform.dist()[1]+" ("+platform.dist()[2]+")") }) 
-#    config['localinfo'].append({ 'controlip': testbed.controlip , 'controlif': testbed.controlif })
-#    # Would it be possible to write the link name the interface is associated with? 
-#    for ip in testbed.getLocalIPList():
-#        config['localinfo'].append({ 'expip': ip, 'expif': testbed.getInterfaceInfo(ip).name, 'expmac': testbed.getInterfaceInfo(ip).mac })
-
     # Information about the local node for reference 
     localinfo = dict()
     localinfo['nodename'] = testbed.nodename
@@ -367,18 +357,6 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
             
         elif t['type'] == 'MulticastTransport' and (nodename_control in t['members'] or '__ALL__' in t['members']):
             config['transports'].append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
-
-    if hasattr(testbed, 'getTextPipes'):
-        for name in testbed.getTextPipes():
-            filename = '/var/run/magipipes/%s.pipe'%name
-            config['transports'].append({
-                'type':'TestPipe',
-                'filename':filename,
-                'src':name,
-                'srcdock':'worm',
-                'dstgroups': ['data'],
-                'dstdocks': ['data', 'worm']
-            })
 
     config['tempdir'] = '/tmp'
     
