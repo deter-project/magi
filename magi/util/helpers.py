@@ -1,8 +1,9 @@
+from magi.testbed import testbed
+import ctypes
+import errno
 import logging
 import os
-import errno
 import platform
-import ctypes
 import yaml
 
 log = logging.getLogger(__name__)
@@ -73,6 +74,11 @@ def readPropertiesFile(filename):
     parser.readfp(io.BytesIO(properties))
     kv_pairs = parser.items('root')
     return dict(kv_pairs)
+
+def toControlPlaneNodeName(nodename):
+    if nodename not in ['localhost', '127.0.0.1'] and '.' not in nodename:
+        nodename += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
+    return nodename
 
 def entrylog(log, functionName, arguments=None):
     if arguments == None:

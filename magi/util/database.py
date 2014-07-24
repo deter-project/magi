@@ -30,14 +30,14 @@ TYPE_FIELD = 'type'
 # TODO: timeout should be dependent on machine type 
 TIMEOUT = 900
 
-dmconfig = config.loadConfig(config.DEFAULT_DBCONF);
-configNode = dmconfig.get('config_node')
-collectorMapping = dmconfig.get('collector_mapping')
+dbConf = config.loadConfig(config.DEFAULT_DBCONF);
+configNode = dbConf.get('configNode')
+collectorMapping = dbConf.get('collectorMapping')
 
-nodeconfig = config.getConfig()
-dbhost = nodeconfig.get('dbhost')
-isDBHost = nodeconfig.get('is_dbhost')
-isDBConfigServer = nodeconfig.get('is_db_config_server')
+nodeConf = config.getConfig()['dbinfo']
+collector = nodeConf.get('collector')
+isCollector = nodeConf.get('isCollector')
+isConfigHost = nodeConf.get('isConfigHost')
 
 if 'connectionMap' not in locals():
     connectionMap = dict()
@@ -45,7 +45,7 @@ if 'collectionMap' not in locals():
     collectionMap = dict()
 if 'collectionHosts' not in locals():
     collectionHosts = dict()
-    collectionHosts['log'] = dbhost
+    collectionHosts['log'] = collector
     
 def startConfigServer(timeout=TIMEOUT):
     """
@@ -200,6 +200,9 @@ def registerShard(mongod=testbed.nodename, mongos=testbed.getServer(), timeout=T
     functionName = registerShard.__name__
     entrylog(functionName, locals())
     
+    mongod = helpers.toControlPlaneNodeName(mongod)
+    mongos = helpers.toControlPlaneNodeName(mongos)
+        
     start = time.time()
     stop = start + timeout
     log.info("Trying to register %s as a shard on %s" %(mongod, mongos))
@@ -229,6 +232,9 @@ def isShardRegistered(dbhost=testbed.nodename, configHost=configNode, block=Fals
     functionName = isShardRegistered.__name__
     entrylog(functionName, locals())
     
+    dbhost = helpers.toControlPlaneNodeName(dbhost)
+    configHost = helpers.toControlPlaneNodeName(configHost)
+        
     connection = getConnection(configHost, port=27017)
     log.info("Checking if database server is registered as a shard")
     while True:
@@ -253,6 +259,8 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     if collector == None:
         collector = host
     
+    collector = helpers.toControlPlaneNodeName(collector)
+        
     adminConnection = getConnection(testbed.getServer(), port=27017)
     
     log.info("Trying to move chunk %s:%s to %s" %(host, collectionname, collector))
@@ -331,9 +339,11 @@ def configureDBCluster():
         
     for sensor in snodes:
         moveChunk(sensor, collectorMapping[sensor])
+        moveChunk(sensor, collectorMapping[sensor], 'log')
         
     for sensor in rnodes:
         moveChunk(sensor, collectorMapping[helpers.ALL])
+        moveChunk(sensor, collectorMapping[helpers.ALL], 'log')
     
     log.info('Creating index on field: %s' %(TYPE_FIELD))
     getConnection(dbhost='localhost', port=27017)[DB_NAME][COLLECTION_NAME].ensure_index([(TYPE_FIELD, pymongo.ASCENDING)])
@@ -362,8 +372,10 @@ def getConnection(dbhost=None, port=27018, block=True, timeout=TIMEOUT):
     global connectionMap
     
     if dbhost == None:
-        dbhost = getDBHost()
+        dbhost = getCollector()
         
+    dbhost = helpers.toControlPlaneNodeName(dbhost)
+    
     if (dbhost, port) not in connectionMap:
         log.info("Trying to connect to mongodb server at %s:%d" %(dbhost, port))
         start = time.time()
@@ -402,7 +414,7 @@ def getCollection(collection, dbhost=None):
     global collectionHosts
     
     if dbhost == None:
-        dbhost = getDBHost()
+        dbhost = getCollector()
         
     if (collection, dbhost) not in collectionMap:
         try:
@@ -423,11 +435,11 @@ def getData(collection, filters=None, timestampRange=None, connection=None):
     functionName = getData.__name__
     entrylog(functionName, locals())
         
-    if not isDBHost:
+    if not isCollector:
         return None
 
     if connection == None:
-        connection = getConnection('localhost')
+        connection = getConnection()
             
     if filters == None:
         filters_copy = dict()
@@ -452,8 +464,8 @@ def getData(collection, filters=None, timestampRange=None, connection=None):
     exitlog(functionName)
     return result
 
-def getDBHost():
-    return dbhost
+def getCollector():
+    return collector
 
 def isDBRunning(host='localhost', port=None):
     """
@@ -481,10 +493,12 @@ def exitlog(functionName, returnValue=None):
 
 class Collection():
     """Library to use for data collection"""
+    
+    INTERNAL_KEYS = ['host', 'created', TYPE_FIELD]
 
     def __init__(self, collectiontype, dbhost=None):
         if dbhost == None:
-            dbhost = getDBHost()
+            dbhost = getCollector()
         connection = getConnection(dbhost, port=27018)
         self.collection = connection[DB_NAME][COLLECTION_NAME]
         self.type = collectiontype
@@ -493,6 +507,8 @@ class Collection():
         """
             Function to insert data. Adds the default fields before insertion.
         """
+        if len(set(Collection.INTERNAL_KEYS) & set(kwargs.keys())) > 0:
+            raise RuntimeError("The following keys are restricted for internal use: %s" %(Collection.INTERNAL_KEYS))
         kwargs['host'] = testbed.nodename
         kwargs['created'] = time.time()
         kwargs[TYPE_FIELD] = self.type
@@ -511,293 +527,3 @@ class Collection():
 #        kwargs = dict()
 #        kwargs[TYPE_FIELD] = self.type
 #        self.collection.remove(kwargs)
-
-
-## Functions to activate caching of data
-
-#def updateDatabase(collectionname, filters=None, timestampChunks=None, data=[], connection=None):
-#    """
-#        Function to update the local database
-#    """
-#    functionName = updateDatabase.__name__
-#    entrylog(functionName, locals())
-#    
-#    if not isDBHost:
-#        return
-#        
-#    if connection == None:
-#        connection = getConnection('localhost')
-#                
-#    collection = connection[DB_NAME][collectionname]
-#        
-#    for record in data:
-#        try:
-#            collection.insert(record)
-#        except StopIteration:
-#            break
-#        except:
-#            continue
-#        
-#    updateMetadata(collectionname, filters, timestampChunks, connection)
-#    
-#    exitlog(functionName)
-
-#def updateMetadata(collectionname, filters=None, timestampChunks=None, connection=None):
-#    """
-#        Function to update metadata about the local database
-#    """
-#    functionName = updateMetadata.__name__
-#    entrylog(functionName, locals())
-#    
-#    if not timestampChunks:
-#        return
-#    
-#    if not isDBHost:
-#        return
-#        
-#    if filters == None:
-#        filters = dict()
-#        
-#    if connection == None:
-#        connection = getConnection('localhost')
-#                
-#    itr = connection['cache']['metadata'].find({'db': DB_NAME, 'collection': collectionname})        
-#    while True:
-#        try:
-#            record = itr.next()
-#            rec_filters = ast.literal_eval(record['filters'])
-#            
-#            #if filters == {k: rec_filters[k] for k in filters.keys() if k in rec_filters}:
-#            sub_rec_filters = dict()
-#            for k in filters.keys():
-#                if k in rec_filters:
-#                    sub_rec_filters[k] = rec_filters[k]
-#                    
-#            if filters == sub_rec_filters:
-#                ts_chunks = record['ts_chunks']
-#                ts_chunks = insertChunks(ts_chunks, timestampChunks)
-#                connection['cache']['metadata'].update({'_id': record['_id'] }, { '$set': { 'ts_chunks': ts_chunks } })                        
-#
-#        except StopIteration:
-#            break
-#
-#    itr = connection['cache']['metadata'].find({'db': DB_NAME, 'collection': collectionname, 'filters': str(filters)})
-#    try:
-#        record = itr.next()
-#    except StopIteration:
-#        record = {"db": DB_NAME, "collection": collectionname, 'filters': str(filters), 'ts_chunks': timestampChunks}
-#        log.debug("cache.metadata insertion: " + str(record))
-#        connection['cache']['metadata'].insert(record)
-#                
-#    exitlog(functionName)
-
-#def findTimeRangeNotAvailable(collectionname, filters=None, timestampRange=None, connection=None):
-#    functionName = findTimeRangeNotAvailable.__name__
-#    entrylog(functionName, locals())
-#    
-#    if timestampRange == None:
-#        timestampRange = (0, time.time())
-#        
-#    if not isDBHost:
-#        return [timestampRange]
-#
-#    availableTimeRange = getAvailableTimeRange(collectionname, filters, connection)
-#    missingTimeRange = findMissingTimeRange(availableTimeRange, timestampRange)
-#
-#    exitlog(functionName, missingTimeRange)
-#    return missingTimeRange
-#
-#
-#def getAvailableTimeRange(collectionname, filters=None, connection=None):
-#    functionName = getAvailableTimeRange.__name__
-#    entrylog(functionName, locals())
-#    
-#    if not isDBHost:
-#        return []
-#            
-#    if filters == None:
-#        filters = dict()
-#        
-#    result = []
-#            
-#    filterKeys = filters.keys()
-#    
-#    for subsetLength in range(len(filterKeys)+1):
-#        filterKeysSubsets = itertools.combinations(filterKeys, subsetLength)
-#        for filterKeysSubset in filterKeysSubsets:
-#            #subsetFilters = {k: filters[k] for k in filterKeysSubset}
-#            subsetFilters = dict()
-#            for k in filterKeysSubset:
-#                subsetFilters[k] = filters[k]
-#            availableTimeRange = getAvailableTimeRangeForExactFilter(collectionname, subsetFilters, connection)
-#            result = insertChunks(result, availableTimeRange)
-#            
-#    exitlog(functionName)
-#    return result
-#        
-#def getAvailableTimeRangeForExactFilter(collectionname, filters=None, connection=None):
-#    functionName = getAvailableTimeRangeForExactFilter.__name__
-#    entrylog(functionName, locals())
-#    
-#    if not isDBHost:
-#        return []
-#    
-#    if filters == None:
-#        filters = dict()
-#    
-#    if connection == None:
-#        connection = getConnection('localhost')
-#    
-#    itr = connection['cache']['metadata'].find({'db': DB_NAME, 'collection': collectionname})
-#    
-#    while True:
-#        try:
-#            record = itr.next()
-#            log.debug(record)
-#            rec_filters = ast.literal_eval(record['filters'])
-#            if filters == rec_filters:
-#                result = record['ts_chunks']
-#                break
-#        except StopIteration:
-#                result = []
-#                break
-#            
-#    exitlog(functionName)
-#    return result
-#
-#def findMissingTimeRange(availableTimeRange, requiredTimeRange):
-#    functionName = findMissingTimeRange.__name__
-#    entrylog(functionName)
-#            
-#    if availableTimeRange == None:
-#        return [requiredTimeRange]
-#        
-#    chunksNotAvailable = []
-#    reqdStart, reqdEnd = requiredTimeRange
-#
-#    availableTimeRange.sort(reverse=True)
-#
-#    for chunkStart, chunkEnd in availableTimeRange:
-#                
-#        if reqdStart > chunkEnd:
-#            chunksNotAvailable = chunksNotAvailable + [(reqdStart, reqdEnd)]
-#            exitlog(functionName, chunksNotAvailable)
-#            return chunksNotAvailable
-#                            
-#        if reqdEnd > chunkEnd:
-#            chunksNotAvailable = chunksNotAvailable + [(chunkEnd, reqdEnd)]
-#                                
-#        if reqdStart >= chunkStart:
-#            exitlog(functionName, chunksNotAvailable)
-#            return chunksNotAvailable
-#                                    
-#        if reqdEnd > chunkStart:
-#            reqdEnd = chunkStart
-#
-#    chunksNotAvailable = chunksNotAvailable + [(reqdStart, reqdEnd)]
-#
-#    exitlog(functionName)
-#    return chunksNotAvailable
-#
-#def insertChunks(existingChunks, newChunks):
-#        functionName = insertChunks.__name__
-#        entrylog(functionName)
-#    
-#        if not newChunks:
-#            return existingChunks
-#        
-#        if not existingChunks:
-#            return newChunks
-#        
-#        existingChunks.sort(reverse=True)
-#        newChunks.sort(reverse=True)
-#        
-#        result = existingChunks[:]
-#        ptr = 0
-#        
-#        for newChunk in newChunks:
-#            
-#            newStart, newEnd = newChunk
-#            
-#            while ptr < len(result):
-#                chunk = result[ptr]
-#                chunkStart, chunkEnd = chunk
-#                
-#                if newStart > chunkEnd:
-#                    break
-#
-#                elif newEnd < chunkStart:
-#                    ptr += 1
-#                
-#                else:
-#                    if newEnd < chunkEnd:
-#                        newEnd = chunkEnd
-#                    if newStart > chunkStart:
-#                        newStart = chunkStart
-#                    result.remove(chunk)
-#                
-#            result.insert(ptr, (newStart, newEnd))
-#            
-#        exitlog(functionName)
-#        return result
-
-    
-
-##Old functions that have been replaced
-
-#def insertChunk(existingChunks=[], newChunk=None):
-#        
-#        if newChunk == None:
-#                return existingChunks
-#        
-#        existingChunks.sort()
-#        
-#        result = existingChunks[:]
-#                
-#        newStart, newEnd = newChunk
-#        
-#        for chunk in existingChunks:
-#                chunkStart, chunkEnd = chunk
-#                
-#                if newEnd < chunkStart:
-#                        result.insert(result.index(chunk), (newStart, newEnd))
-#                        return result
-#                
-#                if newStart <= chunkEnd:
-#                        if newStart > chunkStart:
-#                                newStart = chunkStart
-#                        if newEnd < chunkEnd:
-#                                newEnd = chunkEnd
-#                        result.remove(chunk)
-#        
-#        result.append((newStart, newEnd))
-#        return result
-     
-#def findMissingChunks(availableChunks, requiredChunk):
-#        
-#        if availableChunks == None:
-#                return [requiredChunk]
-#        
-#        chunksNotAvailable = []
-#        reqdStart, reqdEnd = requiredChunk
-#
-#        availableChunks.sort()
-#        
-#        for chunkStart, chunkEnd in availableChunks:
-#                
-#                if reqdEnd < chunkStart:
-#                        chunksNotAvailable = chunksNotAvailable + [(reqdStart, reqdEnd)]
-#                        return chunksNotAvailable
-#                            
-#                if reqdStart < chunkStart:
-#                        chunksNotAvailable = chunksNotAvailable + [(reqdStart, chunkStart)]
-#                                
-#                if reqdEnd <= chunkEnd:
-#                        return chunksNotAvailable
-#                                    
-#                if reqdStart < chunkEnd:
-#                        reqdStart = chunkEnd
-#
-#        chunksNotAvailable = chunksNotAvailable + [(reqdStart, reqdEnd)]
-#
-#        return chunksNotAvailable

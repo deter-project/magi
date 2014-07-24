@@ -296,7 +296,7 @@ if __name__ == '__main__':
     
             if not options.nodataman:
                     from magi.util import database
-                    if database.isDBHost or database.isDBConfigServer:
+                    if database.isCollector or database.isConfigHost:
                             if not options.noinstall:
                                     #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
                                     #Copying prebuilt binaries for mongodb
@@ -309,7 +309,7 @@ if __name__ == '__main__':
                     else:
                             log.info("Database server is not required on this node")
                             
-                    if database.isDBConfigServer:
+                    if database.isConfigHost:
                         database.startConfigServer()
                         database.startShardServer()
                         database.startDBServer()
@@ -317,7 +317,7 @@ if __name__ == '__main__':
                         log.info("Configuring database cluster")
                         database.configureDBCluster()
                         
-                    elif database.isDBHost:
+                    elif database.isCollector:
                         database.startDBServer()
                     
                     log.info("Waiting for local database to be added as a shard")

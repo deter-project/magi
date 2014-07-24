@@ -36,7 +36,7 @@ class Daemon(threading.Thread):
 		messages such as 'exec'.
 	"""
 
-	def __init__(self, hostname, transports_ctrl, transports_exp=[], enable_dataman_agent=True):
+	def __init__(self, hostname, transports, enable_dataman_agent=True):
 		threading.Thread.__init__(self, name='daemon')
 		# 9/16/2013 hostname is passed in from the magi_daemon script correctly 
 		self.hostname = hostname
@@ -61,8 +61,7 @@ class Daemon(threading.Thread):
 				log.error(str(e))
 				raise e
 				
-		self.configureMessaging(self.messaging, transports_ctrl)
-		#self.configureMessaging(self.messaging_exp, transports_exp)
+		self.configureMessaging(self.messaging, transports)
 		
 		self.done = False
 

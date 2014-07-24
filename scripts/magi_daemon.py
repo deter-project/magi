@@ -52,7 +52,7 @@ if __name__ ==  '__main__':
         if not options.nodataman:
             from magi.util import database
             from magi.mongolog.handlers import MongoHandler
-            dbhost = database.getDBHost()
+            dbhost = database.getCollector()
             dbname = 'magi'
             collectionname = 'log'
             #Making sure that the database server is up and running
@@ -68,8 +68,7 @@ if __name__ ==  '__main__':
             pass
     
         confdata = config.loadConfig(options.magiconf)
-        transports_ctrl = confdata.get('transports', [])
-        transports_exp = confdata.get('transports_exp', [])
+        transports = confdata.get('transports', [])
         testbedInfo = confdata.get('localinfo', {})
         localname = testbedInfo.get('nodename')
                 
@@ -77,7 +76,7 @@ if __name__ ==  '__main__':
         logging.info("MAGI Version: %s", __version__)
         logging.info("Started magi daemon on %s with pid %s", localname, pid)
     #    if not options.nodataman: logging.info("DB host: %s", dbhost)
-        daemon = Daemon(localname, transports_ctrl, transports_exp, not options.nodataman)
+        daemon = Daemon(localname, transports, not options.nodataman)
         daemon.run() 
         # Application will exit once last non-daemon thread finishes
 

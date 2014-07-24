@@ -78,8 +78,8 @@ def createMESDL():
     fp = open(DEFAULT_EXPMESDL, 'w')
     mesdl = createMESDL_control()
     fp.write(yaml.safe_dump(mesdl))
-    mesdl_exp = createMESDL_experiment()
-    fp.write(yaml.safe_dump(mesdl_exp))
+#    mesdl_exp = createMESDL_experiment()
+#    fp.write(yaml.safe_dump(mesdl_exp))
     fp.close()
     return DEFAULT_EXPMESDL  
 
@@ -92,12 +92,14 @@ def createMESDL_control():
         control_node += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
     mesdl = dict()
     mesdl['bridges'] = list()
-    mesdl['bridges'].append({ 'TCPServer': control_node, 'port': 18808 })  
-    mesdl['bridges'].append({ 'TCPServer': control_node, 'port': 28808 })  
     mesdl['overlay'] = list()
-    memlist = list()
-    memlist.append('__ALL__')
-    mesdl['overlay'].append({ 'type': 'TCPTransport' , 'members': memlist, 'server':control_node, 'port': 28808 })
+    mesdl['bridges'].append({ 'type': 'TCPServer', 'server':control_node, 'port': 18808 })
+    transportClass = 'TCP'
+    if transportClass == 'TCP':
+        mesdl['bridges'].append({ 'type': 'TCPServer', 'server':control_node, 'port': 28808 })
+        mesdl['overlay'].append({ 'type': 'TCPTransport', 'members': ['__ALL__'], 'server':control_node, 'port': 28808 })
+    elif transportClass == 'Multicast':
+        mesdl['overlay'].append({ 'type': 'MulticastTransport', 'members': ['__ALL__'], 'address': getMulticast(testbed.project, testbed.experiment, 0), 'port': 28808 })
     return mesdl  
 
 def createMESDL_experiment():
@@ -108,18 +110,15 @@ def createMESDL_experiment():
     graph = testbed.getTopoGraph()
     d = toDirected(graph, root)
     mesdl = dict()
-    mesdl['bridges_exp'] = list()
     mesdl['overlay_exp'] = list()
     transportClass = 'TCP'
     if transportClass == 'TCP':
         for node in d.nodes():
             if d.out_degree(node) != 0:
-                mesdl['overlay_exp'].append({ 'type': 'TCPServer', 'server': node, 'port': 48808 })
+                mesdl['overlay_exp'].append({ 'type': 'TCPServer', 'server':node, 'port': 48808 })
                 mesdl['overlay_exp'].append({ 'type': 'TCPTransport', 'members': d.successors(node), 'server': node, 'port': 48808 })
-    
     elif transportClass == 'Multicast':
         mesdl['overlay_exp'].append({ 'type': 'MulticastTransport', 'address': getMulticast(testbed.project, testbed.experiment, 0), 'port': 48808 })
-    mesdl['bridges_exp'].append({ 'TCPServer': root, 'port': 38808 }) 
     return mesdl  
 
 def toDirected(graph, root):
@@ -142,51 +141,42 @@ def toDirected(graph, root):
     return d
 
 def validateDBConf(dbconf=None):
-    """ Chekcing if a valid db config exists """
+    """ Checking if a valid db config exists """
     if dbconf:
         expdbconf = helpers.loadYaml(dbconf)
     else:
         expdbconf = dict()
         
-    if "collector_mapping" not in expdbconf.keys() or not expdbconf['collector_mapping']:
-        expdbconf['collector_mapping'] = dict()
+    if "collectorMapping" not in expdbconf.keys() or not expdbconf['collectorMapping']:
+        expdbconf['collectorMapping'] = dict()
         
     ALL = False
     topoGraph = testbed.getTopoGraph()
     
     #Checking if there is a valid entry for __ALL__
-    if '__ALL__' in expdbconf['collector_mapping']:
-        if expdbconf['collector_mapping']['__ALL__'] in topoGraph.nodes():
+    if '__ALL__' in expdbconf['collectorMapping']:
+        if expdbconf['collectorMapping']['__ALL__'] in topoGraph.nodes():
             ALL = True
         else:
-            del expdbconf['collector_mapping']['__ALL__']
+            del expdbconf['collectorMapping']['__ALL__']
     
-    sensors = expdbconf['collector_mapping'].keys()
+    sensors = expdbconf['collectorMapping'].keys()
     for node in topoGraph.nodes():
         if node not in sensors:
             if not ALL:
-                expdbconf['collector_mapping'][node] = node
-        elif expdbconf['collector_mapping'][node] not in topoGraph.nodes():
-            del expdbconf['collector_mapping'][node]
+                expdbconf['collectorMapping'][node] = node
+        elif expdbconf['collectorMapping'][node] not in topoGraph.nodes():
+            del expdbconf['collectorMapping'][node]
             if not ALL:
-                expdbconf['collector_mapping'][node] = node
+                expdbconf['collectorMapping'][node] = node
         
     for sensor in sensors:
         if sensor not in topoGraph.nodes():
-            del expdbconf['collector_mapping'][sensor]
+            del expdbconf['collectorMapping'][sensor]
     
-    if expdbconf.get('config_node') not in topoGraph.nodes():
-        expdbconf['config_node'] = testbed.getServer()
+    if expdbconf.get('configNode') not in topoGraph.nodes():
+        expdbconf['configNode'] = testbed.getServer()
     
-    
-#    if "queriers" not in expdbconf.keys() or not expdbconf['queriers']:
-#        expdbconf['queriers'] = []
-#        
-#    queriers = expdbconf['queriers']
-#    for querier in queriers:
-#        if querier not in topoGraph.nodes():
-#            expdbconf['queriers'].remove(querier)
-            
     fp = open(DEFAULT_DBCONF, 'w')
     fp.write(yaml.safe_dump(expdbconf))
     fp.close()
@@ -198,11 +188,11 @@ def createDBConf():
     log.info("Creating db config file.....")
     fp = open(DEFAULT_DBCONF, 'w')
     dbconf = dict()
-    dbconf['collector_mapping'] = dict()
+    dbconf['collectorMapping'] = dict()
     topoGraph = testbed.getTopoGraph()
     for node in topoGraph.nodes():
-        dbconf['collector_mapping'][node] = node
-    dbconf['config_node'] = testbed.getServer()
+        dbconf['collectorMapping'][node] = node
+    dbconf['configNode'] = testbed.getServer()
     fp.write(yaml.safe_dump(dbconf))
     fp.close
     return DEFAULT_DBCONF
@@ -353,20 +343,17 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
     # For each external connection, add a TCPServer transport    
     for bridge in expmesdl['bridges']:
         log.debug("Bridge: %s", bridge)
-        if nodename_control == bridge['TCPServer']:
-            # A TCP server service is added on the node  
+        if nodename_control == bridge['server']:
+            # A transport server is added on the node  
             # This is used to provide an external facing connection to the magi messaging network on port extport (typically 18808)  
-            config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': bridge['port']})
+            config['transports'].append({ 'class': bridge['type'], 'address': '0.0.0.0', 'port': bridge['port']})
     
     # For each messaging overlay that the local node is part of, 
     # Add an apporpriate transport 
     # NOTE: We are just adding TCPTransports currently 
     for t in expmesdl['overlay']:
         log.debug("Control Plane Overlay: %s", t)
-        if t['type'] == 'TCPServer' and nodename_control == t['server']:
-            config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': t['port']})
-            
-        elif t['type'] == 'TCPTransport' and nodename_control != t['server'] and (nodename_control in t['members'] or t['members'][0] == '__ALL__'):
+        if t['type'] == 'TCPTransport' and nodename_control != t['server'] and (nodename_control in t['members'] or '__ALL__' in t['members']):
             server_name = t['server']
             # DETER/emulab DNS will resolves FQDNs to the control network address, 
             # A FQDN or IP address would be required for connecting with the external world 
@@ -378,31 +365,9 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
                     
             config['transports'].append({ 'class': 'TCPTransport', 'address': server_addr, 'port': t['port'] })
             
-        elif t['type'] == 'MulticastTransport':
+        elif t['type'] == 'MulticastTransport' and (nodename_control in t['members'] or '__ALL__' in t['members']):
             config['transports'].append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
 
-    config['transports_exp'] = list()
-    
-    for t in expmesdl['overlay_exp']:
-        log.debug("Experiment Plane Overlay: %s", t)
-        if t['type'] == 'TCPServer' and testbed.nodename == t['server']:
-            config['transports_exp'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': t['port']})
-            
-        elif t['type'] == 'TCPTransport' and testbed.nodename != t['server'] and (testbed.nodename in t['members'] or t['members'][0] == '__ALL__'):
-            server_name = t['server']
-            # DETER/emulab DNS will resolves FQDNs to the control network address, 
-            # A FQDN or IP address wauld be required for connecting with the external world 
-            try:
-                server_addr=gethostbyname(server_name)
-            except gaierror:
-                log.critical('Using MeSDL file %s\n Unable to resolve node name %s, EXITING', mesdl, server_name)
-                sys.exit(2)
-                    
-            config['transports_exp'].append({ 'class': 'TCPTransport', 'address': server_addr, 'port': t['port'] })
-            
-        elif t['type'] == 'MulticastTransport':
-            config['transports_exp'].append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
-            
     if hasattr(testbed, 'getTextPipes'):
         for name in testbed.getTextPipes():
             filename = '/var/run/magipipes/%s.pipe'%name
@@ -417,22 +382,19 @@ def createConfig(mesdl=DEFAULT_EXPMESDL, dbconf=DEFAULT_DBCONF, magiconf=DEFAULT
 
     config['tempdir'] = '/tmp'
     
+    dbinfo = dict()
     if enable_dataman:
-        config['is_dataman_setup'] = True
+        dbinfo['isDataManEnabled'] = True
         expdbconf = helpers.loadYaml(dbconf)
-#        config['collector_mapping'] = expdbconf['collector_mapping']
-#        config['queriers'] = set(expdbconf['queriers']) if 'queriers' in expdbconf else set()
-        config['dbhost'] = expdbconf['collector_mapping'].get(testbed.nodename)
-        if not config['dbhost']:
-            config['dbhost'] = expdbconf['collector_mapping'].get('__ALL__', testbed.nodename)
-        config['is_dbhost'] = (testbed.nodename in expdbconf['collector_mapping'].values())
-        config['is_db_config_server'] = (testbed.nodename == expdbconf['config_node'])
-        
-#        if testbed.nodename in config['queriers']:
-#            config['transports'].append({ 'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
+        dbinfo['collector'] = expdbconf['collectorMapping'].get(testbed.nodename, expdbconf['collectorMapping'].get('__ALL__'))
+        dbinfo['isCollector'] = (testbed.nodename in expdbconf['collectorMapping'].values())
+        dbinfo['isConfigHost'] = (testbed.nodename == expdbconf['configNode'])
+        dbinfo['isSensor'] = (testbed.nodename in expdbconf['collectorMapping'].keys() or '__ALL__' in expdbconf['collectorMapping'].keys())
     else:
-        config['is_dataman_setup'] = False
+        dbinfo['is_dataman_setup'] = False
         
+    config['dbinfo'] = dbinfo
+    
     fp = open (magiconf, 'w') 
     fp.write(yaml.safe_dump(config))
     fp.close()
