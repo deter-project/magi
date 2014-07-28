@@ -63,7 +63,7 @@ if __name__ == '__main__':
         
         collectionnames = ['pktcounter']
         nodes = ['rc']
-        filters = {'port': { '$in': ['out-uc-0', 'out-c-0'] } }
+        filters = {'peerNode': { '$in': ['uc-0', 'c-0'] }, 'direction' : 'out' }
                        
         uc = dict()
         c = dict()
@@ -98,7 +98,7 @@ if __name__ == '__main__':
             for record in records:
                 #print record['created'], record['port'], record['bytes']
                 created = int(record['created']) - starttime
-                if record['port'] == 'out-uc-0':
+                if record['peerNode'] == 'uc-0':
                     uc[created] = record['bytes']
                 else:
                     c[created] = record['bytes']
