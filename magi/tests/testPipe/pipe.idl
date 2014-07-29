@@ -1,0 +1,8 @@
+name: pipetest
+display: Pipe Test
+description: Testing pipe execution
+inherits: []
+execute: pipe
+mainfile: testAgentPipe.py
+software: []
+methods: []

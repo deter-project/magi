@@ -1,0 +1,8 @@
+name: sockettest
+display: Socket Test
+description: Testing socket execution
+inherits: []
+execute: socket
+mainfile: testAgentSocket.py
+software: []
+methods: []

@@ -1,0 +1,8 @@
+name: threadtest
+display: Thread Test
+description: Testing thread execution
+inherits: []
+execute: thread
+mainfile: testAgentThread.py
+software: []
+methods: []

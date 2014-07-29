@@ -1,0 +1,52 @@
+Copyright (C) 2012 University of Southern California
+This software is licensed under the GPLv3 license, included in
+GPLv3-LICENSE.txt in the source distribution
+
+
+
+Basic Install
+==============
+The backend is distributed as a python module archive.  To create the archive
+run:
+
+python setup.py sdist
+
+This will create dist/MAGI-1.0.tar.gz.  For a quick update of the current
+install you can run:
+
+python setup.py sdist toshare
+
+In addition to creating the distribution, it will also copy updated files to
+/share/magi/v100.  A different path can be specified with the -p argument.
+
+
+Other Required Software
+=======================
+
+If magi_bootstrap.py is used to install the backend distribution, you will also
+need source archives in the same directory of:
+
+PyYAML-*.tar.gz
+unittest2-*.tar.gz
+
+Not required but to be eventually used, you can also provide "yaml-*.tar.gz" to
+compile as a C extension for PyYAML.
+
+
+Software Directories
+====================
+
+If /etc/magi.conf is found on a node when the backend is started, that
+configuration will be used.  If not, a default configuration is created.  Part
+of this configuration specifies location to look for other software to install.
+An example from a Ubuntu 10 machine is:
+
+- {type: apt}
+- {dir: /share/magi/v100/Linux-Ubuntu10.10-i686, type: rpmfile}
+- {dir: /share/magi/v100/Linux-Ubuntu10.10-i686, type: archive}
+- {dir: /share/magi/v100/source, type: source}
+- {dir: /tmp/src, type: source}
+
+As you can see, if will look in the directory that magi_boostrap is started
+from for RPM's, archives or source distributions.
+

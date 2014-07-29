@@ -1,0 +1,96 @@
+
+streamstarts: [ main, branch2 ]
+
+groups:
+  Client1-group: &idClient1 [Node2, Node3, Node4]
+  agroup: [Node1, Node2, Node3, Node4]
+  Server1-group: &idServer1 [Node1]
+
+eventstreams:
+
+  main: 
+      - type: event
+        args:
+          level: 10
+          period: 5
+          dstgroups: data
+          dstdocks: [data, log]
+        method: startLogging
+        agent: logger
+
+      - type: event
+        args: 
+          servers: *idServer1
+        method: startServer
+        agent: Server1
+      
+      - type: trigger
+        triggers: [ { timeout: 3000 }, { event: nevergethere, target: sidestream } ]
+      
+      - type: event
+        args: {}
+        method: stopServer
+        agent: Server1
+
+      - type: trigger
+        triggers: [ { event: gobranch1, special1: matchme, target: branch1}, { event: gobranch2, special2: matchme, target: branch2 } ]
+
+  branch1:
+      - type: event
+        args:
+          clients: *idClient1
+        agent: nothing
+        method: b1m1
+
+      - type: trigger
+        triggers: [ { timeout: 1000, target: branch2 } ]
+
+      - type: event
+        args: {}
+        agent: nothing
+        method: b1m2
+
+  branch2:
+      - type: event
+        args: {}
+        agent: nothing
+        method: b2m1
+
+      - type: event
+        args: {}
+        agent: nothing
+        method: b2m2
+
+
+agents:
+
+  nothing:
+    execargs: []
+    group: agroup
+    dock: nothing
+    code: nothing
+
+  logger:
+    execargs: []
+    code: logger
+    group: agroup
+    dock: logger
+
+  allcounters:
+    execargs: []
+    code: counters
+    group: agroup
+    dock: cdock
+
+  Server1:
+    execargs: []
+    code: apache
+    group: Server1-group
+    dock: Server1-dock
+
+  Client1:
+    execargs: []
+    code: http_wget
+    group: Client1-group
+    dock: Client1-dock
+

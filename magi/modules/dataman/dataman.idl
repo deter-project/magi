@@ -1,0 +1,9 @@
+name: dataman
+display: Data Management Agent
+description: An agent to manage data
+execute: thread
+mainfile: dataman.py
+inherits:
+   - nonblockingdispatchagent
+software:
+   - networkx
