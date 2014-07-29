@@ -277,24 +277,15 @@ if __name__ == '__main__':
                                             log.info("Created a experiment configuration file at %s", options.expconf) 
                                     else:
                                             log.info("Using experiment configuration file at %s", options.expconf)
+                                            log.info("Checking and correcting, if required, the experiment configuration file")
+                                            config.checkAndCorrectExperimentConfig(options.expconf)
     
-                                    log.info("Checking to see if a db config file is specified....")
-                                    
-#                                    if not options.nodataman:
-#                                            if not options.dbconf:
-#                                                    log.info("No db config file specified....")
-#                                                    options.dbconf = config.createDBConf()
-#                                                    log.info("Created a db config file at location %s....",options.dbconf)
-#                                            else:
-#                                                    log.info("Validating data config file at location %s....", options.dbconf)
-#                                                    options.dbconf = config.validateDBConf(options.dbconf)
-                    
-                                    # The mesdl file was specified at the command line 
-                                    # use it to create a new local node specific magi conf  
+                                    # Use the experiment configuration file to create node specific configuration
                                     nodeConfigFile = config.createNodeConfig(experimentConfigFile=options.expconf) 
                                     log.info("Created a node configuration file at %s", nodeConfigFile) 
+                                    
                     except Exception, e:
-                            log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
+                            log.error("MAGI configuration failed, things probably aren't going to run: %s", e, exc_info=True)
     
             from magi.util import database
             if database.isDBEnabled:
@@ -382,8 +373,7 @@ if __name__ == '__main__':
                     log.info("Starting daemon with debugging")
                     daemon += ['-l', 'DEBUG']
                     
-            # Record the process id in a file for later reference 
-            pid=Popen( daemon ).pid
+            pid = Popen(daemon).pid
      
             log.info("MAGI Version: %s", __version__) 
             log.info("Started daemon with pid %s", pid)

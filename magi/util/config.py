@@ -155,7 +155,7 @@ def getDefaultMESDL():
         mesdl['overlay'].append({ 'type': 'MulticastTransport', 'members': ['__ALL__'], 'address': getMulticast(testbed.project, testbed.experiment, 0), 'port': 28808 })
     return mesdl
 
-def getDefaultDBDL(isDBEnabled):
+def getDefaultDBDL(isDBEnabled=True):
     """ Create a default db configuration file """
     log.info("Creating db config file.....")
     dbdl = dict()
@@ -168,7 +168,7 @@ def getDefaultDBDL(isDBEnabled):
         dbdl['configHost'] = testbed.getServer()
     return dbdl
 
-def getDefaultEXPDL(magiDistDir):
+def getDefaultEXPDL(magiDistDir='share/magi/current/'):
     """ """
     expdl = dict()
     expdl['magiDistDir'] = magiDistDir
@@ -181,7 +181,7 @@ def createNodeConfig(experimentConfigFile=EXPCONF_FILE, nodeConfigFile=NODECONF_
         Create a per experiment node magi configuration file
     """
     
-    experimentConfig = helpers.loadYaml(experimentConfigFile)   
+    experimentConfig = helpers.loadYaml(experimentConfigFile)
     
     # Information about the local node for reference 
     localInfo = dict()
@@ -312,48 +312,63 @@ def _str2byte(strin):
     return reduce(_intval, strin, 0) % 255
 
 
-def validateDBConf(dbconf=None):
+def checkAndCorrectExperimentConfig(experimentConfigFile=EXPCONF_FILE):
+    try:
+        experimentConfig = helpers.loadYaml(experimentConfigFile)   
+    except Exception, e:
+        log.exception("Exception while reading config file")
+        experimentConfig = {}
+        
+    mesdl = experimentConfig.get('mesdl', {})
+    dbdl = experimentConfig.get('dbdl', {})
+    expdl = experimentConfig.get('expdl', {})
+    
+    experimentConfig['mesdl'] = validateMesDL(mesdl)
+    experimentConfig['dbdl'] = validateDBDL(dbdl)
+    
+    fp = open(experimentConfigFile, 'w')
+    fp.write(yaml.safe_dump(experimentConfig))
+    fp.close()
+    
+def validateMesDL(mesdl={}):
+    if not mesdl:
+        return getDefaultMESDL()
+    return mesdl
+    
+def validateDBDL(dbdl={}):
     """ Checking if a valid db config exists """
-    if dbconf:
-        expdbconf = helpers.loadYaml(dbconf)
+    '''
+        isDBEnabled: true
+        configHost: node-1
+        collectorMapping: {node-1: node-1, node-2: node-2}
+    '''
+    
+    if not dbdl:
+        return getDefaultDBDL()
+    
+    isDBEnabled = dbdl.get('isDBEnabled', True)
+    dbdl['isDBEnabled'] = isDBEnabled
+    
+    if isDBEnabled:
+        if "collectorMapping" not in dbdl.keys() or not dbdl['collectorMapping']:
+            return getDefaultDBDL()
+            
+        experimentNodes = topoGraph.nodes()
+        
+        for (sensor, collector) in dbdl['collectorMapping'].iteritems():
+            if sensor not in experimentNodes:
+                del dbdl['collectorMapping'][sensor]
+            elif collector not in experimentNodes:
+                dbdl['collectorMapping'][sensor] = sensor
+        
+        if dbdl.get('configHost') not in experimentNodes:
+            dbdl['configHost'] = testbed.getServer()
+    
     else:
-        expdbconf = dict()
+        dbdl = {}
+        dbdl['isDBEnabled'] = False
         
-    if "collectorMapping" not in expdbconf.keys() or not expdbconf['collectorMapping']:
-        expdbconf['collectorMapping'] = dict()
-        
-    ALL = False
-    topoGraph = testbed.getTopoGraph()
-    
-    #Checking if there is a valid entry for __ALL__
-    if '__ALL__' in expdbconf['collectorMapping']:
-        if expdbconf['collectorMapping']['__ALL__'] in topoGraph.nodes():
-            ALL = True
-        else:
-            del expdbconf['collectorMapping']['__ALL__']
-    
-    sensors = expdbconf['collectorMapping'].keys()
-    for node in topoGraph.nodes():
-        if node not in sensors:
-            if not ALL:
-                expdbconf['collectorMapping'][node] = node
-        elif expdbconf['collectorMapping'][node] not in topoGraph.nodes():
-            del expdbconf['collectorMapping'][node]
-            if not ALL:
-                expdbconf['collectorMapping'][node] = node
-        
-    for sensor in sensors:
-        if sensor not in topoGraph.nodes():
-            del expdbconf['collectorMapping'][sensor]
-    
-    if expdbconf.get('configHost') not in topoGraph.nodes():
-        expdbconf['configHost'] = testbed.getServer()
-    
-#    fp = open(DEFAULT_DBCONF, 'w')
-#    fp.write(yaml.safe_dump(expdbconf))
-#    fp.close()
-#    
-#    return DEFAULT_DBCONF
+    return dbdl
 
 
 def verifyConfig( magiconf=None ):
