@@ -18,15 +18,14 @@ if __name__ ==  '__main__':
 #    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     optparser = optparse.OptionParser(description="Script to start MAGI")
-    optparser.add_option("-f", "--logfile", dest="logfile", action='store', default=config.MAGILOG+'/daemon.log', help="Log to specified file, Default: %default, ex: -f file.log")
-    optparser.add_option("-t" , "--timeformat", dest="timeformat", action='store', default="%m-%d %H:%M:%S", help="Set the format of the time epoch, Default: %default")     
+    optparser.add_option("-f", "--logfile", dest="logfile", action='store', default=config.LOG_FILE, help="Log to specified file, Default: %default, ex: -f file.log")
     optparser.add_option("-l", "--loglevel", dest="loglevel", default="INFO", help="set logger to level ALL, DEBUG, INFO, WARNING, ERROR. Default: %default, ex: -l DEBUG")
-    optparser.add_option("-c", "--magiconf", dest="magiconf", default=config.MAGILOG+'/magi.conf', help="Specify location of the magi configuration file, Default: %default, ex: -c localconfig.conf ")
-    optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Data manager not setup up.") 
+    optparser.add_option("-t" , "--timeformat", dest="timeformat", action='store', default="%m-%d %H:%M:%S", help="Set the format of the time epoch, Default: %default")     
+    optparser.add_option("-c", "--nodeconf", dest="nodeconf", default=config.NODECONF_FILE, help="Specify location of the magi configuration file, Default: %default, ex: -c localconfig.conf ")
 
     (options, args) = optparser.parse_args()
     
-    config.DEFAULT_MAGICONF = options.magiconf
+    nodeConfig = config.loadNodeConfig(options.nodeconf)
     
     # Roll over the old log and create a new one
     # Note here that we will have at most 5 logs 
@@ -48,38 +47,35 @@ if __name__ ==  '__main__':
     log.handlers = []
     log.addHandler(handler)
     
-    try:       
-        if not options.nodataman:
-            from magi.util import database
+    try:      
+        from magi.util import database 
+        if database.isDBEnabled:
             from magi.mongolog.handlers import MongoHandler
             dbhost = database.getCollector()
-            dbname = 'magi'
-            collectionname = 'log'
             #Making sure that the database server is up and running
-            connection = database.getConnection(dbhost, port=27018)
-            log.addHandler(MongoHandler.to(dbname, collectionname, host=dbhost, port=27018))
+            connection = database.getConnection(dbhost, port=database.DATABASE_SERVER_PORT)
+            log.addHandler(MongoHandler.to(database.DB_NAME, database.LOG_COLLECTION_NAME, host=dbhost, port=database.DATABASE_SERVER_PORT))
     
         pid = os.getpid()
         try:
-            fpid =  open(config.DEFAULT_MAGIPID, 'w')
+            fpid = open(config.MAGIPID_FILE, 'w')
             fpid.write(str(pid))
             fpid.close()
         except:
             pass
     
-        confdata = config.loadConfig(options.magiconf)
-        transports = confdata.get('transports', [])
-        testbedInfo = confdata.get('localinfo', {})
+        transports = nodeConfig.get('transports', [])
+        testbedInfo = nodeConfig.get('localInfo', {})
         localname = testbedInfo.get('nodename')
                 
         # Some system initialization
         logging.info("MAGI Version: %s", __version__)
         logging.info("Started magi daemon on %s with pid %s", localname, pid)
     #    if not options.nodataman: logging.info("DB host: %s", dbhost)
-        daemon = Daemon(localname, transports, not options.nodataman)
+        daemon = Daemon(localname, transports)
         daemon.run() 
         # Application will exit once last non-daemon thread finishes
 
     except Exception, e:
-        log.error("Exception while starting daemon process", e)
+        log.exception("Exception while starting daemon process")
         sys.exit(e)

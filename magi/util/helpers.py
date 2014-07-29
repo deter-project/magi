@@ -91,3 +91,25 @@ def exitlog(log, functionName, returnValue=None):
         log.debug("Exiting function %s", functionName)
     else:
         log.debug("Exiting function %s with return value: %s", functionName, returnValue)
+
+def toDirected(graph, root):
+    """
+        Convert an undirected graph to a directed graph
+    """
+    import networkx as nx
+    
+    d = nx.DiGraph()
+    queue = Queue.Queue()
+    visited = set()
+    
+    queue.put(root)
+    
+    while not queue.empty():
+        parent = queue.get()
+        visited.add(parent)
+        children = set(graph.neighbors(parent)) - visited
+        for child in children:
+            d.add_edge(parent, child, graph[parent][child])
+            queue.put(child)
+            
+    return d

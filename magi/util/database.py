@@ -26,18 +26,24 @@ log = logging.getLogger(__name__)
 DB_NAME = 'magi'
 COLLECTION_NAME = 'experiment_data'
 TYPE_FIELD = 'type'
+LOG_COLLECTION_NAME = 'log'
+
+DATABASE_SERVER_PORT = 27018
+ROUTER_SERVER_PORT   = 27017
+CONFIG_SERVER_PORT   = 27019
 
 # TODO: timeout should be dependent on machine type 
 TIMEOUT = 900
 
-dbConf = config.loadConfig(config.DEFAULT_DBCONF);
-configNode = dbConf.get('configNode')
-collectorMapping = dbConf.get('collectorMapping')
+dbConfig = config.getConfig().get('database', {})
 
-nodeConf = config.getConfig()['dbinfo']
-collector = nodeConf.get('collector')
-isCollector = nodeConf.get('isCollector')
-isConfigHost = nodeConf.get('isConfigHost')
+isDBEnabled         = dbConfig.get('isDBEnabled', False)
+isConfigHost        = dbConfig.get('isConfigHost')
+isCollector         = dbConfig.get('isCollector')
+configHost          = dbConfig.get('configHost')
+collector           = dbConfig.get('collector')
+collectorMapping    = dbConfig.get('collectorMapping')
+
 
 if 'connectionMap' not in locals():
     connectionMap = dict()
@@ -56,18 +62,21 @@ def startConfigServer(timeout=TIMEOUT):
     
     try:
         log.info("Checking if an instance of mongo config server is already running")
-        if isDBRunning(port=27019):
+        if isDBRunning(port=CONFIG_SERVER_PORT):
             return
 
         try:
             os.makedirs('/data/configdb')  # Make sure mongodb config data directory is around
         except OSError, e:
             if e.errno != errno.EEXIST:
-                log.error("failed to create mondodb config data dir: %s", e, exc_info=1)
+                log.exception("failed to create mondodb config data dir")
                 raise
 
         log.info("Trying to start mongo config server")
-        mongod = ['/usr/local/bin/mongod', '--configsvr', '--dbpath', '/data/configdb', '--port', '27019']
+        mongod = ['/usr/local/bin/mongod', '--configsvr', 
+                  '--dbpath', '/data/configdb', 
+                  '--port', str(CONFIG_SERVER_PORT), 
+                  '--logpath', os.path.join(config.DEFAULT_DIR, "mongoc.log")]
         log.info("Running %s", mongod)
         
         while time.time() < stop:
@@ -89,26 +98,31 @@ def setBalancerState(state):
     """
         Function to turn on/off data balancer
     """
-    connection = getConnection(configNode, 27019)
+    connection = getConnection(configHost, CONFIG_SERVER_PORT)
     connection.config.settings.update({ "_id": "balancer" }, { "$set" : { "stopped": not state } } , True )
     
-def startShardServer(configNode=configNode, timeout=TIMEOUT):
+def startShardServer(configHost=configHost, timeout=TIMEOUT):
     """
         Function to start a database config server on the node
     """
+    configHost = helpers.toControlPlaneNodeName(configHost)
+    
     start = time.time()
     stop = start + timeout
     
     try:
         log.info("Checking if an instance of mongos server is already running")
-        if isDBRunning(port=27017):
+        if isDBRunning(port=ROUTER_SERVER_PORT):
             return
 
         log.info("Trying to connect to mongo config server")
-        getConnection(configNode, port=27019, timeout=timeout)
+        getConnection(configHost, port=CONFIG_SERVER_PORT, timeout=timeout)
         
         log.info("Trying to start mongo shard server")
-        mongos = ['/usr/local/bin/mongos', '--configdb', configNode + ":27019", '--port', '27017', '--noAutoSplit', '--logpath', '/tmp/mongos.log']
+        mongos = ['/usr/local/bin/mongos', '--configdb', '%s:%d'%(configHost, CONFIG_SERVER_PORT), 
+                  '--port', str(ROUTER_SERVER_PORT), 
+                  '--noAutoSplit', 
+                  '--logpath', os.path.join(config.DEFAULT_DIR, "mongos.log")]
         log.info("Running %s", mongos)
         
         while time.time() < stop:
@@ -135,7 +149,7 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
     
     try:
         log.info("Checking if an instance of mongod server is already running")
-        if isDBRunning(port=27018):
+        if isDBRunning(port=DATABASE_SERVER_PORT):
             return
 
         if configfile is None:
@@ -147,18 +161,19 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
             os.makedirs(mongo_conf['dbpath'])  # Make sure mongodb data directory is around
         except OSError, e:
             if e.errno != errno.EEXIST:
-                log.error("failed to create mondodb data dir: %s", e, exc_info=1)
+                log.exception("failed to create mondodb data dir: %s", mongo_conf['dbpath'])
                 raise
 
         try:
-            os.makedirs('/'.join(mongo_conf['logpath'].split('/')[:-1]))  # Make sure mongodb log directory is around
+            logdir = '/'.join(mongo_conf['logpath'].split('/')[:-1])
+            os.makedirs(logdir)  # Make sure mongodb log directory is around
         except OSError, e:
             if e.errno != errno.EEXIST:
-                log.error("failed to create mondodb log dir: %s", e, exc_info=1)
+                log.exception("failed to create mondodb log dir: %s", logdir)
                 raise
 
         log.info("Trying to start mongo database server")
-        mongod = ['/usr/local/bin/mongod', '--config', configfile, '--shardsvr', '--journal', '--smallfiles']
+        mongod = ['/usr/local/bin/mongod', '--config', configfile, '--port', str(DATABASE_SERVER_PORT), '--shardsvr', '--journal', '--smallfiles']
         log.info("Running %s", mongod)
         
         while time.time() < stop:
@@ -173,7 +188,7 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
         raise pymongo.errors.PyMongoError("Done trying enough times. Cannot start database server")
     
     except Exception, e:
-        log.error("Exception while setting up mongo db database server: %s", e)
+        log.exception("Exception while setting up mongo db database server")
         raise
 
 def createMongoDConfig():
@@ -181,15 +196,15 @@ def createMongoDConfig():
         Function to create a default Mongo DB configuration file
     """
     try:
-        log.info("Creating mongo db config file.....")
+        log.info("Creating mongo db config file")
         configfile = '/tmp/mongod.conf'
         f = open(configfile, 'w')
         f.write('dbpath=/var/lib/mongodb\n')
-        f.write('logpath=/var/log/mongodb/mongodb.log\n')
+        f.write('logpath=%s/mongodb.log\n'%(config.DEFAULT_DIR))
         f.write('logappend=true\n')
         f.close() 
     except Exception, e:
-        log.error("Failed to create mongodb default configuration file: %s", e)
+        log.exception("Failed to create mongodb default configuration file")
         raise
     return configfile
 
@@ -206,14 +221,14 @@ def registerShard(mongod=testbed.nodename, mongos=testbed.getServer(), timeout=T
     start = time.time()
     stop = start + timeout
     log.info("Trying to register %s as a shard on %s" %(mongod, mongos))
-    connection = getConnection(mongos, port=27017, timeout=timeout) #check if mongos is up and connect to it
-    getConnection(mongod, port=27018, timeout=timeout) #check if mongod is up
+    connection = getConnection(mongos, port=ROUTER_SERVER_PORT, timeout=timeout) #check if mongos is up and connect to it
+    getConnection(mongod, port=DATABASE_SERVER_PORT, timeout=timeout) #check if mongod is up
     while time.time() < stop:
-        if call("""/usr/local/bin/mongo --host %s --eval "sh.addShard('%s:27018')" """ %(mongos, mongod), shell=True):
+        if call("""/usr/local/bin/mongo --host %s --eval "sh.addShard('%s:%d')" """ %(mongos, mongod, DATABASE_SERVER_PORT), shell=True):
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
-        if connection.config.shards.find({"host": "%s:27018" % mongod}).count() == 0:
+        if connection.config.shards.find({"host": "%s:%d" % (mongod, DATABASE_SERVER_PORT)}).count() == 0:
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
@@ -225,7 +240,7 @@ def registerShard(mongod=testbed.nodename, mongos=testbed.getServer(), timeout=T
     exitlog(functionName, locals())
     raise pymongo.errors.PyMongoError("Done trying enough times. Cannot add the required shard")
 
-def isShardRegistered(dbhost=testbed.nodename, configHost=configNode, block=False):
+def isShardRegistered(dbhost=testbed.nodename, configHost=configHost, block=False):
     """
         Check if given mongo db host is registered as a shard
     """
@@ -235,11 +250,11 @@ def isShardRegistered(dbhost=testbed.nodename, configHost=configNode, block=Fals
     dbhost = helpers.toControlPlaneNodeName(dbhost)
     configHost = helpers.toControlPlaneNodeName(configHost)
         
-    connection = getConnection(configHost, port=27017)
+    connection = getConnection(configHost, port=ROUTER_SERVER_PORT)
     log.info("Checking if database server is registered as a shard")
     while True:
         try:
-            if connection.config.shards.find({"host": "%s:27018" % dbhost}).count() != 0:
+            if connection.config.shards.find({"host": "%s:%d" %(dbhost, DATABASE_SERVER_PORT)}).count() != 0:
                 exitlog(functionName, locals())
                 return True
         except:
@@ -261,7 +276,7 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     
     collector = helpers.toControlPlaneNodeName(collector)
         
-    adminConnection = getConnection(testbed.getServer(), port=27017)
+    adminConnection = getConnection(testbed.getServer(), port=ROUTER_SERVER_PORT)
     
     log.info("Trying to move chunk %s:%s to %s" %(host, collectionname, collector))
     
@@ -304,7 +319,7 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     while True:
         try:
             log.info("Moving chunk %s.%s {'host': %s} to %s" %(DB_NAME, collectionname, host, collector))
-            adminConnection.admin.command('moveChunk', '%s.%s' %(DB_NAME, collectionname), find={"host": host}, to='%s:%d' %(collector, 27018))
+            adminConnection.admin.command('moveChunk', '%s.%s' %(DB_NAME, collectionname), find={"host": host}, to='%s:%d' %(collector, DATABASE_SERVER_PORT))
             log.info("Collection moved successfully.")
             break
         except pymongo.errors.OperationFailure, e:
@@ -346,7 +361,7 @@ def configureDBCluster():
         moveChunk(sensor, collectorMapping[helpers.ALL], 'log')
     
     log.info('Creating index on field: %s' %(TYPE_FIELD))
-    getConnection(dbhost='localhost', port=27017)[DB_NAME][COLLECTION_NAME].ensure_index([(TYPE_FIELD, pymongo.ASCENDING)])
+    getConnection(dbhost='localhost', port=ROUTER_SERVER_PORT)[DB_NAME][COLLECTION_NAME].ensure_index([(TYPE_FIELD, pymongo.ASCENDING)])
     
     exitlog(functionName, locals())
         
@@ -362,7 +377,7 @@ def checkIfAllCollectorsRegistered():
                 break
             time.sleep(1)
         
-def getConnection(dbhost=None, port=27018, block=True, timeout=TIMEOUT):
+def getConnection(dbhost=None, port=DATABASE_SERVER_PORT, block=True, timeout=TIMEOUT):
     """
         Function to get connection to a database server
     """
@@ -499,7 +514,7 @@ class Collection():
     def __init__(self, collectiontype, dbhost=None):
         if dbhost == None:
             dbhost = getCollector()
-        connection = getConnection(dbhost, port=27018)
+        connection = getConnection(dbhost, port=DATABASE_SERVER_PORT)
         self.collection = connection[DB_NAME][COLLECTION_NAME]
         self.type = collectiontype
 
@@ -512,7 +527,7 @@ class Collection():
         kwargs['host'] = testbed.nodename
         kwargs['created'] = time.time()
         kwargs[TYPE_FIELD] = self.type
-        self.collection.insert(kwargs)
+        return self.collection.insert(kwargs)
         
     def remove(self, **kwargs):
         """
@@ -521,7 +536,14 @@ class Collection():
         """
         kwargs['host'] = testbed.nodename
         kwargs[TYPE_FIELD] = self.type
-        self.collection.remove(kwargs)
+        return self.collection.remove(kwargs)
+
+    def find(self, **kwargs):
+        """
+        """
+        kwargs['host'] = testbed.nodename
+        kwargs[TYPE_FIELD] = self.type
+        return self.collection.find(kwargs)
         
 #    def removeAll(self):
 #        kwargs = dict()

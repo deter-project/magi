@@ -6,7 +6,7 @@
 
 from magi.daemon.externalAgentsThread import ExternalAgentsThread, PipeTuple
 from magi.messaging.api import *
-from magi.util import helpers
+from magi.util import helpers, database
 from magi.util.agent import agentmethod
 from magi.util.calls import doMessageAction
 from magi.util.software import requireSoftware
@@ -36,12 +36,11 @@ class Daemon(threading.Thread):
 		messages such as 'exec'.
 	"""
 
-	def __init__(self, hostname, transports, enable_dataman_agent=True):
+	def __init__(self, hostname, transports):
 		threading.Thread.__init__(self, name='daemon')
 		# 9/16/2013 hostname is passed in from the magi_daemon script correctly 
 		self.hostname = hostname
 		self.messaging = Messenger(self.hostname)
-		#self.messaging_exp = Messenger(self.hostname)
 		#self.messaging.startDaemon()
 		
 		self.staticAgents = list()  # statically loaded thread agents
@@ -52,13 +51,12 @@ class Daemon(threading.Thread):
 		self.extAgentsThread = ExternalAgentsThread(self.messaging)
 		self.extAgentsThread.start()
 
-		if enable_dataman_agent:
+		if database.isDBEnabled:
 			try:
 				log.info("Starting Data Manager Agent")
 				self.startAgent(code=magi.modules.dataman.__path__[0], name="dataman", dock="dataman", static=True)
 			except Exception, e:
-				log.error("Exception while trying to run the data manager agent.")
-				log.error(str(e))
+				log.exception("Exception while trying to run the data manager agent.")
 				raise e
 				
 		self.configureMessaging(self.messaging, transports)

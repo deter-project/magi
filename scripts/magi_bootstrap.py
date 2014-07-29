@@ -145,16 +145,15 @@ if __name__ == '__main__':
         optparser.add_option("-U", "--noupdate", dest="noupdate", action="store_true", default=False, help="Do not update the system before installing Magi")
         optparser.add_option("-N", "--noinstall", dest="noinstall", action="store_true", default=False, help="Do not install magi and the supporting libraries") 
         optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False, help="Include debugging information") 
-        optparser.add_option("-f", "--force", dest="force", action="store_true",default=False, help="Recreate magi.conf even if present. Cannot use along with -c (see below)")
-        optparser.add_option("-m", "--mesdl", dest="mesdl", action="store", default=None, help="Path to the messaging overlay configuration file")  
-        optparser.add_option("-c", "--magiconf", dest="magiconf", action="store", default=None, help="Path to the local node magi configuration file. Cannot use along with -f (see above)")
-        optparser.add_option("-d", "--dbconf", dest="dbconf", action="store", default=None, help="Path to the data management configuration file")
+        optparser.add_option("-e", "--expconf", dest="expconf", action="store", default=None, help="Path to the experiment wide configuration file")  
+        optparser.add_option("-c", "--nodeconf", dest="nodeconf", action="store", default=None, help="Path to the node specific configuration file. Cannot use along with -f (see below)")
+        optparser.add_option("-f", "--force", dest="force", action="store_true", default=False, help="Recreate node configuration file, even if present. Cannot use along with -c (see above)")
         optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install and setup data manager") 
         optparser.add_option("-o", "--logfile", dest="logfile", action='store', default="/tmp/magi_bootstrap.log", help="Log file. Default: %default")
                 
         (options, args) = optparser.parse_args()
 
-        if options.magiconf and options.force == True:
+        if options.nodeconf and options.force == True:
                 optparser.error("Options -c and -f are mutually exclusive. Please specify only one")
                 
         log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
@@ -231,72 +230,75 @@ if __name__ == '__main__':
             except OSError, e:
                     if e.errno != errno.EEXIST:
                             log.error("Failed to create logging dir: %s", e, exc_info=1)
-    
-            if not options.magiconf:
-                    log.info("Magi conf not specified on the command line....")
-                    log.info("Testing to see if one is present....")
-                    # create a configuration file for magi on the local node only if one is not explicility 
-                    # specified 
-                    configFlag = False 
+            
+            
+            # create a MAGI node configuration file only if one is not explicitly specified 
+            if not options.nodeconf:
+                    log.info("MAGI node configuration file has not been provided as an input argument")
+                    log.info("Testing to see if one is present")
+                    
+                    createNodeConfig = False 
                     try: 
-                            # Create a magi conf file if it is not present or needs to be recreated 
-                            if config.verifyConfig(config.DEFAULT_MAGICONF) == True :
-                                    log.info("Found a magi conf at %s....", config.DEFAULT_MAGICONF) 
-                                    if options.force == True:
-                                            log.info("Creating a new magi conf due to -f....")  
-                                            configFlag  = True 
-                                    else:
-                                            log.info("Using the magi conf at %s....", config.DEFAULT_MAGICONF)
+                            # Create a MAGI node configuration file if one is not present or needs to be recreated 
+                            if options.force == True:
+                                    log.info("force flag set. Need to (re)create node configuration file.")  
+                                    createNodeConfig  = True
+                            elif config.verifyConfig(config.NODECONF_FILE) == True :
+                                    log.info("Found a valid node configuration file at %s. Using it.", config.NODECONF_FILE) 
+                            else:
+                                    log.info("No valid node configuration file found at %s. Need to create one.", config.NODECONF_FILE)
+                                    # There is not default magi conf or it is not the correct length        
+                                    createNodeConfig = True 
                             
-                            else: 
-                                    # There is not default magi conf or it is not the correct lenght        
-                                    configFlag = True 
-                            
-                            if configFlag== True: 
-                                    log.info("Creating a new magi conf....")
+                            if createNodeConfig: 
+                                    log.info("Creating a new node configuration file")
                                 
-                                    # 5/14/2013 The messaging overlay is now explicitly defined in a mesdl configuration file
-                                    # The mesdl configuration file format is documented in magi/util/config.py
-                                    # In the absense of a mesdl file, the bootstrap process defines a simple messaging overlay
-                                    # that starts two servers; one externally facing for the experimenter to connect to the experiment
+                                    # 7/24/2014 The messaging overlay and the data management configuration is now explicitly defined
+                                    # in an experiment wide configuration file. The experiment wide configuration file format 
+                                    # is documented in magi/util/config.py. The experiment wide configuration file contains the messaging 
+                                    # overlay configuration and the database configuration.
+                                    # 
+                                    # In the absence of messaging overlay configuration, the bootstrap process defines a simple messaging 
+                                    # overlay that starts two servers; one externally facing for the experimenter to connect to the experiment
                                     # and one internally facing to forward magi messages to all the experiment nodes. 
-                                    # It then creates a mesdl file and stores it at DEFAULT_EXPMESDL location 
-                                    # The node that hosts both the servers is choosen as follows:
+                                    # The node that hosts both the servers is chosen as follows:
                                     #    - it checks to see if a node named "control" is present in the experiment 
-                                    #      If present, it is choosen 
-                                    #   -  else, the first node in an alphanuremically sorted  
+                                    #      If present, it is chosen 
+                                    #   -  else, the first node in an alpha-numerically sorted  
                                     #      list of all node names is used  
                                     #
-                                    log.info("Checking to see if a MeSDL file is specified....")
-                                    if not options.mesdl:
-                                            log.info("No Mesdl file specified....")      
-                                            options.mesdl = config.createMESDL()
-                                            log.info("Created a mesdl file at location %s....",options.mesdl) 
+                                    # 
+                                    # It then stores the configuration file at EXPCONF_FILE location 
+                                    # 
+                                    log.info("Checking to see if a experiment configuration is provided")
+                                    if not options.expconf:
+                                            log.info("No experiment configuration file specified")      
+                                            options.expconf = config.createExperimentConfig(magiDistDir=rpath, isDBEnabled=not options.nodataman)
+                                            log.info("Created a experiment configuration file at %s", options.expconf) 
                                     else:
-                                            log.info("Using MeSDL file at location %s....", options.mesdl)
+                                            log.info("Using experiment configuration file at %s", options.expconf)
     
                                     log.info("Checking to see if a db config file is specified....")
                                     
-                                    if not options.nodataman:
-                                            if not options.dbconf:
-                                                    log.info("No db config file specified....")
-                                                    options.dbconf = config.createDBConf()
-                                                    log.info("Created a db config file at location %s....",options.dbconf)
-                                            else:
-                                                    log.info("Validating data config file at location %s....", options.dbconf)
-                                                    options.dbconf = config.validateDBConf(options.dbconf)
+#                                    if not options.nodataman:
+#                                            if not options.dbconf:
+#                                                    log.info("No db config file specified....")
+#                                                    options.dbconf = config.createDBConf()
+#                                                    log.info("Created a db config file at location %s....",options.dbconf)
+#                                            else:
+#                                                    log.info("Validating data config file at location %s....", options.dbconf)
+#                                                    options.dbconf = config.validateDBConf(options.dbconf)
                     
                                     # The mesdl file was specified at the command line 
                                     # use it to create a new local node specific magi conf  
-                                    config.createConfig(mesdl=options.mesdl, dbconf=options.dbconf, rootdir=rpath, enable_dataman=not options.nodataman) 
-                                    log.info("Created a magi conf at %s....", config.DEFAULT_MAGICONF) 
+                                    nodeConfigFile = config.createNodeConfig(experimentConfigFile=options.expconf) 
+                                    log.info("Created a node configuration file at %s", nodeConfigFile) 
                     except Exception, e:
                             log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
     
-    
-            if not options.nodataman:
-                    from magi.util import database
-                    if database.isCollector or database.isConfigHost:
+            from magi.util import database
+            if database.isDBEnabled:
+                    if (database.isCollector or database.isConfigHost):
                             if not options.noinstall:
                                     #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
                                     #Copying prebuilt binaries for mongodb
@@ -323,7 +325,8 @@ if __name__ == '__main__':
                     log.info("Waiting for local database to be added as a shard")
                     database.isShardRegistered(block=True)
                     log.info("Local database has been added as a shard")
-                    
+            else:
+                log.info("Database setup is disabled")
                     
             # Get the pid for the daemon process from the pid file 
             # Note that if the daemon was started externally, without bootstrap, the pid file would not have 
@@ -333,9 +336,9 @@ if __name__ == '__main__':
            
             # currenty, check if the magi.pid file exsist, if exists, try to kill  
             # Note the file is created by the magi_daemon.py script  
-            log.info("Testing to see if daemon is running....(pid at  %s)", config.DEFAULT_MAGIPID)
-            if os.path.exists(config.DEFAULT_MAGIPID) and os.path.getsize(config.DEFAULT_MAGIPID) > 0:
-                    fpid = open (config.DEFAULT_MAGIPID, 'r')
+            log.info("Testing to see if a MAGI Daemon process is already running (pid at %s)", config.MAGIPID_FILE)
+            if os.path.exists(config.MAGIPID_FILE) and os.path.getsize(config.MAGIPID_FILE) > 0:
+                    fpid = open (config.MAGIPID_FILE, 'r')
                     pid = int(fpid.read())
                     
                     log.info("Daemon is running with pid %d", pid)
@@ -370,15 +373,11 @@ if __name__ == '__main__':
                                         log.info("Cannot kill process %d", pid) 
                     
             else:
-                    log.info("No %s file found....", config.DEFAULT_MAGIPID)
+                    log.info("No %s file found", config.MAGIPID_FILE)
     
             log.info("Starting daemon")
             daemon = ['/usr/local/bin/magi_daemon.py']
     
-            if options.nodataman:
-                    log.info("Starting daemon without data manager")
-                    daemon += ['-D']
-                    
             if options.verbose:
                     log.info("Starting daemon with debugging")
                     daemon += ['-l', 'DEBUG']
@@ -390,5 +389,5 @@ if __name__ == '__main__':
             log.info("Started daemon with pid %s", pid)
         
         except Exception, e:
-            log.error("Exception while bootstraping", e)
+            log.exception("Exception while bootstraping")
             sys.exit(e)
