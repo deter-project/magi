@@ -126,7 +126,7 @@ def loadNodeConfig(nodeConfigFile=NODECONF_FILE):
     return nodeConfig
     
 def createExperimentConfig(magiDistDir, isDBEnabled):
-    log.info("Creating experiment wide configuration file.....") 
+    log.info("Creating an experiment wide configuration file") 
     fp = open(EXPCONF_FILE, 'w')
     expConf = dict()
     expConf['mesdl'] = getDefaultMESDL()
@@ -138,9 +138,9 @@ def createExperimentConfig(magiDistDir, isDBEnabled):
 
 def getDefaultMESDL():
     """ Create a default mesdl for the control plane """
-    log.info("Creating control plane mesdl") 
+    log.info("Creating default mesdl") 
     controlNode = testbed.getServer() 
-    log.info("Using %s as control node....", controlNode) 
+    log.info("Using %s as control node", controlNode) 
     if not '.' in controlNode:
         controlNode += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
     mesdl = dict()
@@ -156,8 +156,8 @@ def getDefaultMESDL():
     return mesdl
 
 def getDefaultDBDL(isDBEnabled=True):
-    """ Create a default db configuration file """
-    log.info("Creating db config file.....")
+    """ Create a default db configuration """
+    log.info("Creating default dbdl")
     dbdl = dict()
     dbdl['isDBEnabled'] = isDBEnabled
     if isDBEnabled:
@@ -234,7 +234,7 @@ def createNodeConfig(experimentConfigFile=EXPCONF_FILE, nodeConfigFile=NODECONF_
     # Read the messaging overlay description for the experiment and create 
     # the required transports for this node 
     mesdl = experimentConfig.get('mesdl')
-    log.info("Mesdl from experiment wide configuration file %s: %s", experimentConfig, mesdl)
+    log.info("Mesdl from experiment wide configuration file %s: %s", experimentConfigFile, mesdl)
     
     transports = list()
     
@@ -267,7 +267,9 @@ def createNodeConfig(experimentConfigFile=EXPCONF_FILE, nodeConfigFile=NODECONF_
         elif t['type'] == 'MulticastTransport' and (nodename_control in t['members'] or '__ALL__' in t['members']):
             transports.append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
 
-    dbdl = experimentConfig.get('dbdl')   
+    dbdl = experimentConfig.get('dbdl')
+    log.info("Dbdl from experiment wide configuration file %s: %s", experimentConfigFile, dbdl)
+    
     dbInfo = dict()
     if dbdl.get('isDBEnabled'):
         dbInfo['isDBEnabled'] = True

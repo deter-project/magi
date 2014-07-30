@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from os import path
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import errno
 import glob
 import logging.handlers
@@ -22,7 +22,6 @@ def call(*popenargs, **kwargs):
         log.info("Calling %s" % (popenargs))
         if "shell" not in kwargs:
                 kwargs["shell"] = True
-        
         process = Popen(*popenargs, **kwargs)
         process.wait()
         return process.returncode
@@ -253,7 +252,7 @@ if __name__ == '__main__':
                             if createNodeConfig: 
                                     log.info("Creating a new node configuration file")
                                 
-                                    # 7/24/2014 The messaging overlay and the data management configuration is now explicitly defined
+                                    # 7/24/2014 The messaging overlay and the database configuration is now explicitly defined
                                     # in an experiment wide configuration file. The experiment wide configuration file format 
                                     # is documented in magi/util/config.py. The experiment wide configuration file contains the messaging 
                                     # overlay configuration and the database configuration.
@@ -267,8 +266,10 @@ if __name__ == '__main__':
                                     #   -  else, the first node in an alpha-numerically sorted  
                                     #      list of all node names is used  
                                     #
-                                    # 
-                                    # It then stores the configuration file at EXPCONF_FILE location 
+                                    # In the absence of database configuration, the bootstrap process defines a simple configuration, with
+                                    # each sensor collecting data locally. The database config node is also chosen using the above steps.
+                                    #
+                                    # It then stores the configuration file at config.EXPCONF_FILE location 
                                     # 
                                     log.info("Checking to see if a experiment configuration is provided")
                                     if not options.expconf:
@@ -373,7 +374,7 @@ if __name__ == '__main__':
                     log.info("Starting daemon with debugging")
                     daemon += ['-l', 'DEBUG']
                     
-            pid = Popen(daemon).pid
+            pid = Popen(daemon, stdout=PIPE, stderr=PIPE).pid
      
             log.info("MAGI Version: %s", __version__) 
             log.info("Started daemon with pid %s", pid)
