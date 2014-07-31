@@ -3,6 +3,7 @@ import yaml
 import sys
 import cStringIO
 import optparse
+import pdb
 from controlflow import ControlGraph  
 from collections import defaultdict
 from magi.messaging.api import MAGIMessage
@@ -188,12 +189,24 @@ class TriggerList(list):
     def getEsets(self):
         completeests = set() 
         for entry in self:
+            #TODO: make sure it is a event (see below getARgs) 
             tesets = Trigger.getEsets(entry) 
             if tesets:
                 for e in tesets:
                     print e 
                     completeests.add(e)
         return completeests
+    
+    def getArgs(self):
+        completeargs = set()
+        for entry in self:
+            t = Trigger.getArgs(entry)
+            if t:
+                for k,v in t.iteritems():
+                    print k,v
+		    if k == 'event': 
+                    	completeargs.add(v)
+        return completeargs
 
     def __repr__(self):
         rstr = 'TriggerList: \n\t'
@@ -459,7 +472,7 @@ class AAL(object):
                     'target': 'exit'},
                     {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
 
-        #if dagdisplay: 
+        #if dagdisplay:
             #callgraph = pydot.Dot(graph_type='digraph',fontname="Verdana")
             #callgraph.add_node(pydot.Node('Setup',label='Setup'))
             #callgraph.add_node(pydot.Node('TearDown', label='TearDown'))
@@ -480,7 +493,17 @@ class AAL(object):
 
                 if event['type'] == 'trigger':
                     t = TriggerList(event['triggers'])
-
+                    pdb.set_trace()
+                    
+                    
+                    # Check is there are an incoming triggers, specified as "event: waitforme, speciall..."
+                    feset = t.getArgs()
+                    if feset:
+                        for k in feset:
+                            self.ieventtriggers[key].add(k)
+                
+                
+                    # Check is there are sets of incoming triggers, specified as "eset: [event: waitforme, speciall...] [ event:waitformealso...] "
                     feset = t.getEsets()
                     if feset:
                         for k in feset:
@@ -627,6 +650,6 @@ if __name__ == "__main__":
     x = AAL(files=options.file, dagdisplay=True)
     print "Incoming Event triggers", x.ieventtriggers
     print "Outgoing Event triggers", x.oeventtriggers
-    #print x.__repr__()
+    print x.__repr__()
 
 
