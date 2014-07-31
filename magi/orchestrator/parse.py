@@ -204,7 +204,7 @@ class TriggerList(list):
             if t:
                 for k,v in t.iteritems():
                     print k,v
-		    if k is 'event': 
+		    if k == 'event': 
                     	completeargs.add(v)
         return completeargs
 
