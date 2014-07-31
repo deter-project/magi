@@ -57,7 +57,7 @@ class DataManAgent(NonBlockingDispatchAgent):
                 filters_copy['host'] = node
                 nodedata = []
                 for tsChunk in timestampChunks:
-                    nodedata = nodedata + database.getData(collectionname, filters_copy, tsChunk, database.getConnection(database.configNode, port=27017))
+                    nodedata = nodedata + database.getData(collectionname, filters_copy, tsChunk, database.getConnection(database.configHost, port=27017))
                 data[collectionname][node] = nodedata
 #                data[collectionname][node] = self.getDataFromCollector(collectionname, node, filters, timestampChunks, visited)
         

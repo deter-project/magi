@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from os import path
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import errno
 import glob
 import logging.handlers
@@ -22,7 +22,6 @@ def call(*popenargs, **kwargs):
         log.info("Calling %s" % (popenargs))
         if "shell" not in kwargs:
                 kwargs["shell"] = True
-        
         process = Popen(*popenargs, **kwargs)
         process.wait()
         return process.returncode
@@ -253,7 +252,7 @@ if __name__ == '__main__':
                             if createNodeConfig: 
                                     log.info("Creating a new node configuration file")
                                 
-                                    # 7/24/2014 The messaging overlay and the data management configuration is now explicitly defined
+                                    # 7/24/2014 The messaging overlay and the database configuration is now explicitly defined
                                     # in an experiment wide configuration file. The experiment wide configuration file format 
                                     # is documented in magi/util/config.py. The experiment wide configuration file contains the messaging 
                                     # overlay configuration and the database configuration.
@@ -267,8 +266,10 @@ if __name__ == '__main__':
                                     #   -  else, the first node in an alpha-numerically sorted  
                                     #      list of all node names is used  
                                     #
-                                    # 
-                                    # It then stores the configuration file at EXPCONF_FILE location 
+                                    # In the absence of database configuration, the bootstrap process defines a simple configuration, with
+                                    # each sensor collecting data locally. The database config node is also chosen using the above steps.
+                                    #
+                                    # It then stores the configuration file at config.EXPCONF_FILE location 
                                     # 
                                     log.info("Checking to see if a experiment configuration is provided")
                                     if not options.expconf:
@@ -277,24 +278,15 @@ if __name__ == '__main__':
                                             log.info("Created a experiment configuration file at %s", options.expconf) 
                                     else:
                                             log.info("Using experiment configuration file at %s", options.expconf)
+                                            log.info("Checking and correcting, if required, the experiment configuration file")
+                                            config.checkAndCorrectExperimentConfig(options.expconf)
     
-                                    log.info("Checking to see if a db config file is specified....")
-                                    
-#                                    if not options.nodataman:
-#                                            if not options.dbconf:
-#                                                    log.info("No db config file specified....")
-#                                                    options.dbconf = config.createDBConf()
-#                                                    log.info("Created a db config file at location %s....",options.dbconf)
-#                                            else:
-#                                                    log.info("Validating data config file at location %s....", options.dbconf)
-#                                                    options.dbconf = config.validateDBConf(options.dbconf)
-                    
-                                    # The mesdl file was specified at the command line 
-                                    # use it to create a new local node specific magi conf  
+                                    # Use the experiment configuration file to create node specific configuration
                                     nodeConfigFile = config.createNodeConfig(experimentConfigFile=options.expconf) 
                                     log.info("Created a node configuration file at %s", nodeConfigFile) 
+                                    
                     except Exception, e:
-                            log.error("Magi Config failed, things probably aren't going to run: %s", e, exc_info=True)
+                            log.error("MAGI configuration failed, things probably aren't going to run: %s", e, exc_info=True)
     
             from magi.util import database
             if database.isDBEnabled:
@@ -382,8 +374,7 @@ if __name__ == '__main__':
                     log.info("Starting daemon with debugging")
                     daemon += ['-l', 'DEBUG']
                     
-            # Record the process id in a file for later reference 
-            pid=Popen( daemon ).pid
+            pid = Popen(daemon, stdout=PIPE, stderr=PIPE).pid
      
             log.info("MAGI Version: %s", __version__) 
             log.info("Started daemon with pid %s", pid)
