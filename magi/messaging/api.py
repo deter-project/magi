@@ -110,6 +110,15 @@ class ClientConnection(Messenger):
 		self.addTransport(conn, True)
 #		self.startDaemon()
 
+
+class ServerConnection(Messenger):
+	""" Wrapper to provide the basic TCP client interface """
+	def __init__(self, name, port):
+		Messenger.__init__(self, name)
+		conn = TCPServer(address="0.0.0.0", port=port)
+		self.addTransport(conn, True)
+#		self.startDaemon()
+
 class SSLClientConnection(Messenger):
 	""" Wrapper to provide the basic SSL client interface """
 	def __init__(self, name, host, port, project, experiment):
