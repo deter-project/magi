@@ -11,7 +11,7 @@ import sys
 import os,stat
 import subprocess
 import time
-
+from magi_get_config import getDBConfigHost
 
 
 def create_tunnel(username, server, lport, rhost, rport):
@@ -35,32 +35,6 @@ def create_tunnel(username, server, lport, rhost, rport):
     
     return ssh_cmd
 
-def getExperimentConfigFile(project, experiment,user):
-    ssh_cmd = "ssh %s@%s /usr/testbed/bin/node_list -e %s,%s -c" % (project,experiment,user)
-    (output, err) = Popen(cmd.split(), stdout=PIPE).communicate()
-		nodes = output.split(' ')
-		for e in nodes:
-			if not e.startswith('tbdelay'):
-				node = e
-				break
-		
-    tunnel_cmd = create_tunnel(user,'users.deterlab.net',27018,
-
-
-    
-def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None, user=None):
-    if not experimentConfigFile:
-		if not project or not experiment:
-			raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
-		logging.info('Fetching the experiment configuration')
-		experimentConfigFile = getExperimentConfigFile(project, experiment,user)
-		logging.info(experimentConfigFile)
-	experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
-	dbdl = experimentConfig['dbdl']
-	expdl = experimentConfig['expdl']
-	
-	return "%s.%s.%s" % (dbdl['configHost'], expdl['eid'], expdl['pid'])	   
-
 def load_yaml(file_aal):
    try:
 		f=open(file_aal)  
@@ -78,12 +52,11 @@ if __name__ == '__main__':
     optparser.add_option("-p", "--project", dest="project", help="Project name")
     optparser.add_option("-b", "--base", dest="base", help="Path and name of the experiment config file")
     optparser.add_option("-T", "--Tunnel", dest="tunnel", default=False, help="Tunnel request through Deter Ops (users.deterlab.net).")
-    optparser.add_option("-u", "--user", dest="users", help="Specific username to login into deter testbed")
+    optparser.add_option("-u", "--user", dest="user", help="Specific username to login into deter testbed")
     optparser.add_option("-c", "--config", dest="config", help="Path and name of configuration file for generating the graph")
     optparser.add_option("-o", "--output", dest="output", help="Path and name of output file for the graph") 
     (options, args) = optparser.parse_args()
     
-               
     log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
     log_datefmt = '%m-%d %H:%M:%S'
     logging.basicConfig(format=log_format,
@@ -98,14 +71,10 @@ if __name__ == '__main__':
         optparser.print_help()
         sys.exit(2)
     
-    if options.user is None:
-        optparser.print_help()
-        sys.exit(2)
-    
     logging.info("Attempting to get the database config host from the experiment")
-    DBhost = getDBConfigHost(experimentConfigFile=options.base, project=options.project,\
-                                        experiment=options.experiment,user=options.user)
-                                        
+    dbConfigNode = getDBConfigHost(experimentConfigFile=options.base, project=options.project, experiment=options.experiment)
+    logging.info(dbConfigNode)
+    logging.info("Got the database config host from the experiment")                                  
    
     logging.info("Attempting to load the Yaml file")
     config = load_yaml(options.config)
@@ -117,14 +86,12 @@ if __name__ == '__main__':
         if options.tunnel:
             logging.info("Attempting to establish SSH tunnel")
             tunnel_cmd = create_tunnel(options.user,'users.deterlab.net',27018,\
-	                        config['base']['nid'] + "." + 
-	                        config['base']['eid'] + "." + 
-	                        config['base']['pid'], 27017)
+	                       dbConfigNode, 27017)
             bridge = 'localhost'
             port = 27018
             logging.info('Tunnel setup done')
         else:
-            bridge = config['base']['nid'] + "." + config['base']['eid'] + "." + config['base']['pid']
+            bridge = dbConfigNode
             port = 27017
 	        #print bridge
 	    logging.info('Attempting to connect to the database')
