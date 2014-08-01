@@ -30,7 +30,8 @@ if __name__ == '__main__':
 	(options, args) = optparser.parse_args()
 
 	signal.signal(signal.SIGINT, handler)
-	messaging = api.ClientConnection("orchtester", "127.0.0.1", 18808)
+	messaging = api.ClientConnection("orchTesterClient", "128.9.168.95", 18808)
+        messaging.join('control')
 
         print "messaging up and ready"
    
@@ -38,12 +39,14 @@ if __name__ == '__main__':
             print "waiting for a message"
             try:
                 msg =  messaging.nextMessage(block=True, timeout=1)
+                if msg:
+                    print "HELLO GOT", msg 
             except Queue.Empty:
-                continue      
+                pass      
 
-            nmsg = MAGIMessage(groups='control', contenttype=MAGIMessage.YAML, data=yaml.safe_dump({'data': 'lovely'}))
+            nmsg = MAGIMessage(groups='control', contenttype=MAGIMessage.YAML, data=yaml.safe_dump({'data': 'lovely sent from client'}))
             messaging.send(nmsg)
-            print msg
+            print nmsg
 
 
 
