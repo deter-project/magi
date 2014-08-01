@@ -176,7 +176,8 @@ class StreamTransport(Transport):
 		"""
 		Transport.__init__(self, sock=sock, codec=codec)
 		self.closed = False
-		self.connected = False
+		if not sock:
+			self.connected = False
 		self.txMessage = TXTracker(codec=self.codec)
 		self.rxMessage = RXTracker(codec=self.codec)
 
