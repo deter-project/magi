@@ -123,8 +123,8 @@ if __name__ == '__main__':
       	    y.append(post[config['db']['yValue']])
           
         logging.info('Constructed the x and y values for graph')
-        logging.info(x)
-        logging.info(y)
+        #logging.info(x)
+        #logging.info(y)
  
         logging.info('Preparing to plot values for graph')
         plt.xlabel(config['graph']['xLabel'])
