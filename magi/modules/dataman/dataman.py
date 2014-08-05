@@ -27,22 +27,22 @@ class DataManAgent(NonBlockingDispatchAgent):
         self.rcvdPongs = set()
         
     @agentmethod()
-    def getData(self, msg, collectionnames=None, nodes=None, filters=dict(), timestampChunks=None, visited=set()):
+    def getData(self, msg, agents=None, nodes=None, filters=dict(), timestampChunks=None, visited=set()):
         """
             Request to fetch data
         """
         functionName = self.getData.__name__
         entrylog(functionName, locals())
         
-        collectionnames_ = helpers.toSet(collectionnames)
+        agents_ = helpers.toSet(agents)
         nodes_ = helpers.toSet(nodes)
         
         if not nodes_:
             nodes_ = testbed.getTopoGraph().nodes()
             
-        if not collectionnames_:
+        if not agents_:
             if nodes:
-                collectionnames_ = self.getCollectionNames(nodes[0])
+                agents_ = self.getSensorAgents(nodes[0])
             else:
                 raise AttributeError("Cannot query for an empty set of collections.")
         
@@ -50,19 +50,18 @@ class DataManAgent(NonBlockingDispatchAgent):
             timestampChunks = [(0, time.time())]
         
         data = dict()
-        for collectionname in collectionnames_:
-            data[collectionname] = dict()
+        for agent in agents_:
+            data[agent] = dict()
             for node in nodes_:
                 filters_copy = filters.copy()
                 filters_copy['host'] = node
                 nodedata = []
                 for tsChunk in timestampChunks:
-                    nodedata = nodedata + database.getData(collectionname, filters_copy, tsChunk, database.getConnection(database.configHost, port=27017))
-                data[collectionname][node] = nodedata
-#                data[collectionname][node] = self.getDataFromCollector(collectionname, node, filters, timestampChunks, visited)
+                    nodedata = nodedata + database.getData(agent, filters_copy, tsChunk, database.getConnection(database.configHost, port=database.ROUTER_SERVER_PORT))
+                data[agent][node] = nodedata
         
         args = {
-            "collectionnames": collectionnames,
+            "agents": agents,
             "nodes": nodes,
             "filters": filters,
             "timestampChunks": timestampChunks,
@@ -77,7 +76,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         exitlog(functionName)
         
-    def getCollectionNames(self, node):
+    def getSensorAgents(self, node):
         """
             Internal function to fetch the list of collections for a given node
         """
@@ -91,15 +90,15 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         return self.collectionMetadata[node].value.keys()
 
-    def isCollector(self, node, collectionname):
+    def isCollector(self, node, agentName):
         """
-            Internal function to check if the local node is the collector for a given node and collection
+            Internal function to check if the local node is the collector for a given node and agent
         """
-        return (self.getCollector(node, collectionname) == testbed.getNodeName())
+        return (self.getCollector(node, agentName) == testbed.getNodeName())
     
-    def getCollector(self, node, collectionname):
+    def getCollector(self, node, agentName):
         """
-            Internal function to fetch the collector for a given node and collection
+            Internal function to fetch the collector for a given node and agent
         """
         functionName = self.getCollector.__name__
         entrylog(functionName, locals())

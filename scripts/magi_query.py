@@ -25,8 +25,8 @@ if __name__ == '__main__':
     optparser.add_option("-T", "--tunnel", dest="tunnel", action="store_true", default=False, 
                          help="Tell the tool to tunnel request through Deter Ops (users.deterlab.net).")
     
-    optparser.add_option("-c", "--collections", dest="collections", action="callback", callback=store_list, 
-                         default=[], type="string", help="Comma-separated list of the collections to query")
+    optparser.add_option("-a", "--agents", dest="agents", action="callback", callback=store_list, 
+                         default=[], type="string", help="Comma-separated list of the agents to query")
     
     optparser.add_option("-n", "--nodes", dest="nodes", action="callback", callback=store_list, default=[], 
                          type="string", help="Comma-separated list of the nodes to query")
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     # Terminate if the user presses ctrl+c 
     signal.signal(signal.SIGINT, signal.SIG_DFL )
     
-    if options.bridge is None or not options.collections:
+    if options.bridge is None or not options.agents:
         optparser.print_help()
         sys.exit(2)
         
@@ -96,13 +96,13 @@ if __name__ == '__main__':
         logging.critical('Error connecting to %s: %s', options.control, str(e))
         exit(3)
         
-    collectionnames = options.collections
+    agents = options.agents
     nodes = options.nodes
     timestampChunks = [(options.starttime, options.endtime)]
     msgdest = options.bridge.split(".")[0]
     filters = options.filters
 
-    data = querytool.getData(collectionnames=collectionnames, 
+    data = querytool.getData(agents=agents, 
                              nodes=nodes, 
                              filters=filters,
                              timestampChunks=timestampChunks, 

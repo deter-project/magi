@@ -47,10 +47,10 @@ isCollector = (testbed.nodename in collectorMapping.values())
 isSensor = (testbed.nodename in collectorMapping.keys() or '__ALL__' in collectorMapping.keys())
 
 
-if 'connectionMap' not in locals():
-    connectionMap = dict()
-if 'collectionMap' not in locals():
-    collectionMap = dict()
+if 'connectionCache' not in locals():
+    connectionCache = dict()
+if 'collectionCache' not in locals():
+    collectionCache = dict()
 if 'collectionHosts' not in locals():
     collectionHosts = dict()
     collectionHosts['log'] = collector
@@ -386,14 +386,14 @@ def getConnection(dbhost=None, port=DATABASE_SERVER_PORT, block=True, timeout=TI
     functionName = getConnection.__name__
     entrylog(functionName, locals())
     
-    global connectionMap
+    global connectionCache
     
     if dbhost == None:
         dbhost = getCollector()
         
     dbhost = helpers.toControlPlaneNodeName(dbhost)
     
-    if (dbhost, port) not in connectionMap:
+    if (dbhost, port) not in connectionCache:
         log.info("Trying to connect to mongodb server at %s:%d" %(dbhost, port))
         start = time.time()
         stop = start + timeout 
@@ -403,7 +403,7 @@ def getConnection(dbhost=None, port=DATABASE_SERVER_PORT, block=True, timeout=TI
                     connection = MongoClient('localhost', port)
                 else:
                     connection = MongoClient(dbhost, port)
-                connectionMap[(dbhost, port)] = connection
+                connectionCache[(dbhost, port)] = connection
                 log.info("Connected to mongodb server at %s:%d" %(dbhost, port))
                 exitlog(functionName, locals())
                 return connection
@@ -418,7 +418,7 @@ def getConnection(dbhost=None, port=DATABASE_SERVER_PORT, block=True, timeout=TI
         raise pymongo.errors.ConnectionFailure("Done trying enough times. Cannot connect to mongodb server on %s" %dbhost)
     
     exitlog(functionName, locals())
-    return connectionMap[(dbhost, port)]
+    return connectionCache[(dbhost, port)]
             
 def getCollection(agentName, dbhost=None):
     """
@@ -427,23 +427,23 @@ def getCollection(agentName, dbhost=None):
     functionName = getCollection.__name__
     entrylog(functionName, locals())
     
-    global collectionMap
+    global collectionCache
     global collectionHosts
     
     if dbhost == None:
         dbhost = getCollector()
         
-    if (agentName, dbhost) not in collectionMap:
+    if (agentName, dbhost) not in collectionCache:
         try:
             if collectionHosts[agentName] != dbhost:
-                log.error("Multiple db hosts for same agent")
-                raise Exception("Multiple db hosts for same agent")
+                log.error("Multiple collectors for same agent")
+                raise Exception("Multiple colelctors for same agent")
         except KeyError:
             collectionHosts[agentName] = dbhost
-        collectionMap[(agentName, dbhost)] = Collection(agentName, dbhost)
+        collectionCache[(agentName, dbhost)] = Collection(agentName, dbhost)
     
     exitlog(functionName, locals())
-    return collectionMap[(agentName, dbhost)]
+    return collectionCache[(agentName, dbhost)]
 
 def getData(agentName, filters=None, timestampRange=None, connection=None):
     """

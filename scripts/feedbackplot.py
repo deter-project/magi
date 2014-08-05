@@ -61,9 +61,9 @@ if __name__ == '__main__':
             
         msgdest = options.bridge.split(".")[0]
         
-        collectionnames = ['pktcounter']
+        agents = ['pktcounter']
         nodes = ['rc']
-        filters = {'peerNode': { '$in': ['uc-0', 'c-0'] }, 'direction' : 'out' }
+        filters = {'peerNode': { '$in': ['uc-0', 'c-0'] }, 'trafficDirection' : 'out' }
                        
         uc = dict()
         c = dict()
@@ -83,7 +83,7 @@ if __name__ == '__main__':
             logging.info("----------timestampChunks----------")
             logging.info(timestampChunks)
             
-            data = querytool.getData(collectionnames=collectionnames, 
+            data = querytool.getData(agents=agents, 
                                          nodes=nodes, 
                                          filters=filters,
                                          timestampChunks=timestampChunks, 

@@ -12,15 +12,15 @@ import pickle
 
 log = logging.getLogger(__name__)
     
-def getData(collectionnames, nodes=None, filters=dict(), timestampChunks=None, bridge='127.0.0.1', msgdest=testbed.nodename, timeout=30):
+def getData(agents, nodes=None, filters=dict(), timestampChunks=None, bridge='127.0.0.1', msgdest=testbed.nodename, timeout=30):
     """
         Function to fetch data
     """
     functionName = getData.__name__
     entrylog(functionName, locals())
     
-    if not collectionnames:
-        raise AttributeError("Cannot query for an empty set of collections.")
+    if not agents:
+        raise AttributeError("Cannot query for an empty set of agents.")
         
     messenger = getMessenger(bridge, 18808)
 
@@ -29,7 +29,7 @@ def getData(collectionnames, nodes=None, filters=dict(), timestampChunks=None, b
     
     log.info("Sending data query message")
     args = {
-        "collectionnames": collectionnames,
+        "agents": agents,
         "nodes": nodes,
         "filters": filters,
         "timestampChunks": timestampChunks
@@ -81,33 +81,49 @@ def getMessenger(node, port):
         msgrCache[node+str(port)] = api.ClientConnection(srcdock, node, port)
     return msgrCache[node+str(port)]
 
-def pingCall(bridge, msgdest):
+def pingCall(node, bridge, timeout=10):
     """
         Test call to check if data manager agent is available on a given node
     """
     messenger = getMessenger(bridge, 18808)
     call = {'version': 1.0, 'method': 'ping'}
-    msg = MAGIMessage(nodes=msgdest, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
+    msg = MAGIMessage(nodes=node, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
     messenger.send(msg)
-    msg = messenger.nextMessage(True)
-    while True:
-        if msg.src == msgdest and msg.dstdocks == 'dataman':
-            data = yaml.load(msg.data)
-            return data
+    start = time.time()
+    stop = start + timeout
+    current = start
+    while current < stop:
+        try:
+            msg = messenger.nextMessage(True, timeout=0.2)
+            if msg.src == node:
+                data = yaml.load(msg.data)
+                return data
+        except Queue.Empty:
+            pass
+        current = time.time()
+    raise IOError("No reply from %s" %(node))
 
-def getAgentsProcessInfo(node, bridge='127.0.0.1', msgdest=testbed.nodename):
+def getAgentsProcessInfo(node, bridge='127.0.0.1', timeout=10):
     """
         Function to request process information for active agents on a given node
     """
     messenger = getMessenger(bridge, 18808)
-    call = {'version': 1.0, 'method': 'getAgentsProcessInfo'}
+    call = {'version': 1.0, 'method': 'getStatus', 'args': {'agentInfo': True}}
     msg = MAGIMessage(nodes=node, docks='daemon', contenttype=MAGIMessage.YAML, data=yaml.dump(call))  
     messenger.send(msg)
-    while True:
-        msg = messenger.nextMessage(True)
-        if msg.src == node:
-            data = yaml.load(msg.data)
-            return data['result']
+    start = time.time()
+    stop = start + timeout
+    current = start
+    while current < stop:
+        try:
+            msg = messenger.nextMessage(True, timeout=0.2)
+            if msg.src == node:
+                data = yaml.load(msg.data)
+                return data['agentInfo']
+        except Queue.Empty:
+            pass
+        current = time.time()
+    raise IOError("No reply from %s" %(node))
         
 def entrylog(functionName, arguments):
     log.info("Entering function %s with arguments: %s", functionName, arguments)
