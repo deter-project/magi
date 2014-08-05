@@ -11,6 +11,7 @@ import sys
 import os,stat
 import subprocess
 import time
+import tarfile
 from magi_get_config import getDBConfigHost
 
 
@@ -43,7 +44,29 @@ def load_yaml(file_aal):
    except IOError as e:
 		logging.critical("File not found: %s", str(e))
 		sys.exit(2)
-	 	 
+		
+def load_yaml_idl(agent_name,agent_procedure):
+    agent_aal = load_yaml(agent_procedure)
+    #logging.info(agent_aal)
+    #logging.info(agent_aal['agents'][agent_name]['path'])
+    try:
+        #os.chdir("/users/vinegh/"+agent_name)
+        #logging.info("/users/vinegh/"+file_aal)
+        tar = tarfile.open(agent_aal['agents'][agent_name]['path'])
+        #logging.info(tar.getmembers())
+        for member in tar.getmembers():
+            if member.name.endswith('.idl'):
+                f = tar.extractfile(member)
+                content = f.read()
+                #print "%s has %d newlines" %(member, content.count("\n"))
+                config = yaml.load(content)
+                #logging.info(config['dbfields'])
+                #sys.exit()
+                #tar.close()
+                return config
+    except IOError as e:
+        logging.critical("File not found: %s", str(e))
+        sys.exit(2)
 
 if __name__ == '__main__':
  
@@ -56,6 +79,7 @@ if __name__ == '__main__':
     optparser.add_option("-p", "--project", dest="project", help="Project name")
     optparser.add_option("-b", "--base", dest="base", help="Path and name of the experiment config file")
     optparser.add_option("-a", "--agent", dest="agent", help="Agent IDL in the experiment")
+    optparser.add_option("-l", "--aal", dest="aal", help="AAL file of the experiment procedure")
     optparser.add_option("-T", "--Tunnel", dest="tunnel", default=False, help="Tunnel request through Deter Ops (users.deterlab.net).")
     optparser.add_option("-u", "--user", dest="user", help="Specific username to login into deter testbed")
     optparser.add_option("-c", "--config", dest="config", help="Path and name of configuration file for generating the graph")
@@ -69,11 +93,19 @@ if __name__ == '__main__':
                             level=logging.INFO)
                             
     if options.agent:
-        logging.info("Attempting to load the Agent IDL file")
-        agentidl =  load_yaml(options.agent)
-        logging.info(agentidl)
-        logging.info("Loaded IDL file")
-        
+        if options.aal:
+            logging.info("Attempting to load the Agent IDL file")
+            agentidl =  load_yaml_idl(options.agent,options.aal)
+            #logging.info(agentidl['dbfields'])
+            logging.info("Displaying field names")
+            print
+            for field,desc in agentidl['dbfields'].items():
+                print field, ':', desc
+            print
+            logging.info("Loaded IDL file")
+        else:
+            raise RuntimeError, 'Missing AAL file. Please provide AAL file with option -l'
+            sys.exit(2)
     else:                            
      
         if options.config is None:
@@ -92,8 +124,15 @@ if __name__ == '__main__':
         logging.info("Attempting to load the Yaml file")
         config = load_yaml(options.config)
         logging.info("Loaded Yaml file")
-    
 
+        if not config.has_key('db') :
+            raise RuntimeError, 'Configuration file incomplete. Database options are missing. Use option -a to get fields'
+            sys.exit(2)
+        else:
+            if not config['db'].has_key('filter'):
+                raise RuntimeError, 'Configuration file incomplete. Filter options are missing.Use option -a to get fields'
+                sys.exit(2)
+        
         #logging.info(config)
    
         try:
