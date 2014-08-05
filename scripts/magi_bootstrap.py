@@ -224,13 +224,6 @@ if __name__ == '__main__':
             from magi import __version__
             from magi.util import config
     
-            try:
-                    os.makedirs('/var/log/magi')  # Make sure log directory is around
-            except OSError, e:
-                    if e.errno != errno.EEXIST:
-                            log.error("Failed to create logging dir: %s", e, exc_info=1)
-            
-            
             # create a MAGI node configuration file only if one is not explicitly specified 
             if not options.nodeconf:
                     log.info("MAGI node configuration file has not been provided as an input argument")
@@ -242,11 +235,11 @@ if __name__ == '__main__':
                             if options.force == True:
                                     log.info("force flag set. Need to (re)create node configuration file.")  
                                     createNodeConfig  = True
-                            elif config.verifyConfig(config.NODECONF_FILE) == True :
+                            elif os.path.exists(config.NODECONF_FILE):
                                     log.info("Found a valid node configuration file at %s. Using it.", config.NODECONF_FILE) 
                             else:
+                                    # Node configuration file does not exist
                                     log.info("No valid node configuration file found at %s. Need to create one.", config.NODECONF_FILE)
-                                    # There is not default magi conf or it is not the correct length        
                                     createNodeConfig = True 
                             
                             if createNodeConfig: 
@@ -274,21 +267,28 @@ if __name__ == '__main__':
                                     log.info("Checking to see if a experiment configuration is provided")
                                     if not options.expconf:
                                             log.info("No experiment configuration file specified")      
-                                            options.expconf = config.createExperimentConfig(magiDistDir=rpath, isDBEnabled=not options.nodataman)
-                                            log.info("Created a experiment configuration file at %s", options.expconf) 
+                                            config.createExperimentConfig(distributionPath=rpath, isDBEnabled=not options.nodataman)
+                                            log.info("Created a experiment configuration file at %s", config.EXPCONF_FILE) 
                                     else:
                                             log.info("Using experiment configuration file at %s", options.expconf)
-                                            log.info("Checking and correcting, if required, the experiment configuration file")
-                                            config.checkAndCorrectExperimentConfig(options.expconf)
+                                            config.loadExperimentConfig(options.expconf, distributionPath=rpath, isDBEnabled=not options.nodataman)
+                                            
+                                    from magi.testbed import testbed
+                                    if (testbed.nodename == testbed.getServer()):
+                                        import shutil
+                                        log.info("Copying experiment.conf to testbed experiment directory %s" %(testbed.getExperimentDir()))
+                                        shutil.copy(config.EXPCONF_FILE, testbed.getExperimentDir())
     
                                     # Use the experiment configuration file to create node specific configuration
-                                    nodeConfigFile = config.createNodeConfig(experimentConfigFile=options.expconf) 
-                                    log.info("Created a node configuration file at %s", nodeConfigFile) 
+                                    config.createNodeConfig() 
+                                    log.info("Created a node configuration file at %s", config.NODECONF_FILE) 
                                     
                     except Exception, e:
                             log.error("MAGI configuration failed, things probably aren't going to run: %s", e, exc_info=True)
-    
+                            
+            # Now that the system is configured, import database library
             from magi.util import database
+            
             if database.isDBEnabled:
                     if (database.isCollector or database.isConfigHost):
                             if not options.noinstall:

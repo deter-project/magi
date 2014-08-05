@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 DB_NAME = 'magi'
 COLLECTION_NAME = 'experiment_data'
-TYPE_FIELD = 'type'
+AGENT_FIELD = 'agent'
 LOG_COLLECTION_NAME = 'log'
 
 DATABASE_SERVER_PORT = 27018
@@ -38,11 +38,13 @@ TIMEOUT = 900
 dbConfig = config.getConfig().get('database', {})
 
 isDBEnabled         = dbConfig.get('isDBEnabled', False)
-isConfigHost        = dbConfig.get('isConfigHost')
-isCollector         = dbConfig.get('isCollector')
 configHost          = dbConfig.get('configHost')
-collector           = dbConfig.get('collector')
 collectorMapping    = dbConfig.get('collectorMapping')
+
+collector = collectorMapping.get(testbed.nodename, collectorMapping.get('__ALL__'))
+isConfigHost = (testbed.nodename == configHost)
+isCollector = (testbed.nodename in collectorMapping.values())
+isSensor = (testbed.nodename in collectorMapping.keys() or '__ALL__' in collectorMapping.keys())
 
 
 if 'connectionMap' not in locals():
@@ -76,7 +78,7 @@ def startConfigServer(timeout=TIMEOUT):
         mongod = ['/usr/local/bin/mongod', '--configsvr', 
                   '--dbpath', '/data/configdb', 
                   '--port', str(CONFIG_SERVER_PORT), 
-                  '--logpath', os.path.join(config.DEFAULT_DIR, "mongoc.log")]
+                  '--logpath', os.path.join(config.getLogDir(), "mongoc.log")]
         log.info("Running %s", mongod)
         
         while time.time() < stop:
@@ -122,7 +124,7 @@ def startShardServer(configHost=configHost, timeout=TIMEOUT):
         mongos = ['/usr/local/bin/mongos', '--configdb', '%s:%d'%(configHost, CONFIG_SERVER_PORT), 
                   '--port', str(ROUTER_SERVER_PORT), 
                   '--noAutoSplit', 
-                  '--logpath', os.path.join(config.DEFAULT_DIR, "mongos.log")]
+                  '--logpath', os.path.join(config.getLogDir(), "mongos.log")]
         log.info("Running %s", mongos)
         
         while time.time() < stop:
@@ -199,8 +201,8 @@ def createMongoDConfig():
         log.info("Creating mongo db config file")
         configfile = '/tmp/mongod.conf'
         f = open(configfile, 'w')
-        f.write('dbpath=/var/lib/mongodb\n')
-        f.write('logpath=%s/mongodb.log\n'%(config.DEFAULT_DIR))
+        f.write('dbpath=%s\n'%(config.getDbDir()))
+        f.write('logpath=%s/mongodb.log\n'%(config.getLogDir()))
         f.write('logappend=true\n')
         f.close() 
     except Exception, e:
@@ -360,8 +362,8 @@ def configureDBCluster():
         moveChunk(sensor, collectorMapping[helpers.ALL])
         moveChunk(sensor, collectorMapping[helpers.ALL], 'log')
     
-    log.info('Creating index on field: %s' %(TYPE_FIELD))
-    getConnection(dbhost='localhost', port=ROUTER_SERVER_PORT)[DB_NAME][COLLECTION_NAME].ensure_index([(TYPE_FIELD, pymongo.ASCENDING)])
+    log.info('Creating index on field: %s' %(AGENT_FIELD))
+    getConnection(dbhost='localhost', port=ROUTER_SERVER_PORT)[DB_NAME][COLLECTION_NAME].ensure_index([(AGENT_FIELD, pymongo.ASCENDING)])
     
     exitlog(functionName, locals())
         
@@ -418,9 +420,9 @@ def getConnection(dbhost=None, port=DATABASE_SERVER_PORT, block=True, timeout=TI
     exitlog(functionName, locals())
     return connectionMap[(dbhost, port)]
             
-def getCollection(collection, dbhost=None):
+def getCollection(agentName, dbhost=None):
     """
-        Function to get a pointer to a given collection
+        Function to get a pointer to a given agent data collection
     """
     functionName = getCollection.__name__
     entrylog(functionName, locals())
@@ -431,19 +433,19 @@ def getCollection(collection, dbhost=None):
     if dbhost == None:
         dbhost = getCollector()
         
-    if (collection, dbhost) not in collectionMap:
+    if (agentName, dbhost) not in collectionMap:
         try:
-            if collectionHosts[collection] != dbhost:
-                log.error("Multiple db hosts for same collection")
-                raise Exception("Multiple db hosts for same collection")
+            if collectionHosts[agentName] != dbhost:
+                log.error("Multiple db hosts for same agent")
+                raise Exception("Multiple db hosts for same agent")
         except KeyError:
-            collectionHosts[collection] = dbhost
-        collectionMap[(collection, dbhost)] = Collection(collection, dbhost)
+            collectionHosts[agentName] = dbhost
+        collectionMap[(agentName, dbhost)] = Collection(agentName, dbhost)
     
     exitlog(functionName, locals())
-    return collectionMap[(collection, dbhost)]
+    return collectionMap[(agentName, dbhost)]
 
-def getData(collection, filters=None, timestampRange=None, connection=None):
+def getData(agentName, filters=None, timestampRange=None, connection=None):
     """
         Function to retrieve data from the local database, based on a given query
     """
@@ -465,7 +467,7 @@ def getData(collection, filters=None, timestampRange=None, connection=None):
         ts_start, ts_end = timestampRange
         filters_copy['created'] = {'$gte': ts_start, '$lte': ts_end}
     
-    filters_copy[TYPE_FIELD] = collection
+    filters_copy[AGENT_FIELD] = agentName
     cursor = connection[DB_NAME][COLLECTION_NAME].find(filters_copy)
     
     result = []
@@ -509,14 +511,14 @@ def exitlog(functionName, returnValue=None):
 class Collection():
     """Library to use for data collection"""
     
-    INTERNAL_KEYS = ['host', 'created', TYPE_FIELD]
+    INTERNAL_KEYS = ['host', 'created', AGENT_FIELD]
 
-    def __init__(self, collectiontype, dbhost=None):
+    def __init__(self, agentName, dbhost=None):
         if dbhost == None:
             dbhost = getCollector()
         connection = getConnection(dbhost, port=DATABASE_SERVER_PORT)
         self.collection = connection[DB_NAME][COLLECTION_NAME]
-        self.type = collectiontype
+        self.agentName = agentName
 
     def insert(self, **kwargs):
         """
@@ -526,26 +528,26 @@ class Collection():
             raise RuntimeError("The following keys are restricted for internal use: %s" %(Collection.INTERNAL_KEYS))
         kwargs['host'] = testbed.nodename
         kwargs['created'] = time.time()
-        kwargs[TYPE_FIELD] = self.type
+        kwargs[AGENT_FIELD] = self.agentName
         return self.collection.insert(kwargs)
         
     def remove(self, **kwargs):
         """
             Function to remove data from the connection database server.
-            Only data corresponding to the class instance's host and type will be removed.
+            Only data corresponding to the class instance's host and agentName will be removed.
         """
         kwargs['host'] = testbed.nodename
-        kwargs[TYPE_FIELD] = self.type
+        kwargs[AGENT_FIELD] = self.agentName
         return self.collection.remove(kwargs)
 
     def find(self, **kwargs):
         """
         """
         kwargs['host'] = testbed.nodename
-        kwargs[TYPE_FIELD] = self.type
+        kwargs[AGENT_FIELD] = self.agentName
         return self.collection.find(kwargs)
         
 #    def removeAll(self):
 #        kwargs = dict()
-#        kwargs[TYPE_FIELD] = self.type
+#        kwargs[AGENT_FIELD] = self.type
 #        self.collection.remove(kwargs)

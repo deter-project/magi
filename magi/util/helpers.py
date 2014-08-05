@@ -26,17 +26,19 @@ ALL = '__ALL__'
 
 def makeDir(name):
     try:
-        os.mkdir(name)
+        os.makedirs(name)
     except OSError, e:
         if e.errno == errno.EEXIST: return
-        log.warning("Couldn't create FIFO dir: %s", e)
+        log.warning("Couldn't create directory: %s", name)
+        raise
 
 def makePipe(name):
     try:
         os.mkfifo(name)
     except OSError, e:
         if e.errno == errno.EEXIST: return
-        log.warning("Couldn't create FIFO file: %s, %s", name, e)
+        log.warning("Couldn't create FIFO file: %s", name)
+        raise
         
 def loadYaml(filename):
     """ Load the configuration data from file """

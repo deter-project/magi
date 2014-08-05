@@ -18,15 +18,21 @@ if __name__ ==  '__main__':
 #    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     optparser = optparse.OptionParser(description="Script to start MAGI")
-    optparser.add_option("-f", "--logfile", dest="logfile", action='store', default=config.LOG_FILE, help="Log to specified file, Default: %default, ex: -f file.log")
+    optparser.add_option("-f", "--logfile", dest="logfile", action='store', help="Log to specified file, Default: %default, ex: -f file.log")
     optparser.add_option("-l", "--loglevel", dest="loglevel", default="INFO", help="set logger to level ALL, DEBUG, INFO, WARNING, ERROR. Default: %default, ex: -l DEBUG")
     optparser.add_option("-t" , "--timeformat", dest="timeformat", action='store', default="%m-%d %H:%M:%S", help="Set the format of the time epoch, Default: %default")     
-    optparser.add_option("-c", "--nodeconf", dest="nodeconf", default=config.NODECONF_FILE, help="Specify location of the magi configuration file, Default: %default, ex: -c localconfig.conf ")
+    optparser.add_option("-c", "--nodeconf", dest="nodeconf", default=config.NODECONF_FILE, 
+                         help="Specify location of the node configuration file, Default: %default, ex: -c localnode.conf ")
 
     (options, args) = optparser.parse_args()
     
     nodeConfig = config.loadNodeConfig(options.nodeconf)
     
+    if not options.logfile:
+        options.logfile = os.path.join(config.getLogDir(), "daemon.log")
+    
+    helpers.makeDir(os.path.dirname(options.logfile))
+            
     # Roll over the old log and create a new one
     # Note here that we will have at most 5 logs 
     # Need to check existence of file before creating the handler instance
