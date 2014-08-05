@@ -4,7 +4,6 @@ from magi.daemon.processInterface import AgentMessenger
 from magi.messaging.transportPipe import InputPipe, OutputPipe
 from magi.messaging.transportTCP import TCPTransport
 from magi.util import config, helpers
-import errno
 import logging
 import os
 import sys
@@ -30,7 +29,7 @@ def initializeProcessAgent(agent, argv):
     
     setAttributes(agent, {'hostname' : None, 
                           'execute' : 'socket', 
-                          'logfile' : os.path.join('/tmp', agent.name + '.log'), 
+                          'logfile' : os.path.join(config.getLogDir(), agent.name + '.log'), 
                           'loglevel': 'DEBUG', 
                           'commHost': 'localhost', 
                           'commPort': config.getConfig().get('processAgentsCommPort', 18809), 
@@ -39,13 +38,7 @@ def initializeProcessAgent(agent, argv):
     
     agent.docklist.add(dock)
     
-    try:
-        os.makedirs(os.path.dirname(agent.logfile))  # Make sure log directory is around
-    except OSError, e:
-        if e.errno != errno.EEXIST:
-            log.error("Failed to create logging dir: %s", e, exc_info=1)
-            agent.logfile = os.path.join('/tmp', agent.name + '.log')
-            log.error("New logging location: %s", agent.logfile)
+    helpers.makeDir(os.path.dirname(agent.logfile))
                         
     handler = logging.FileHandler(agent.logfile, 'w')
     handler.setFormatter(logging.Formatter(helpers.LOG_FORMAT_MSECS, helpers.LOG_DATEFMT))
