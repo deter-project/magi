@@ -17,7 +17,7 @@ from magi.testbed import testbed
 from magi.util.calls import doMessageAction
 from magi.util.execl import spawn, execAndRead
 from magi.util.distributions import *
-#from magi.util import database
+from magi.util import database
 
 log = logging.getLogger(__name__)
 
@@ -237,8 +237,8 @@ class TrafficClientAgent(Agent):
         self.interval = "1"
         self.stopClient(None)
         
-        self.collectionname = "traffic" 
-        self.collector = None
+        if database.isDBEnabled:
+            self.collection = database.getCollection(self.name)
         
     def run(self):
         """
@@ -279,7 +279,8 @@ class TrafficClientAgent(Agent):
         try:
             (output, err) = execAndRead(self.getCmd(dst))
             fp.write(str(time.time()) + "\t" + output)
-#            self.collection.insert(**{"result" : output, "error" : err})
+            if self.collection:
+                self.collection.insert(**{"result" : output, "error" : err})
         except OSError, e:
             log.error("can't execute command: %s", e)
             fp.close()
@@ -298,7 +299,6 @@ class TrafficClientAgent(Agent):
         """ Implements startClient from idl """
         self.running = True
         self.nextrun = time.time() + eval(self.interval)
-#        self.collection = database.getCollection(self.collectionname, self.collector)
         return True
 
     @agentmethod()
@@ -311,8 +311,9 @@ class TrafficClientAgent(Agent):
 
 class ProbabilisticTrafficClientAgent(TrafficClientAgent):
     '''
-        Provids the same service as TrafficAgent, but getCmd is called
-        only when theh configured probablity function evaluates to non-zero.
+        Provides the same service as TrafficAgent, but getCmd is called
+        only when the configured probablity function evaluates to a 
+        non-zero value.
     '''
     def __init__(self):
         TrafficClientAgent.__init__(self)
@@ -349,7 +350,7 @@ class ConnectedTrafficClientsAgent(Agent):
         is: [period], connect(), [period], generateTraffic(), [period],
         generateTraffic(), ..., disconnect(). This sequence may be repeated.
 
-        Derived classes should implement connect(), disconnect(), andi
+        Derived classes should implement connect(), disconnect(), and
         generateTraffic().
     """
     def __init__(self):
