@@ -1,0 +1,3 @@
+This directory is where modules are written at runtime. The modules themselves do not belong in this repo, magi_core. 
+This directory is only here so that the directory gets created (and is thus importable) during install and initial
+run of magi_daemon.py. This is a little sloppy, but works. 
