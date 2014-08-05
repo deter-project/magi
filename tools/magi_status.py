@@ -19,7 +19,8 @@ def getStatus(project, experiment, nodeSet=set(), groupMembership=False, agentIn
     
     (bridgeNode, bridgePort) = helpers.getBridge(project=project, experiment=experiment)
     if not nodeSet:
-        nodeSet.add(bridgeNode.split('.')[0])
+        log.info("Empty node set. Would query for just the bridge node.")
+        nodeSet = set(bridgeNode.split('.')[0])
     
     result = dict()
     

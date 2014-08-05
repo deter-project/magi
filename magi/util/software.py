@@ -21,7 +21,7 @@ def requireSoftware(*args, **kwargs):
         and if it can't find it, it will attempt the next argument.  This multiple argument options is provided for software that can
         be present under different names such as apache2 or httpd.
 
-        The installer list is loaded from magi.conf and might look something like so:
+        The installer list is loaded from the node configuration and might look something like so:
 
          * AptInstaller
          * ArchiveInstaller(dir="/share/magi/v20/Linux-Ubuntu10.04-i686")
