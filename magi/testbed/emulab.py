@@ -3,9 +3,11 @@
 # ./GPLv3-LICENSE.txt in the source distribution
 
 from base import Testbed, IFObj
+from collections import defaultdict
 from magi.util.execl import execAndRead, pipeIn
 import itertools
 import logging
+import os
 import shlex
 import socket
 import sys
@@ -58,7 +60,9 @@ class EmulabTestbed(Testbed):
             return '%s.%s.%s' % (host, self.getExperiment(), self.getProject())
         else:
             return host
-                        
+    
+    def getExperimentDir(self):
+        return os.path.join('/proj', self.getProject(), 'exp', self.getExperiment())
 
     """ Local node properties (readonly) """
     def getNodeName(self):
@@ -153,7 +157,7 @@ class EmulabTestbed(Testbed):
     def loadTopoGraph(self):
         import networkx as nx
         nodelist = False
-        linkToNodeList = dict()
+        linkToNodeList = defaultdict(set)
         graph = nx.Graph()
     
         for e in self.getTopomap():
@@ -166,22 +170,20 @@ class EmulabTestbed(Testbed):
         
             node = e.split(",")[0]
             links = e.split(",")[1].split()
-            linksinfo = []
+            linksInfo = dict()
             for link in links:
-                linkname = link.split(":")[0]
+                linkName = link.split(":")[0]
                 ip = link.split(":")[1]
-                if linkname in linkToNodeList:
-                    linkToNodeList[linkname].append(node)
-                else:
-                    linkToNodeList[linkname] = [node]
+                linkToNodeList[linkName].add(node)
+                linksInfo[linkName] = {'name':linkName, 'ip':ip}
                     
-                linksinfo.append({'name':linkname, 'ip':ip})
-                    
-            graph.add_node(node, links=linksinfo)
+            graph.add_node(node, links=linksInfo)
     
-        for linkname in linkToNodeList.keys():
-            nodeList = linkToNodeList[linkname]
-            graph.add_edges_from(list(itertools.combinations(nodeList, 2)), linkname=linkname)
+        for linkName in linkToNodeList.keys():
+            nodeSet = linkToNodeList[linkName]
+            for node in nodeSet:
+                graph.node[node]['links'][linkName]['peerNodes'] = list(nodeSet - set([node]))
+            graph.add_edges_from(list(itertools.combinations(nodeSet, 2)), linkName=linkName)
     
         self._store['topograph'] = graph
 

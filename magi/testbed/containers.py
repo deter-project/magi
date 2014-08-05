@@ -4,9 +4,10 @@
 # ./GPLv3-LICENSE.txt in the source distribution
 
 from base import Testbed
-from collections import deque
+from collections import deque, defaultdict
 import itertools
 import logging
+import os
 import re
 import shlex
 import socket
@@ -61,7 +62,10 @@ class ContainerExperiment(Testbed):
             return '%s.%s.%s' % (host, self.getExperiment(), self.getProject())
         else:
             return host
-        
+    
+    def getExperimentDir(self):
+        return os.path.join('/proj', self.getProject(), 'exp', self.getExperiment())
+    
     """ Local node properties (readonly) """
     def getNodeName(self):
         if 'node' not in self._store:
@@ -180,7 +184,7 @@ class ContainerExperiment(Testbed):
     
     def loadTopoGraph(self):
         import networkx as nx
-        linkToNodeList = dict()
+        linkToNodeList = defaultdict(set)
         graph = nx.Graph()
         root = ET.fromstring(self.getTopoXml()[0])
         
@@ -199,27 +203,26 @@ class ContainerExperiment(Testbed):
                 continue
 
             node = computer.find('name').text
-            linksinfo = []
+            linksInfo = dict()
             for interface in computer.findall('interface'):
-                linkname = interface.find('substrate').text
-                if linkname == 'control_net': continue
-                if linkname in linkToNodeList:
-                    linkToNodeList[linkname].append(node)
-                else:
-                    linkToNodeList[linkname] = [node]
+                linkName = interface.find('substrate').text
+                if linkName == 'control_net': continue
+                linkToNodeList[linkName].add(node)
                     
                 for attribute in interface.findall('attribute'):
                     if attribute.find('attribute').text == 'ip4_address':
                         ip = attribute.find('value').text
                         break
                     
-                linksinfo.append({'name':linkname, 'ip':ip})
+                linksInfo[linkName] = {'name':linkName, 'ip':ip}
                     
-            graph.add_node(node, links=linksinfo)
+            graph.add_node(node, links=linksInfo)
         
-        for linkname in linkToNodeList.keys():
-            nodeList = linkToNodeList[linkname]
-            graph.add_edges_from(list(itertools.combinations(nodeList, 2)), linkname=linkname)
+        for linkName in linkToNodeList.keys():
+            nodeSet = linkToNodeList[linkName]
+            for node in nodeSet:
+                graph.node[node]['links'][linkName]['peerNodes'] = list(nodeSet - set([node]))
+            graph.add_edges_from(list(itertools.combinations(nodeSet, 2)), linkName=linkName)
             
         self._store['topograph'] = graph
 
