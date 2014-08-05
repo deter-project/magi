@@ -18,7 +18,8 @@ log = logging.getLogger()
 def getStatus(project, experiment, nodeSet=set(), groupMembership=False, agentInfo=False, timeout=30):
     
     (bridgeNode, bridgePort) = helpers.getBridge(project=project, experiment=experiment)
-    nodeSet.add(bridgeNode.split('.')[0])
+    if not nodeSet:
+        nodeSet.add(bridgeNode.split('.')[0])
     
     result = dict()
     
@@ -28,7 +29,7 @@ def getStatus(project, experiment, nodeSet=set(), groupMembership=False, agentIn
     
     # Create a ping message and send on the overlay 
     # All node on the overlay will receive it and the daemon will respond with a pong message 
-    msg = MAGIMessage(groups=['__ALL__'], 
+    msg = MAGIMessage(nodes=list(nodeSet), 
                       docks='daemon', 
                       contenttype=MAGIMessage.YAML, 
                       data=yaml.safe_dump({'method': 'getStatus', 
@@ -119,7 +120,7 @@ if __name__ == '__main__':
     optparser.add_option("-t", "--timeout", dest="timeout", default = 10, 
                          help="Number of seconds to wait to receive the status reply from the nodes on the overlay")
         
-    optparser.add_option("-r", "--reboot", dest="reboot", default=False, 
+    optparser.add_option("-r", "--reboot", dest="reboot", action="store_true", default=False, 
                          help="Reboot nodes. The following options are applicable only when rebooting.") 
     
     optparser.add_option("-d", "--distpath", dest="distpath", default="/share/magi/current", 

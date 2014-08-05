@@ -5,8 +5,8 @@ from magi.messaging.transportSSL import SSLServer, SSLTransport
 from magi.messaging.transportMulticast import MulticastTransport
 from magi.messaging.magimessage import MAGIMessage, DefaultCodec
 from magi.messaging.transportPipe import InputPipe, OutputPipe
-from magi.messaging.transportTextPipe import TextPipe
 
+from collections import defaultdict
 import Queue
 import yaml
 import os
@@ -31,6 +31,7 @@ class Messenger(object):
 		self.rxqueue = Queue.Queue()
 		self.txqueue = Queue.Queue()
 		self.thread = None
+		self.groupMembership = defaultdict(set)
 		self.startDaemon()
 
 	def startDaemon(self):
@@ -62,6 +63,7 @@ class Messenger(object):
 		"""
 #		self.txqueue.put(GroupRequest("join", group, caller))
 		self.thread.processGroupRequest(GroupRequest("join", group, caller))
+		self.groupMembership[group].add(caller)
 
 	def leave(self, group, caller = "default"):
 		"""
@@ -71,6 +73,9 @@ class Messenger(object):
 		"""
 #		self.txqueue.put(GroupRequest("leave", group, caller))
 		self.thread.processGroupRequest(GroupRequest("leave", group, caller))
+		self.groupMembership[group].discard(caller)
+		if not self.groupMembership[group]:
+			del self.groupMembership[group]
 	
 	def nextMessage(self, block=False, timeout=None):
 		"""

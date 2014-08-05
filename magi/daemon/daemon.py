@@ -21,7 +21,6 @@ import magi.modules
 import magi.modules.dataman
 import shutil
 import signal
-import sys
 import tarfile
 import tempfile
 import threading
@@ -338,26 +337,31 @@ class Daemon(threading.Thread):
 		        'pong': True
 		}
 		# Added a data part to the message otherwise it gets dropped by the local daemon itself 
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong',contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong', contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))
 	
 	
 	@agentmethod()
-	def getAgentsProcessInfo(self, msg):
-		"""
-			Request for process information about the active agents
-		"""
-		processId = os.getpid()
-		result = []
-		for tAgent in self.staticAgents + self.threadAgents:
-			result.append({"name": tAgent.agentname, "processId": processId, "threadId": tAgent.tid})
-		for name in self.pAgentPids.keys():
-			result.append({"name": name, "processId": self.pAgentPids[name]})
-		res = {
-		        'result': result
-		}
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock,contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))	
+	def getStatus(self, msg, groupMembership=False, agentInfo=False):
 		
-
+		result = dict()
+		result['status'] = True
+		
+		if groupMembership:
+			groupMembership = dict(self.messaging.groupMembership)
+			result['groupMembership'] = groupMembership
+			
+		if agentInfo:
+			agentInfo = []
+			processId = os.getpid()
+			for tAgent in self.staticAgents + self.threadAgents:
+				agentInfo.append({"name": tAgent.agentname, "processId": processId, "threadId": tAgent.tid})
+			for name in self.pAgentPids.keys():
+				agentInfo.append({"name": name, "processId": self.pAgentPids[name]})
+			result['agentInfo'] = agentInfo
+		
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))	
+		
+		
 	# Internal functions
 
 	def startAgent(self, code=None, name=None, dock=None, execargs=None, idl=None, static=False):
