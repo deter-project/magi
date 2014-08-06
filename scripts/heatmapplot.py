@@ -1,41 +1,19 @@
 #!/usr/bin/env python
 
-from magi.util import querytool
+from magi.util import helpers, querytool
 from matplotlib import animation, pyplot as plt, cm
 import logging
 import numpy as np
 import optparse
-import os
-import subprocess
 import sys
 import time
-
-def create_tunnel(server, lport, rhost, rport):
-    """
-        Create a SSH tunnel and wait for it to be setup before returning.
-        Return the SSH command that can be used to terminate the connection.
-    """
-    ssh_cmd = "ssh %s -L %d:%s:%d -f -o ExitOnForwardFailure=yes -N" % (server, lport, rhost, rport)
-    tun_proc = subprocess.Popen(ssh_cmd,
-                                shell=True,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                stdin=subprocess.PIPE)
-    while True:
-        p = tun_proc.poll()
-        if p is not None: break
-        time.sleep(1)
-    
-    if p != 0:
-        raise RuntimeError, 'Error creating tunnel: ' + str(p) + ' :: ' + str(tun_proc.stdout.readlines())
-    
-    return ssh_cmd
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
     
     optparser.add_option("-b", "--bridge", dest="bridge", help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
-    optparser.add_option("-T", "--tunnel", dest="tunnel", action="store_true", default=False, help="Tell the tool to tunnel request through Deter Ops (users.deterlab.net).")
+    optparser.add_option("-t", "--tunnel", dest="tunnel", action="store_true", default=False, help="Tell the tool to tunnel request through Deter Ops (users.deterlab.net).")
+    optparser.add_option("-u", "--username", dest="username", help="Username for creating tunnel. Required only if different from current shell username.")
     
     (options, args) = optparser.parse_args()
     
@@ -43,15 +21,12 @@ if __name__ == '__main__':
         optparser.print_help()
         sys.exit(2)
     
-    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
-    log_datefmt = '%m-%d %H:%M:%S'
-    logging.basicConfig(format=log_format,
-                            datefmt=log_datefmt,
-                            level=logging.INFO)
+    logging.basicConfig(format=helpers.LOG_FORMAT_MSECS, datefmt=helpers.LOG_DATEFMT, level=logging.INFO)
+    
     try:    
         tunnel_cmd = None
         if options.tunnel:
-            tunnel_cmd = create_tunnel('users.deterlab.net', 18808, options.bridge, 18808)
+            tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', 18808, options.bridge, 18808, options.username)
             bridge = '127.0.0.1'
             logging.info('Tunnel setup done')
         else:
@@ -61,7 +36,7 @@ if __name__ == '__main__':
         numProcesses = 100
         
         msgdest = options.bridge.split(".")[0]
-        collectionnames = ['processstats']
+        agents = ['processstats']
         nodes = ""
         for i in range(numNodes): nodes += ("node-%d, "%i)
         processInfo = dict()
@@ -91,7 +66,7 @@ if __name__ == '__main__':
             logging.info("----------timestampChunks----------")
             logging.info(timestampChunks)
             
-            data = querytool.getData(collectionnames=collectionnames, 
+            data = querytool.getData(agents=agents, 
                                          nodes=nodes, 
                                          filters={},
                                          timestampChunks=timestampChunks, 
@@ -128,4 +103,4 @@ if __name__ == '__main__':
     finally:
         if tunnel_cmd:
             logging.info("Closing tunnel")
-            os.system("kill -9 `ps -ef | grep '" + tunnel_cmd + "' | grep -v grep | awk '{print $2}'`")
+            helpers.terminateProcess(tunnel_cmd)

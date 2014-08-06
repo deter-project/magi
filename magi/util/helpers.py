@@ -8,6 +8,7 @@ import os
 import platform
 import yaml
 import tarfile
+import time
 
 log = logging.getLogger(__name__)
 
@@ -114,6 +115,37 @@ def getThreadId():
         
     return -1
 
+def createSSHTunnel(server, lport, rhost, rport, username=None):
+    """
+        Create a SSH tunnel and wait for it to be setup before returning.
+        Return the SSH command that can be used to terminate the connection.
+    """
+    if username:
+        server = "%s@%s" %(username, server)
+    #TODO: Find a better way to create SSH tunnel
+    #In order to find out if the ssh process is setup correctly, it needs to 
+    #be sent to background (-f). This along with ExitOnForwardFailure makes 
+    #the client wait for forwarding to be successfully established before 
+    #placing itself in the background. 
+    #One issue with this approach is that we do not have a clean way to get to 
+    #the process id of the background process.
+    #However, if the ssh process is started in foreground, there isn't a way 
+    #to figure out if the forwarding is setup successfully or not. This is 
+    #because in case of a successful connection, there will be no output 
+    #until the process terminates.
+    ssh_cmd = "ssh %s -L %d:%s:%d -f -o ExitOnForwardFailure=yes -N" % (server, lport, rhost, rport)
+    tun_proc = Popen(ssh_cmd.split(), stderr=PIPE)
+    while True:
+        p = tun_proc.poll()
+        if p is not None: break
+        time.sleep(1)
+    if p != 0:
+        raise RuntimeError, 'Error creating tunnel: %s :: %s' %(str(p), tun_proc.communicate()[1])
+    return ssh_cmd
+
+def terminateProcess(cmd):
+    os.system("kill -9 `ps -ef | grep '" + cmd + "' | grep -v grep | awk '{print $2}'`")
+    
 def toControlPlaneNodeName(nodename):
     if nodename not in ['localhost', '127.0.0.1'] and '.' not in nodename:
         nodename += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
@@ -173,3 +205,4 @@ def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
     expdl = experimentConfig['expdl']
     
     return "%s.%s.%s" % (dbdl['configHost'], expdl['eid'], expdl['pid'])
+

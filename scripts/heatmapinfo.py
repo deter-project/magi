@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
-from magi.util import querytool
-from socket import gaierror
+from magi.util import helpers, querytool
 import datetime
 import logging
 import optparse
 import signal
-import subprocess
 import sys
 import time
 
@@ -26,8 +24,8 @@ if __name__ == '__main__':
     optparser = optparse.OptionParser()
     
     optparser.add_option("-b", "--bridge", dest="bridge", help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
-    optparser.add_option("-T", "--tunnel", dest="tunnel", action="store_true", default=False, help="Tell the tool to tunnel request through Deter Ops (users.deterlab.net).")
-    optparser.add_option("-t", "--threshold", dest="threshold", type="float", default=50, help="CPU threshold")
+    optparser.add_option("-t", "--tunnel", dest="tunnel", action="store_true", default=False, help="Tell the tool to tunnel request through Deter Ops (users.deterlab.net).")
+    optparser.add_option("-c", "--threshold", dest="threshold", type="float", default=50, help="CPU threshold")
     
     (options, args) = optparser.parse_args()
     
@@ -38,23 +36,17 @@ if __name__ == '__main__':
     # Terminate if the user presses ctrl+c 
     signal.signal(signal.SIGINT, signal.SIG_DFL ) 
     
-    try:    
-        tun_proc = None
-        try:
-            if options.tunnel:
-                tun_proc = subprocess.Popen("ssh users.deterlab.net -L 18808:" +
-                                            options.bridge + ":18808 -N", shell=True)
-                bridge = '127.0.0.1'
-                time.sleep(1)
-                logging.debug('Tunnel setup done')
-            else:
-                bridge = options.bridge
-        except gaierror as e:
-            logging.critical('Error connecting to %s: %s', options.control, str(e))
-            exit(3)
+    try:
+        tunnel_cmd = None
+        if options.tunnel:
+            tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', 18808, options.bridge, 18808, options.username)
+            bridge = '127.0.0.1'
+            logging.info('Tunnel setup done')
+        else:
+            bridge = options.bridge
             
         msgdest = options.bridge.split(".")[0]
-        collectionnames = ['processstats']
+        agents = ['processstats']
         processInfo = dict()
         
         lasttime = time.time() - 2
@@ -66,7 +58,7 @@ if __name__ == '__main__':
             lasttime = now
 #            print timestampChunks
             
-            data = querytool.getData(collectionnames=collectionnames, 
+            data = querytool.getData(agents=agents, 
                                          nodes=None, 
                                          filters={},
                                          timestampChunks=timestampChunks, 
@@ -111,6 +103,7 @@ if __name__ == '__main__':
             time.sleep(2)
 
     finally:
-        if tun_proc:
-            tun_proc.terminate()
+        if tunnel_cmd:
+            logging.info("Closing tunnel")
+            helpers.terminateProcess(tunnel_cmd)
     
