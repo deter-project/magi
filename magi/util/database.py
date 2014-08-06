@@ -46,7 +46,6 @@ isConfigHost = (testbed.nodename == configHost)
 isCollector = (testbed.nodename in collectorMapping.values())
 isSensor = (testbed.nodename in collectorMapping.keys() or '__ALL__' in collectorMapping.keys())
 
-
 if 'connectionCache' not in locals():
     connectionCache = dict()
 if 'collectionCache' not in locals():
@@ -66,17 +65,17 @@ def startConfigServer(timeout=TIMEOUT):
         log.info("Checking if an instance of mongo config server is already running")
         if isDBRunning(port=CONFIG_SERVER_PORT):
             return
-
+        
+        dbPath = os.path.join(config.getDbDir(), "configdb")
         try:
-            os.makedirs('/data/configdb')  # Make sure mongodb config data directory is around
+            helpers.makeDir(dbPath)  # Make sure mongodb config data directory is around
         except OSError, e:
-            if e.errno != errno.EEXIST:
-                log.exception("failed to create mondodb config data dir")
-                raise
+            log.exception("failed to create mondodb config data dir")
+            raise
 
         log.info("Trying to start mongo config server")
         mongod = ['/usr/local/bin/mongod', '--configsvr', 
-                  '--dbpath', '/data/configdb', 
+                  '--dbpath', dbPath, 
                   '--port', str(CONFIG_SERVER_PORT), 
                   '--logpath', os.path.join(config.getLogDir(), "mongoc.log")]
         log.info("Running %s", mongod)
@@ -160,19 +159,17 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
         mongo_conf = helpers.readPropertiesFile(configfile)
 
         try:
-            os.makedirs(mongo_conf['dbpath'])  # Make sure mongodb data directory is around
-        except OSError, e:
-            if e.errno != errno.EEXIST:
-                log.exception("failed to create mondodb data dir: %s", mongo_conf['dbpath'])
-                raise
+            helpers.makeDir(mongo_conf['dbpath'])  # Make sure mongodb data directory is around
+        except:
+            log.exception("failed to create mondodb data dir: %s", mongo_conf['dbpath'])
+            raise
 
         try:
-            logdir = '/'.join(mongo_conf['logpath'].split('/')[:-1])
-            os.makedirs(logdir)  # Make sure mongodb log directory is around
-        except OSError, e:
-            if e.errno != errno.EEXIST:
-                log.exception("failed to create mondodb log dir: %s", logdir)
-                raise
+            logdir = os.path.dirname(mongo_conf['logpath'])
+            helpers.makeDir(logdir)  # Make sure mongodb log directory is around
+        except:
+            log.exception("failed to create mondodb log dir: %s", logdir)
+            raise
 
         log.info("Trying to start mongo database server")
         mongod = ['/usr/local/bin/mongod', '--config', configfile, '--port', str(DATABASE_SERVER_PORT), '--shardsvr', '--journal', '--smallfiles']
@@ -189,7 +186,7 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
         log.error("Done trying enough times. Cannot start database server")
         raise pymongo.errors.PyMongoError("Done trying enough times. Cannot start database server")
     
-    except Exception, e:
+    except:
         log.exception("Exception while setting up mongo db database server")
         raise
 
@@ -199,13 +196,13 @@ def createMongoDConfig():
     """
     try:
         log.info("Creating mongo db config file")
-        configfile = '/tmp/mongod.conf'
+        configfile = os.path.join(config.getTempDir(), "mongod.conf")
         f = open(configfile, 'w')
         f.write('dbpath=%s\n'%(config.getDbDir()))
-        f.write('logpath=%s/mongodb.log\n'%(config.getLogDir()))
+        f.write('logpath=%s\n'%(os.path.join(config.getLogDir(), "mongodb.log")))
         f.write('logappend=true\n')
         f.close() 
-    except Exception, e:
+    except:
         log.exception("Failed to create mongodb default configuration file")
         raise
     return configfile

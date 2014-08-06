@@ -5,6 +5,7 @@ import tarfile, zipfile, subprocess, threading, platform
 import re
 from os import mkdir
 from magi.util.execl import run, execAndRead
+from magi.util import config
 from magi.util.config import getConfig
 
 log = logging.getLogger(__name__)
@@ -271,7 +272,7 @@ class SourceInstaller(Installer):
             ret = True
             log.debug('looking for install script named %s.install in dir %s' % (name, self.dir))
             buildscript = self.locate(self.dir, name, '.install')
-            builddir = "/tmp" #tempfile.mkdtemp()
+            builddir = config.getTempDir() #tempfile.mkdtemp()
             cmd = "%s %s %s" % (buildscript, builddir, os.path.abspath(self.dir))
                 
             for k,v in kwargs.iteritems():

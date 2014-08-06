@@ -6,12 +6,11 @@
 
 from magi.daemon.externalAgentsThread import ExternalAgentsThread, PipeTuple
 from magi.messaging.api import *
-from magi.util import helpers, database
+from magi.util import config, helpers, database
 from magi.util.agent import agentmethod
 from magi.util.calls import doMessageAction
 from magi.util.software import requireSoftware
 from subprocess import Popen, PIPE
-
 import base64
 import cStringIO
 import errno
@@ -424,8 +423,7 @@ class Daemon(threading.Thread):
 				args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
 			args.append('hostname='+self.hostname)
 			os.chmod(mainfile, 00777)
-			# (stderr, stderrname) = tempfile.mkstemp(suffix='.stderr', prefix=name+"-", dir='/tmp/')
-			stderrname = os.path.join('/tmp', name + '.stderr')
+			stderrname = os.path.join(config.getLogDir(), name + '.stderr')
 			stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
 			log.debug("Starting %s, stderr sent to %s", name, stderrname)
 			

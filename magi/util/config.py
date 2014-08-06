@@ -69,19 +69,14 @@ software:
 
 """
 
-
-from execl import run
 from magi.testbed import testbed
 from socket import gethostbyname, gaierror
-import Queue
-import datetime
+import helpers
 import logging
 import os
 import platform
-import subprocess
 import sys
 import yaml
-import helpers
 
 DEFAULT_CONF_DIR  = "/var/log/magi"
 EXPCONF_FILE  = os.path.join(DEFAULT_CONF_DIR, "experiment.conf")
@@ -147,7 +142,12 @@ def getTempDir():
     return _store['tempDir']
 
 def loadConfig(refresh=False):
-    config = getConfig(refresh)
+    try:
+        config = getConfig(refresh)
+    except:
+        log.error("Could not load node configuration. Will work with defaults.")
+        config = {}
+    
     _store['configDir'] = config.get('configDir', DEFAULT_CONF_DIR)
     _store['logDir'] = config.get('logDir', DEFAULT_LOG_DIR)
     _store['dbDir'] = config.get('dbDir', DEFAULT_DB_DIR)
@@ -269,7 +269,7 @@ def getDefaultExpDL(distributionPath=DEFAULT_DIST_DIR):
 def validateExpDL(expdl={}, distributionPath=None):
     """ """
     if not expdl:
-        exp = dict()
+        expdl = dict()
         
     expdl.setdefault('pid', testbed.getProject())
     expdl.setdefault('eid', testbed.getExperiment())
