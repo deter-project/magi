@@ -2,9 +2,9 @@
 
 from magi.messaging import api
 from magi.messaging.magimessage import MAGIMessage
+from magi.util import helpers
 from subprocess import Popen, PIPE
 import Queue
-import helpers
 import logging
 import optparse
 import signal

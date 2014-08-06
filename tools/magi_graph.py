@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 
-import yaml
+from magi.util import helpers
+from pymongo import MongoClient
 import logging
-import optparse
 import matplotlib
 matplotlib.use('Agg')
-from pymongo import MongoClient
 import matplotlib.pyplot as plt
-import sys
-import os,stat
+import optparse
+import os
 import subprocess
+import sys
 import time
-import tarfile
-from helpers import getDBConfigHost,load_yaml_idl,load_yaml
 
 
 def create_tunnel(username, server, lport, rhost, rport):
@@ -54,16 +52,14 @@ if __name__ == '__main__':
     optparser.add_option("-o", "--output", dest="output", help="Path and name of output file for the graph") 
     (options, args) = optparser.parse_args()
     
-    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
-    log_datefmt = '%m-%d %H:%M:%S'
-    logging.basicConfig(format=log_format,
-                            datefmt=log_datefmt,
+    logging.basicConfig(format=helpers.LOG_FORMAT_MSECS,
+                            datefmt=helpers.LOG_DATEFMT,
                             level=logging.INFO)
                             
     if options.agent:
         if options.aal:
             logging.info("Attempting to load the Agent IDL file")
-            agentidl =  load_yaml_idl(options.agent,options.aal)
+            agentidl =  helpers.loadIDL(options.agent, options.aal)
             #logging.info(agentidl['dbfields'])
             logging.info("Displaying field names")
             print
@@ -85,12 +81,12 @@ if __name__ == '__main__':
             sys.exit(2)
     
         logging.info("Attempting to get the database config host from the experiment")
-        dbConfigNode = getDBConfigHost(experimentConfigFile=options.base, project=options.project, experiment=options.experiment)
+        dbConfigNode = helpers.getDBConfigHost(experimentConfigFile=options.base, project=options.project, experiment=options.experiment)
         #logging.info(dbConfigNode)
         logging.info("Got the database config host from the experiment")                                  
     
         logging.info("Attempting to load the Yaml file")
-        config = load_yaml(options.config)
+        config = helpers.loadYaml(options.config)
         logging.info("Loaded Yaml file")
 
         if not config.has_key('db') :
@@ -115,19 +111,19 @@ if __name__ == '__main__':
             else:
                 bridge = dbConfigNode
                 port = 27017
-	            #print bridge
-	        logging.info('Attempting to connect to the database')
+                #print bridge
+                logging.info('Attempting to connect to the database')
         
             try:
-  	            connection = MongoClient(bridge,port)
+                connection = MongoClient(bridge,port)
             except RuntimeError as e:
-   	            logging.critical("Failed connecting to the database : %s", str(e))
-   	            sys.exit(2)
+                logging.critical("Failed connecting to the database : %s", str(e))
+                sys.exit(2)
 
             logging.info('Connected to the database')
             db = connection['magi']
             collection = db['experiment_data']
-   	 
+             
             x=[]
             y=[]
             config['db']['filter']['type'] = config['db']['collection']
@@ -137,12 +133,12 @@ if __name__ == '__main__':
 
             logging.info('Fetching data from database')
             for post in collection.find(config['db']['filter']).sort("_id",1):
-	            #logging.info(firstvalue[config['db']['xValue']])
-	            #logging.info(post[config['db']['xValue']])
-      	        x.append("%.8f" % (post[config['db']['xValue']] - firstvalue[config['db']['xValue']]))
-      	        #y.append("%.3f" % ((post[config['db']['yValue']] * 8)/1000000.0))
-      	        #logging.info((post[config['db']['yValue']] * 8)/1000000.0)
-      	        y.append(post[config['db']['yValue']])
+                #logging.info(firstvalue[config['db']['xValue']])
+                #logging.info(post[config['db']['xValue']])
+                x.append("%.8f" % (post[config['db']['xValue']] - firstvalue[config['db']['xValue']]))
+                #y.append("%.3f" % ((post[config['db']['yValue']] * 8)/1000000.0))
+                #logging.info((post[config['db']['yValue']] * 8)/1000000.0)
+                y.append(post[config['db']['yValue']])
           
             logging.info('Constructed the x and y values for graph')
             #logging.info(x)
