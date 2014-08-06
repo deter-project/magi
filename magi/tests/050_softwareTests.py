@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 
 import unittest2
-import logging
-import subprocess
-import platform
+from magi.util import config
 from magi.util.software import *
 from magi.tests.util import softwareRequired
 
@@ -48,7 +46,7 @@ class SoftwareInstallerTest(unittest2.TestCase):
 		else:
 			self.assertFalse(installer.install('httpdX'))
 			self.assertFalse(installer.install('apache2'))
-	 		self.assertFalse(installer.install('apache2'))
+			self.assertFalse(installer.install('apache2'))
 
 	def test_Archive(self):
 		""" Test install from directory of archives files """
@@ -66,16 +64,20 @@ class SoftwareInstallerTest(unittest2.TestCase):
 
 	def test_require(self):
 		""" Test use of require function """
-		if not os.path.exists('/etc/magi.conf'):
-			raise unittest2.SkipTest("Skipping require test as /etc/magi.conf not present")
+		try:
+			config.getConfig()
+		except:
+			raise unittest2.SkipTest("Skipping require test as node configuration not present")
 		requireSoftware('apache2','httpd', update=True, force=True)
 		requireSoftware('jonpy')
 		requireSoftware('apache2','httpd')
 
 	def test_osSpecific(self):
 		"""Tests OS specific installations."""
-		if not os.path.exists('/etc/magi.conf'):
-			raise unittest2.SkipTest("Skipping require test as /etc/magi.conf not present")
+		try:
+			config.getConfig()
+		except:
+			raise unittest2.SkipTest("Skipping require test as node configuration not present")
 
 		if platform.system().lower() == 'linux':
 			requireSoftware('ipfw', os='freebsd')
