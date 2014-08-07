@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 
-from magi.util import helpers
-from pymongo import MongoClient
+import yaml
 import logging
+import optparse
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import optparse
-import os
-import subprocess
+from pymongo import MongoClient
 import sys
+import os,stat
+import subprocess
 import time
-
+import tarfile
+from magi.util import helpers
+from magi.util import visualization
 
 def create_tunnel(username, server, lport, rhost, rport):
     """
@@ -52,14 +53,16 @@ if __name__ == '__main__':
     optparser.add_option("-o", "--output", dest="output", help="Path and name of output file for the graph") 
     (options, args) = optparser.parse_args()
     
-    logging.basicConfig(format=helpers.LOG_FORMAT_MSECS,
-                            datefmt=helpers.LOG_DATEFMT,
+    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
+    log_datefmt = '%m-%d %H:%M:%S'
+    logging.basicConfig(format=log_format,
+                            datefmt=log_datefmt,
                             level=logging.INFO)
                             
     if options.agent:
         if options.aal:
             logging.info("Attempting to load the Agent IDL file")
-            agentidl =  helpers.loadIDL(options.agent, options.aal)
+            agentidl =  helpers.loadIDL(options.agent,options.aal)
             #logging.info(agentidl['dbfields'])
             logging.info("Displaying field names")
             print
@@ -111,19 +114,19 @@ if __name__ == '__main__':
             else:
                 bridge = dbConfigNode
                 port = 27017
-                #print bridge
-                logging.info('Attempting to connect to the database')
+	            #print bridge
+	        logging.info('Attempting to connect to the database')
         
             try:
-                connection = MongoClient(bridge,port)
+  	            connection = MongoClient(bridge,port)
             except RuntimeError as e:
-                logging.critical("Failed connecting to the database : %s", str(e))
-                sys.exit(2)
+   	            logging.critical("Failed connecting to the database : %s", str(e))
+   	            sys.exit(2)
 
             logging.info('Connected to the database')
             db = connection['magi']
             collection = db['experiment_data']
-             
+   	 
             x=[]
             y=[]
             config['db']['filter']['type'] = config['db']['collection']
@@ -133,32 +136,19 @@ if __name__ == '__main__':
 
             logging.info('Fetching data from database')
             for post in collection.find(config['db']['filter']).sort("_id",1):
-                #logging.info(firstvalue[config['db']['xValue']])
-                #logging.info(post[config['db']['xValue']])
-                x.append("%.8f" % (post[config['db']['xValue']] - firstvalue[config['db']['xValue']]))
-                #y.append("%.3f" % ((post[config['db']['yValue']] * 8)/1000000.0))
-                #logging.info((post[config['db']['yValue']] * 8)/1000000.0)
-                y.append(post[config['db']['yValue']])
+	            x.append("%.8f" % (post[config['db']['xValue']] - firstvalue[config['db']['xValue']]))
+	            y.append(post[config['db']['yValue']])
           
             logging.info('Constructed the x and y values for graph')
-            #logging.info(x)
-            #logging.info(y)
- 
-            logging.info('Preparing to plot values for graph')
-            plt.xlabel(config['graph']['xLabel'])
-            plt.ylabel(config['graph']['yLabel'])	
-            plt.title(config['graph']['title'])
-            ax = plt.subplot(111)
-            ax.spines["right"].set_visible(False)
-            ax.spines["top"].set_visible(False)
-            ax.xaxis.set_ticks_position('bottom')
-            ax.yaxis.set_ticks_position('left')
-            lines = plt.plot(x, y)
-            plt.setp(lines, 'color', 'r', 'linewidth', 2.0)
-            plt.savefig(options.output)
+  
+            """ Check for type of graph needed and print """          
+            
+            if config['graph']['type'] == 'line':
+                 visualization.line_Graph(config['graph']['xLabel'],config['graph']['yLabel'],config['graph']['title'],x,y,options.output)
+            elif config['graph']['type'] == 'scatter':
+                visualization.scatter_Graph(config['graph']['xLabel'],config['graph']['yLabel'],config['graph']['title'],x,y,options.output)
             logging.info('Printed and saved the graph')	    
 
         finally:
             if tunnel_cmd:
                 logging.info("Closing tunnel")
-                os.system("kill -9 `ps -ef | grep '" + tunnel_cmd + "' | grep -v grep | awk '{print $2}'`")
