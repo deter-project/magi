@@ -417,7 +417,7 @@ def getConnection(dbhost=None, port=DATABASE_SERVER_PORT, block=True, timeout=TI
     exitlog(functionName, locals())
     return connectionCache[(dbhost, port)]
             
-def getCollection(agentName, dbhost=None):
+def getCollection(agentName, dbhost=None, port=DATABASE_SERVER_PORT):
     """
         Function to get a pointer to a given agent data collection
     """
@@ -430,17 +430,17 @@ def getCollection(agentName, dbhost=None):
     if dbhost == None:
         dbhost = getCollector()
         
-    if (agentName, dbhost) not in collectionCache:
+    if (agentName, dbhost, port) not in collectionCache:
         try:
             if collectionHosts[agentName] != dbhost:
                 log.error("Multiple collectors for same agent")
                 raise Exception("Multiple colelctors for same agent")
         except KeyError:
             collectionHosts[agentName] = dbhost
-        collectionCache[(agentName, dbhost)] = Collection(agentName, dbhost)
+        collectionCache[(agentName, dbhost, port)] = Collection(agentName, dbhost, port)
     
     exitlog(functionName, locals())
-    return collectionCache[(agentName, dbhost)]
+    return collectionCache[(agentName, dbhost, port)]
 
 def getData(agentName, filters=None, timestampRange=None, connection=None):
     """
@@ -505,44 +505,97 @@ def exitlog(functionName, returnValue=None):
     else:
         log.debug("Exiting function %s with return value: %s", functionName, returnValue)
 
-class Collection():
+class Collection(pymongo.collection.Collection):
     """Library to use for data collection"""
     
     INTERNAL_KEYS = ['host', 'created', AGENT_FIELD]
 
-    def __init__(self, agentName, dbhost=None):
+    def __init__(self, agentName, dbhost=None, port=DATABASE_SERVER_PORT):
         if dbhost == None:
             dbhost = getCollector()
-        connection = getConnection(dbhost, port=DATABASE_SERVER_PORT)
-        self.collection = connection[DB_NAME][COLLECTION_NAME]
+        connection = getConnection(dbhost, port)
+        pymongo.collection.Collection.__init__(self, connection[DB_NAME], COLLECTION_NAME)
+        #self.collection = connection[DB_NAME][COLLECTION_NAME]
         self.agentName = agentName
 
-    def insert(self, **kwargs):
+    def insert(self, doc_or_docs, *args, **kwargs):
         """
-            Function to insert data. Adds the default fields before insertion.
+            Insert data. Add the default fields before insertion.
         """
-        if len(set(Collection.INTERNAL_KEYS) & set(kwargs.keys())) > 0:
-            raise RuntimeError("The following keys are restricted for internal use: %s" %(Collection.INTERNAL_KEYS))
-        kwargs['host'] = testbed.nodename
-        kwargs['created'] = time.time()
-        kwargs[AGENT_FIELD] = self.agentName
-        return self.collection.insert(kwargs)
+        if isinstance(doc_or_docs, dict):
+            docs = [doc_or_docs]
+            
+        for doc in docs:
+            if not isinstance(doc, dict):
+                raise TypeError("each document must be an instance of dict")
+            if len(set(Collection.INTERNAL_KEYS) & set(doc.keys())) > 0:
+                raise RuntimeError("The following keys are restricted for internal use: %s" %(Collection.INTERNAL_KEYS))
+            doc['host'] = testbed.nodename
+            doc['created'] = time.time()
+            doc[AGENT_FIELD] = self.agentName
+            
+        return pymongo.collection.Collection.insert(self, docs, *args, **kwargs)
         
-    def remove(self, **kwargs):
+    def find(self, *args, **kwargs):
         """
-            Function to remove data from the connection database server.
-            Only data corresponding to the class instance's host and agentName will be removed.
+            Find data corresponding to the class instance's agent and host.
         """
-        kwargs['host'] = testbed.nodename
-        kwargs[AGENT_FIELD] = self.agentName
-        return self.collection.remove(kwargs)
+        if not args:
+            args = [{}]
+        spec = args[0]
+        if not isinstance(spec, dict):
+            raise TypeError("spec must be an instance of dict")
+        
+        spec['host'] = testbed.nodename
+        spec[AGENT_FIELD] = self.agentName
+        
+        return pymongo.collection.Collection.find(self, *args, **kwargs)
+    
+    def findAll(self, *args, **kwargs):
+        """
+            Find data corresponding to the class instance's agent, irrespective of the host.
+        """
+        if not args:
+            args = [{}]
+        spec = args[0]
+        if not isinstance(spec, dict):
+            raise TypeError("spec must be an instance of dict")
+        
+        spec[AGENT_FIELD] = self.agentName
+        
+        return pymongo.collection.Collection.find(self, *args, **kwargs)
+    
+    def remove(self, spec_or_id=None, safe=None, **kwargs):
+        """
+            Remove data corresponding to the class instance's agent and host.
+        """
+        if spec_or_id is None:
+            spec_or_id = {}
+            
+        if not isinstance(spec_or_id, dict):
+            spec = {"_id": spec_or_id}
+        else:
+            spec = spec_or_id
+            
+        spec['host'] = testbed.nodename
+        spec[AGENT_FIELD] = self.agentName
+        return pymongo.collection.Collection.remove(self, spec_or_id, safe, **kwargs)
 
-    def find(self, **kwargs):
+    def removeAll(self, spec_or_id=None, safe=None, **kwargs):
         """
+            Remove data corresponding to the class instance's agent, irrespective of the host.
         """
-        kwargs['host'] = testbed.nodename
-        kwargs[AGENT_FIELD] = self.agentName
-        return self.collection.find(kwargs)
+        if spec_or_id is None:
+            spec_or_id = {}
+            
+        if not isinstance(spec_or_id, dict):
+            spec = {"_id": spec_or_id}
+        else:
+            spec = spec_or_id
+            
+        spec[AGENT_FIELD] = self.agentName
+        return pymongo.collection.Collection.remove(self, spec_or_id, safe, **kwargs)
+
         
 #    def removeAll(self):
 #        kwargs = dict()

@@ -280,7 +280,7 @@ class TrafficClientAgent(Agent):
             (output, err) = execAndRead(self.getCmd(dst))
             fp.write(str(time.time()) + "\t" + output)
             if self.collection:
-                self.collection.insert(**{"result" : output, "error" : err})
+                self.collection.insert({"result" : output, "error" : err})
         except OSError, e:
             log.error("can't execute command: %s", e)
             fp.close()
