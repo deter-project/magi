@@ -44,12 +44,10 @@ class ToShare(Command):
     def run(self):
         self.call("cp dist/MAGI*gz %s" % self.path)
         self.call("cp scripts/magi_bootstrap.py %s" % self.path)
-        self.call("cp scripts/magi_config.py %s" % self.path)
         self.call("cp scripts/magi_orchestrator.py %s" % self.path)
         self.call("cp scripts/magi_query.py %s" % self.path)
-        self.call("cp scripts/magi_get_config.py %s" % self.path)
-        self.call("cp scripts/magi_ping.py %s" % self.path)
-        self.call("cp scripts/magi_reboot.py %s" % self.path)
+        self.call("cp tools/magi_status.py %s" % self.path)
+        self.call("cp tools/magi_graph.py %s" % self.path)
         self.call("cp AUTHORS %s" % self.path) 
         self.call("cp GPLv3-LICENSE.txt %s" % self.path)
         
@@ -80,12 +78,12 @@ setup(name='MAGI',
 	url='http://montage.deterlab.net/backend', 
 	author=__author__,
 	author_email='hussain@isi.edu', 
-	download_url='git://montage.deterlab.net/montage',
+	download_url='git://montage.deterlab.net/magi',
 	platforms=['DeterLab', 'Emulab'], 
-	packages=['magi', 'magi.daemon', 'magi.modules', 'magi.messaging', 'magi', 'magi.testbed', 'magi.tests', 'magi.util', 'magi.orchestrator', 
-			'magi.mongolog', 'magi.modules.dataman', 'magi.tests.testPipe', 'magi.tests.testSocket', 'magi.tests.testThread'],
-	package_data={'magi.modules.dataman': ['*.idl'], 'magi.tests': ['*.pem', '*.aal', '*/*.idl']},
-	scripts=['scripts/magi_daemon.py', 'scripts/magi_orchestrator.py', 'scripts/sendTrigger.py' ],
+	packages=['magi', 'magi.daemon', 'magi.messaging', 'magi.testbed', 'magi.modules', 
+              'magi.util', 'magi.orchestrator', 'magi.tests', 'magi.modules.dataman'],
+	package_data={'magi.modules.dataman': ['*.idl'], 'magi.tests': ['*.pem', '*.aal', '*/*']},
+	scripts=['scripts/magi_daemon.py', 'scripts/magi_orchestrator.py', 'tools/magi_status.py', 'tools/magi_graph.py' ],
 	license="GPLV3",
 	cmdclass={'toshare':ToShare, 'build_py':build_py_X},
 )
