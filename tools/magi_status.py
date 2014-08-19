@@ -113,10 +113,10 @@ if __name__ == '__main__':
                          help="The yaml-based procedure file to extract the list of nodes")
 
     optparser.add_option("-g", "--groupmembership", dest="groupmembership", action="store_true", default=False, 
-                         help="Do not update the system before installing MAGI")
+                         help="Fetch group membership detail")
     
     optparser.add_option("-i", "--agentinfo", dest="agentinfo", action="store_true", default=False, 
-                         help="Do not update the system before installing MAGI")
+                         help="Fetch loaded agent information")
     
     optparser.add_option("-t", "--timeout", dest="timeout", default = 10, 
                          help="Number of seconds to wait to receive the status reply from the nodes on the overlay")
@@ -150,7 +150,8 @@ if __name__ == '__main__':
     if options.nodes:
         nodeSet.update(options.nodes)
     if not nodeSet:
-        nodeSet.update(helpers.getAllExperimentNodes(options.project, options.experiment))
+        nodeSet.update(helpers.getExperimentNodeList(project=options.project, 
+                                                     experiment=options.experiment))
         
     if options.reboot:
         reboot(options.project, options.experiment, nodeSet, options.noupdate, options.noinstall, options.distpath)

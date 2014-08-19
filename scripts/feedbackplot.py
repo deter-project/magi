@@ -34,7 +34,7 @@ if __name__ == '__main__':
             
         msgdest = options.bridge.split(".")[0]
         
-        agents = ['pktcounter']
+        agents = ['monitor_agent']
         nodes = ['rc']
         filters = {'peerNode': { '$in': ['uc-0', 'c-0'] }, 'trafficDirection' : 'out' }
                        
@@ -63,7 +63,7 @@ if __name__ == '__main__':
                                          bridge=bridge, 
                                          msgdest=msgdest)
         
-            records = data['pktcounter']['rc']
+            records = data['monitor_agent']['rc']
             
             logging.info("----------records----------")
             logging.info(records)

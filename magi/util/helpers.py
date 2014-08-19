@@ -8,7 +8,6 @@ import os
 import platform
 import yaml
 import tarfile
-import time
 
 log = logging.getLogger(__name__)
 
@@ -135,10 +134,7 @@ def createSSHTunnel(server, lport, rhost, rport, username=None):
     #until the process terminates.
     ssh_cmd = "ssh %s -L %d:%s:%d -f -o ExitOnForwardFailure=yes -N" % (server, lport, rhost, rport)
     tun_proc = Popen(ssh_cmd.split(), stderr=PIPE)
-    while True:
-        p = tun_proc.poll()
-        if p is not None: break
-        time.sleep(1)
+    p = tun_proc.wait()
     if p != 0:
         raise RuntimeError, 'Error creating tunnel: %s :: %s' %(str(p), tun_proc.communicate()[1])
     return ssh_cmd
@@ -169,16 +165,6 @@ def getNodesFromAAL(filename):
             nodeSet.update(nodes)
     return nodeSet
 
-def getAllExperimentNodes(project, experiment):
-    cmd = "/usr/testbed/bin/node_list -e %s,%s -c" % (project, experiment)
-    (output, err) = Popen(cmd.split(), stdout=PIPE).communicate()
-    nodeset = set()
-    if output:
-        for node in output.split('\n')[0].split(' '):
-            if node and not node.startswith('tbdelay'):
-                nodeset.add(node)
-    return nodeset
-   
 def getExperimentConfigFile(project, experiment):
     configFile = os.path.join('/proj', project, 'exp', experiment, 'experiment.conf')
     return configFile
@@ -204,5 +190,24 @@ def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
     dbdl = experimentConfig['dbdl']
     expdl = experimentConfig['expdl']
     
-    return "%s.%s.%s" % (dbdl['configHost'], expdl['eid'], expdl['pid'])
+    return "%s.%s.%s" % (dbdl['configHost'], expdl['experimentName'], expdl['projectName'])
 
+def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=None):
+    if not experimentConfigFile:
+        if not project or not experiment:
+            raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
+        experimentConfigFile = getExperimentConfigFile(project, experiment)
+        
+    expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
+    
+    return expdl['nodeList']
+
+#def getAllExperimentNodes(project, experiment):
+#    cmd = "/usr/testbed/bin/node_list -e %s,%s -c" % (project, experiment)
+#    (output, err) = Popen(cmd.split(), stdout=PIPE).communicate()
+#    nodeset = set()
+#    if output:
+#        for node in output.split('\n')[0].split(' '):
+#            if node and not node.startswith('tbdelay'):
+#                nodeset.add(node)
+#    return nodeset
