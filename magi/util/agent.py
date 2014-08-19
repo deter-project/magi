@@ -237,13 +237,13 @@ class TrafficClientAgent(Agent):
         self.interval = "1"
         self.stopClient(None)
         
-        if database.isDBEnabled:
-            self.collection = database.getCollection(self.name)
-        
     def run(self):
         """
         Called by daemon in the agent's thread to perform the thread main
         """
+        if database.isDBEnabled:
+            self.collection = database.getCollection(self.name)
+            
         while not self.done:
             try:
                 msg = self.messenger.next(True, max(self.nextrun - time.time(), 0))
