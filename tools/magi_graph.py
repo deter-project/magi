@@ -1,39 +1,11 @@
 #!/usr/bin/env python
 
-import yaml
+from magi.util import helpers, database, visualization
 import logging
-import optparse
 import matplotlib
 matplotlib.use('Agg')
-from pymongo import MongoClient
+import optparse
 import sys
-import os,stat
-import subprocess
-import time
-import tarfile
-from magi.util import helpers
-from magi.util import visualization
-
-def create_tunnel(username, server, lport, rhost, rport):
-    """
-        Create a SSH tunnel and wait for it to be setup before returning.
-        Return the SSH command that can be used to terminate the connection.
-    """
-    ssh_cmd = "ssh %s@%s -L %d:%s:%d -f -o ExitOnForwardFailure=yes -N" % (username,server, lport, rhost, rport)
-    tun_proc = subprocess.Popen(ssh_cmd,
-                                shell=True,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                stdin=subprocess.PIPE)
-    while True:
-        p = tun_proc.poll()
-        if p is not None: break
-        time.sleep(1)
-    
-    if p != 0:
-        raise RuntimeError, 'Error creating tunnel: ' + str(p) + ' :: ' + str(tun_proc.stdout.readlines())
-    
-    return ssh_cmd
 
 if __name__ == '__main__':
  
@@ -48,16 +20,12 @@ if __name__ == '__main__':
     optparser.add_option("-a", "--agent", dest="agent", help="Agent IDL in the experiment")
     optparser.add_option("-l", "--aal", dest="aal", help="AAL file of the experiment procedure")
     optparser.add_option("-T", "--Tunnel", dest="tunnel", default=False, help="Tunnel request through Deter Ops (users.deterlab.net).")
-    optparser.add_option("-u", "--user", dest="user", help="Specific username to login into deter testbed")
+    optparser.add_option("-u", "--username", dest="username", help="Username for creating tunnel. Required only if different from current shell username.")
     optparser.add_option("-c", "--config", dest="config", help="Path and name of configuration file for generating the graph")
     optparser.add_option("-o", "--output", dest="output", help="Path and name of output file for the graph") 
     (options, args) = optparser.parse_args()
     
-    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
-    log_datefmt = '%m-%d %H:%M:%S'
-    logging.basicConfig(format=log_format,
-                            datefmt=log_datefmt,
-                            level=logging.INFO)
+    logging.basicConfig(format=helpers.LOG_FORMAT_MSECS, datefmt=helpers.LOG_DATEFMT, level=logging.INFO)
                             
     if options.agent:
         if options.aal:
@@ -106,45 +74,43 @@ if __name__ == '__main__':
             tunnel_cmd = None		
             if options.tunnel:
                 logging.info("Attempting to establish SSH tunnel")
-                tunnel_cmd = create_tunnel(options.user,'users.deterlab.net',27018,\
-	                       dbConfigNode, 27017)
+                tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', 27018,
+                                                     dbConfigNode, 27017,
+                                                     options.username)
                 bridge = 'localhost'
                 port = 27018
                 logging.info('Tunnel setup done')
             else:
                 bridge = dbConfigNode
                 port = 27017
-	            #print bridge
-	        logging.info('Attempting to connect to the database')
-        
+            
+            agentName = config['db']['agent']
+            
             try:
-  	            connection = MongoClient(bridge,port)
+                logging.info('Attempting to connect to the database')
+                collection = database.getCollection(agentName, bridge, port)
+                logging.info('Connected to the database')
             except RuntimeError as e:
-   	            logging.critical("Failed connecting to the database : %s", str(e))
-   	            sys.exit(2)
+                logging.critical("Failed connecting to the database : %s", str(e))
+                sys.exit(2)
 
-            logging.info('Connected to the database')
-            db = connection['magi']
-            collection = db['experiment_data']
-   	 
             x=[]
             y=[]
-            config['db']['filter']['type'] = config['db']['collection']
             logging.info('The filter applied for data collected: %s',config['db']['filter'])	
-            for firstvalue in collection.find(config['db']['filter']).sort("_id",1)[:1]:
+            for firstvalue in collection.findAll(config['db']['filter']).sort("_id", 1)[:1]:
                 logging.info('The first timestamp in database: %s',firstvalue[config['db']['xValue']])
 
             logging.info('Fetching data from database')
-            for post in collection.find(config['db']['filter']).sort("_id",1):
-	            x.append("%.8f" % (post[config['db']['xValue']] - firstvalue[config['db']['xValue']]))
-	            y.append(post[config['db']['yValue']])
+            for post in collection.find(config['db']['filter']).sort("_id", 1):
+                x.append("%.8f" % (post[config['db']['xValue']] - firstvalue[config['db']['xValue']]))
+                y.append(post[config['db']['yValue']])
           
             logging.info('Constructed the x and y values for graph')
   
             """ Check for type of graph needed and print """          
             
             if config['graph']['type'] == 'line':
-                 visualization.line_Graph(config['graph']['xLabel'],config['graph']['yLabel'],config['graph']['title'],x,y,options.output)
+                visualization.line_Graph(config['graph']['xLabel'],config['graph']['yLabel'],config['graph']['title'],x,y,options.output)
             elif config['graph']['type'] == 'scatter':
                 visualization.scatter_Graph(config['graph']['xLabel'],config['graph']['yLabel'],config['graph']['title'],x,y,options.output)
             logging.info('Printed and saved the graph')	    
@@ -152,3 +118,4 @@ if __name__ == '__main__':
         finally:
             if tunnel_cmd:
                 logging.info("Closing tunnel")
+                helpers.terminateProcess(tunnel_cmd)
