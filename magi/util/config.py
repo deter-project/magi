@@ -3,16 +3,18 @@
 Example experiment configuration file 
 
 dbdl:
-  collectorMapping: {node1: node1, node2: node2}
+  sensorToCollectorMap: {node1: node1, node2: node2}
   configHost: node1
   isDBEnabled: true
 
 expdl:
   distributionPath: /share/magi/current
-  pid: myProject
-  eid: myExperiment
+  projectName: myProject
+  experimentName: myExperiment
   nodePaths: {config: /var/log/magi, db: /var/lib/mongodb, logs: /var/log/magi, temp: /tmp}
   testbedPaths: {experimentDir: /proj/myProject/exp/myExperiment}
+  nodeList: [node1, node2]
+  aal: /proj/myProject/exp/myExperiment/procedure.aal
 
 mesdl:
   bridges:
@@ -41,7 +43,7 @@ localInfo:
   dbDir: /var/lib/mongodb
   tempDir: /tmp
   interfaceInfo:
-    10.1.1.2:
+    eth3:
       expif: eth3
       expip: 10.1.1.2
       expmac: 00151757c7c2
@@ -57,7 +59,7 @@ transports:
 
 database:
   isDBEnabled: true
-  collectorMapping: {node1: node1, node2: node2}
+  sensorToCollectorMap: {node1: node1, node2: node2}
   configHost: node1
   
 software:
@@ -238,20 +240,20 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         isDBEnabled = dbdl.setdefault('isDBEnabled', DEFAULT_DB_ENABLED)
         
     if isDBEnabled:
-        if not dbdl.get('collectorMapping'):
-            dbdl['collectorMapping'] = dict()
+        if not dbdl.get('sensorToCollectorMap'):
+            dbdl['sensorToCollectorMap'] = dict()
             topoGraph = testbed.getTopoGraph()
             for node in topoGraph.nodes():
-                dbdl['collectorMapping'][node] = node
+                dbdl['sensorToCollectorMap'][node] = node
             dbdl['configHost'] = testbed.getServer()
         else:
             topoGraph = testbed.getTopoGraph()
             experimentNodes = topoGraph.nodes()
-            for (sensor, collector) in dbdl['collectorMapping'].iteritems():
+            for (sensor, collector) in dbdl['sensorToCollectorMap'].iteritems():
                 if sensor not in experimentNodes:
-                    del dbdl['collectorMapping'][sensor]
+                    del dbdl['sensorToCollectorMap'][sensor]
                 elif collector not in experimentNodes:
-                    dbdl['collectorMapping'][sensor] = sensor
+                    dbdl['sensorToCollectorMap'][sensor] = sensor
             if dbdl.get('configHost') not in experimentNodes:
                 dbdl['configHost'] = testbed.getServer()
     
@@ -271,8 +273,9 @@ def validateExpDL(expdl={}, distributionPath=None):
     if not expdl:
         expdl = dict()
         
-    expdl.setdefault('pid', testbed.getProject())
-    expdl.setdefault('eid', testbed.getExperiment())
+    expdl.setdefault('projectName', testbed.getProject())
+    expdl.setdefault('experimentName', testbed.getExperiment())
+    expdl.setdefault('nodeList', testbed.getTopoGraph().nodes())
     if distributionPath:
         expdl['distributionPath'] = distributionPath
     else:
@@ -287,6 +290,8 @@ def validateExpDL(expdl={}, distributionPath=None):
     
     testbedPaths = expdl.setdefault('testbedPaths', dict())
     testbedPaths['experimentDir'] = testbed.getExperimentDir()
+    
+    expdl.setdefault('aal', os.path.join(testbed.getExperimentDir(), "procedure.aal"))
     
     return expdl
 
@@ -364,11 +369,11 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
                 linkname = linkInfo['name']
                 peerNodes = linkInfo['peerNodes']
                 break
-        interfaceInfo[ip] = {'expip': ip, 
-                             'expif': testbed.getInterfaceInfo(ip).name, 
-                             'expmac': testbed.getInterfaceInfo(ip).mac, 
-                             'linkname': linkname, 
-                             'peernodes': peerNodes}
+        interfaceInfo[testbed.getInterfaceInfo(ip).name] = {'expip': ip, 
+                                                            'expif': testbed.getInterfaceInfo(ip).name, 
+                                                            'expmac': testbed.getInterfaceInfo(ip).mac, 
+                                                            'linkname': linkname, 
+                                                            'peernodes': peerNodes}
     
     localInfo['interfaceInfo'] = interfaceInfo
     #config['processAgentsCommPort'] = None
@@ -447,7 +452,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     isDBEnabled = databaseConfig.setdefault('isDBEnabled', dbdl.get('isDBEnabled'))
     if isDBEnabled:
         databaseConfig.setdefault('configHost', dbdl['configHost'])
-        databaseConfig.setdefault('collectorMapping', dbdl['collectorMapping'])
+        databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
         
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig

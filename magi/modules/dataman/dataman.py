@@ -105,7 +105,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         node = node.split(".")[0]
         
-        result = database.collectorMapping.get(node, database.collectorMapping.get('__ALL__'))
+        result = database.sensorToCollectorMap.get(node, database.sensorToCollectorMap.get('__ALL__'))
         exitlog(functionName, result)
         return result
         

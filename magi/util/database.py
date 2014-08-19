@@ -39,12 +39,12 @@ dbConfig = config.getConfig().get('database', {})
 
 isDBEnabled         = dbConfig.get('isDBEnabled', False)
 configHost          = dbConfig.get('configHost')
-collectorMapping    = dbConfig.get('collectorMapping')
+sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap')
 
-collector = collectorMapping.get(testbed.nodename, collectorMapping.get('__ALL__'))
+collector = sensorToCollectorMap.get(testbed.nodename, sensorToCollectorMap.get('__ALL__'))
 isConfigHost = (testbed.nodename == configHost)
-isCollector = (testbed.nodename in collectorMapping.values())
-isSensor = (testbed.nodename in collectorMapping.keys() or '__ALL__' in collectorMapping.keys())
+isCollector = (testbed.nodename in sensorToCollectorMap.values())
+isSensor = (testbed.nodename in sensorToCollectorMap.keys() or '__ALL__' in sensorToCollectorMap.keys())
 
 if 'connectionCache' not in locals():
     connectionCache = dict()
@@ -338,13 +338,13 @@ def configureDBCluster():
     entrylog(functionName, locals())
     
     log.info("Registering collector database servers as shards")
-    cnodes = set(collectorMapping.values())
+    cnodes = set(sensorToCollectorMap.values())
     for collector in cnodes:
         registerShard(collector)
         
     log.info("Configuring database cluster acccording to the sensor:collector mapping")
-    snodes = set(collectorMapping.keys())
-    if helpers.ALL in collectorMapping:
+    snodes = set(sensorToCollectorMap.keys())
+    if helpers.ALL in sensorToCollectorMap:
         allnodes = set(testbed.getTopoGraph().nodes())
         snodes.remove(helpers.ALL)
         rnodes = allnodes - snodes
@@ -352,12 +352,12 @@ def configureDBCluster():
         rnodes = set()
         
     for sensor in snodes:
-        moveChunk(sensor, collectorMapping[sensor])
-        moveChunk(sensor, collectorMapping[sensor], 'log')
+        moveChunk(sensor, sensorToCollectorMap[sensor])
+#        moveChunk(sensor, sensorToCollectorMap[sensor], 'log')
         
     for sensor in rnodes:
-        moveChunk(sensor, collectorMapping[helpers.ALL])
-        moveChunk(sensor, collectorMapping[helpers.ALL], 'log')
+        moveChunk(sensor, sensorToCollectorMap[helpers.ALL])
+#        moveChunk(sensor, sensorToCollectorMap[helpers.ALL], 'log')
     
     log.info('Creating index on field: %s' %(AGENT_FIELD))
     getConnection(dbhost='localhost', port=ROUTER_SERVER_PORT)[DB_NAME][COLLECTION_NAME].ensure_index([(AGENT_FIELD, pymongo.ASCENDING)])
@@ -368,7 +368,7 @@ def checkIfAllCollectorsRegistered():
     """
         Check if all the collector database servers are registered as shards
     """
-    cnodes = set(collectorMapping.values())
+    cnodes = set(sensorToCollectorMap.values())
     for collector in cnodes:
         while True:
             log.info("Waiting for %s to be added as a shard" %(collector))
