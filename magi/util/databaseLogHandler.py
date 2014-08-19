@@ -1,9 +1,9 @@
 import logging
 import getpass
 from datetime import datetime
-from socket import gethostname
-from pymongo.connection import Connection
 from bson import InvalidDocument
+from magi.util import database
+from magi.testbed import testbed
 
 
 class MongoFormatter(logging.Formatter):
@@ -17,9 +17,10 @@ class MongoFormatter(logging.Formatter):
         data.update(
             username=getpass.getuser(),
             time=datetime.now(),
-            host=gethostname(),
+            host=testbed.nodename,
             message=record.msg,
-            args=tuple(unicode(arg) for arg in record.args)
+            args=tuple(unicode(arg) for arg in record.args),
+            agent='logger'
         )
         if 'exc_info' in data and data['exc_info']:
             data['exc_info'] = self.formatException(data['exc_info'])
@@ -36,13 +37,13 @@ class MongoHandler(logging.Handler):
     @classmethod
     def to(cls, db, collection, host='localhost', port=None, level=logging.NOTSET):
         """ Create a handler for a given  """
-        return cls(Connection(host, port)[db][collection], level)
+        return cls(database.getConnection(host, port)[db][collection], level)
         
-    def __init__(self, collection, db='mongolog', host='localhost', port=None, level=logging.NOTSET):
+    def __init__(self, collection='experiment_data', db='magi', host='localhost', port=None, level=logging.NOTSET):
         """ Init log handler and store the collection handle """
         logging.Handler.__init__(self, level)
         if (type(collection) == str):
-            self.collection = Connection(host, port)[db][collection]
+            self.collection = database.getConnection(host, port)[db][collection]
         else:
             self.collection = collection
         self.formatter = MongoFormatter()

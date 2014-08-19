@@ -56,11 +56,11 @@ if __name__ ==  '__main__':
     try:      
         from magi.util import database 
         if database.isDBEnabled:
-            from magi.mongolog.handlers import MongoHandler
+            log.info("Setting up database log handler")
+            from magi.util.databaseLogHandler import MongoHandler
             dbhost = database.getCollector()
             #Making sure that the database server is up and running
-            connection = database.getConnection(dbhost, port=database.DATABASE_SERVER_PORT)
-            log.addHandler(MongoHandler.to(database.DB_NAME, database.LOG_COLLECTION_NAME, host=dbhost, port=database.DATABASE_SERVER_PORT))
+            log.addHandler(MongoHandler.to(database.DB_NAME, database.COLLECTION_NAME, host=dbhost, port=database.DATABASE_SERVER_PORT))
     
         pid = os.getpid()
         try:
