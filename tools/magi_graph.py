@@ -101,10 +101,13 @@ if __name__ == '__main__':
             except RuntimeError as e:
                 logging.critical("Failed connecting to the database : %s", str(e))
                 sys.exit(2)
-            
+
+            """ X and Y list values for the graph """
             x=[]
             y=[]
             logging.info('The filter applied for data collected: %s', dataFilter)
+            
+            """ Populating the X and Y values from the database """
             firstRecord = collection.findAll(dataFilter).sort(xValue, 1).limit(1)[0]
             logging.info('The first timestamp in database: %s', firstRecord[xValue])
 
