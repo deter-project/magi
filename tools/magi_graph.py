@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-from magi.util import helpers, database, visualization
-import logging
 import matplotlib
 matplotlib.use('Agg')
+from magi.util import helpers, database, visualization
+
+import logging
 import optparse
 import sys
 
