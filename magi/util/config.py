@@ -116,7 +116,7 @@ def getNodeConfig(refresh=False):
             nodeConfig = helpers.loadYaml(NODECONF_FILE)
         except:
             log.exception("Could not load node configuration from %s", NODECONF_FILE)
-            raise
+            #raise
     return nodeConfig
 
 def getConfig(refresh=False):

@@ -39,7 +39,7 @@ dbConfig = config.getConfig().get('database', {})
 
 isDBEnabled         = dbConfig.get('isDBEnabled', False)
 configHost          = dbConfig.get('configHost')
-sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap')
+sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap', {})
 
 collector = sensorToCollectorMap.get(testbed.nodename, sensorToCollectorMap.get('__ALL__'))
 isConfigHost = (testbed.nodename == configHost)
