@@ -43,6 +43,25 @@ class DesktopExperiment(Testbed):
             self.loadEID()
         return self._store['eid']
 
+    def getServer(self, FQDN=False):
+        # Gets the complete topology map and returns control if 
+        # if it finds a node named "control" otherwise it returns 
+        # the first node in the alpha-numerically sorted list  
+        topoGraph = self.getTopoGraph()
+        nodes = topoGraph.nodes()
+        nodes.sort()
+        host = nodes[0]
+        for node in nodes:
+            if 'control' == node.lower():
+                host = 'control'
+                break
+        
+        if FQDN:
+            return '%s.%s.%s' % (host, self.getExperiment(), self.getProject())
+        else:
+            return host
+
+    """ Local node properties (readonly) """        
     def getNodeName(self):
         if 'node' not in self._store:
             self.loadEID()
