@@ -24,7 +24,6 @@ def line_Graph(xLabel,yLabel,title,x,y,output):
     ax.xaxis.set_ticks_position('bottom')
     ax.yaxis.set_ticks_position('left')
     
-    
     lines = plt.plot(x, y)
     plt.setp(lines, 'color', 'r', 'linewidth', 2.0)
     plt.savefig(output)
@@ -42,8 +41,8 @@ def scatter_Graph(xLabel,yLabel,title,x,y,output):
     plt.xlabel(xLabel)
     plt.ylabel(yLabel)	
     plt.title(title)
-    
-     """ Graph layout setup parameters """
+
+    """ Graph layout setup parameters """
     ax = plt.subplot(111)
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
