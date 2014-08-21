@@ -77,7 +77,8 @@ if __name__ == '__main__':
             yLabel = graphConfig.get('yLabel', yValue)
             graphTitle = graphConfig.get('title', 'Graph')
         except KeyError:
-            logging.exception("Invalid graph configuration")
+            raise RuntimeError, 'Configuration file incomplete. Database options are missing. Use option -a to get fields'
+            #logging.exception("Invalid graph configuration")
             sys.exit(2)
             
         try:
