@@ -70,7 +70,7 @@ if __name__ == '__main__':
         try:
             agentName = dbConfig['agent']
             dataFilter = dbConfig.get('filter', {})
-            xValue = dbConfig['xValue']
+            xValue = graphConfig.get('xValue','created')
             yValue = dbConfig['yValue']
             graphType = graphConfig.get('type', 'line')
             xLabel = graphConfig.get('xLabel', xValue)
