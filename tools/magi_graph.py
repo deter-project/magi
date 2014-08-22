@@ -34,10 +34,7 @@ if __name__ == '__main__':
             agentidl =  helpers.loadIDL(options.agent, options.aal)
             #logging.info(agentidl['dbfields'])
             logging.info("Displaying field names")
-            print
-            for field,desc in agentidl['dbfields'].items():
-                print field, ':', desc
-            print
+            helpers.printDBfields(agentidl)
             logging.info("Loaded IDL file")
         else:
             raise RuntimeError, 'Missing AAL file. Please provide AAL file with option -l'
