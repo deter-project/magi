@@ -90,8 +90,14 @@ class TCPTransport(transportStream.StreamTransport):
 				self.txMessage = transportStream.TXTracker(codec=self.codec, msg=msg)
 			except IndexError:
 				return
-
-		self.txMessage.sent(self.send(self.txMessage.getData()))
+			
+		#keep sending till you can
+		while not self.txMessage.isDone():
+			bytesWritten = self.send(self.txMessage.getData())
+			self.txMessage.sent(bytesWritten)
+			#if no more can be written, break out
+			if bytesWritten == 0:
+				break
 			
 
 	def __repr__(self):

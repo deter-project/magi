@@ -52,14 +52,21 @@ class OutputPipe(PipeBase):
 
 	def handle_write(self):
 		""" Override handle_write as we have a file descriptor, not a socket """
-		try:
-			self.txMessage = transportStream.TXTracker(msg=self.outmessages.pop(0), codec=self.codec)
-		except IndexError:
-			return
+		if self.txMessage.isDone():
+			try:
+				msg = self.outmessages.pop(0)
+				self.txMessage = transportStream.TXTracker(codec=self.codec, msg=msg)
+			except IndexError:
+				return
 			
 		if debug: log.log(2, "starting pipe write")
+		#keep sending till you can
 		while not self.txMessage.isDone():
-			self.txMessage.sent(os.write(self.fd, self.txMessage.getData()))
+			bytesWritten = os.write(self.fd, self.txMessage.getData())
+			self.txMessage.sent(bytesWritten)
+			#if no more can be written, break out
+			if bytesWritten == 0:
+				break
 		if debug: log.log(2, "done pipe write")
 
 	def __repr__(self):
