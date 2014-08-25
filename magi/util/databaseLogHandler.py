@@ -1,8 +1,10 @@
 import logging
 import getpass
+import pymongo
 from datetime import datetime
 from bson import InvalidDocument
 from magi.util import database
+from magi.testbed import testbed
 
 class DatabaseFormatter(logging.Formatter):
     def format(self, record):
@@ -13,6 +15,7 @@ class DatabaseFormatter(logging.Formatter):
             record.msg = record.msg % record.args
 
         data.update(
+            host=testbed.nodename,
             message=record.msg,
             username=getpass.getuser(),
             time=datetime.now(),
@@ -21,8 +24,6 @@ class DatabaseFormatter(logging.Formatter):
         
         if 'exc_info' in data and data['exc_info']:
             data['exc_info'] = self.formatException(data['exc_info'])
-        
-        data.pop("created", None)
         
         return data
 
@@ -34,14 +35,17 @@ class DatabaseHandler(logging.Handler):
 
     @classmethod
     def to(cls, db=database.DB_NAME, 
-                collection=database.COLLECTION_NAME, 
+                collection=database.LOG_COLLECTION_NAME, 
                 host=database.getCollector(), 
                 port=database.DATABASE_SERVER_PORT, 
                 level=logging.NOTSET):
         """ Create a handler for a given  """
-        return cls(database.getCollection('logger'), level)
+        connection = database.getConnection()
+        collection = pymongo.collection.Collection(database=connection[database.DB_NAME], 
+                                                        name=database.LOG_COLLECTION_NAME)
+        return cls(collection, level=level)
         
-    def __init__(self, collection=database.COLLECTION_NAME, 
+    def __init__(self, collection=database.LOG_COLLECTION_NAME, 
                         db=database.DB_NAME, 
                         host=database.getCollector(), 
                         port=database.DATABASE_SERVER_PORT, 
@@ -49,7 +53,9 @@ class DatabaseHandler(logging.Handler):
         """ Init log handler and store the collection handle """
         logging.Handler.__init__(self, level)
         if (type(collection) == str):
-            self.collection = database.getCollection('logger')
+            connection = database.getConnection()
+            self.collection = pymongo.collection.Collection(database=connection[database.DB_NAME], 
+                                                            name=database.LOG_COLLECTION_NAME)
         else:
             self.collection = collection
         self.formatter = DatabaseFormatter()

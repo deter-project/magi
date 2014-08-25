@@ -60,7 +60,7 @@ if __name__ ==  '__main__':
             from magi.util.databaseLogHandler import DatabaseHandler
             dbhost = database.getCollector()
             #Making sure that the database server is up and running
-            log.addHandler(DatabaseHandler.to())
+            log.addHandler(DatabaseHandler.to(level=logging.INFO))
     
         pid = os.getpid()
         try:

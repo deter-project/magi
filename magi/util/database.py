@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 DB_NAME = 'magi'
 COLLECTION_NAME = 'experiment_data'
 AGENT_FIELD = 'agent'
-LOG_COLLECTION_NAME = 'log'
+LOG_COLLECTION_NAME = 'logs'
 
 DATABASE_SERVER_PORT = 27018
 ROUTER_SERVER_PORT   = 27017
@@ -353,11 +353,11 @@ def configureDBCluster():
         
     for sensor in snodes:
         moveChunk(sensor, sensorToCollectorMap[sensor])
-#        moveChunk(sensor, sensorToCollectorMap[sensor], 'log')
+        moveChunk(sensor, sensorToCollectorMap[sensor], LOG_COLLECTION_NAME)
         
     for sensor in rnodes:
         moveChunk(sensor, sensorToCollectorMap[helpers.ALL])
-#        moveChunk(sensor, sensorToCollectorMap[helpers.ALL], 'log')
+        moveChunk(sensor, sensorToCollectorMap[helpers.ALL], LOG_COLLECTION_NAME)
     
     log.info('Creating index on field: %s' %(AGENT_FIELD))
     getConnection(dbhost='localhost', port=ROUTER_SERVER_PORT)[DB_NAME][COLLECTION_NAME].ensure_index([(AGENT_FIELD, pymongo.ASCENDING)])
