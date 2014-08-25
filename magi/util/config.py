@@ -275,7 +275,9 @@ def validateExpDL(expdl={}, distributionPath=None):
         
     expdl.setdefault('projectName', testbed.getProject())
     expdl.setdefault('experimentName', testbed.getExperiment())
-    expdl.setdefault('nodeList', testbed.getTopoGraph().nodes())
+    nodeList = testbed.getTopoGraph().nodes()
+    nodeList.sort()
+    expdl.setdefault('nodeList', nodeList)
     if distributionPath:
         expdl['distributionPath'] = distributionPath
     else:
