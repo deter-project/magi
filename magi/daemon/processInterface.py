@@ -211,7 +211,6 @@ class AgentMessenger(threading.Thread):
 		self.outTransport.outmessages.append(request)
 
 	def poisinPill(self):
-		pass
 		""" queue a poisin pill so that anyone waiting on a call to next will wake up """
 		call = {'version': 1.0, 'method': 'poisinPill', 'args': {}}
 		stop_msg = APIMagiMessage(contenttype=APIMagiMessage.YAML, data=yaml.safe_dump(call))

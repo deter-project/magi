@@ -95,7 +95,7 @@ class Agent(object):
         # 9/14 Changed testbed.nodename to self.hostname to support desktop daemons  
         self.messenger.trigger(event='AgentUnloadDone', agent=self.name, nodes=[self.hostname])
         self.done = True
-        self.messenger.poisinPill()
+        #self.messenger.poisinPill()
         log.info('Unload Complete.')
 
 
