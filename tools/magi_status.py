@@ -2,8 +2,8 @@
 
 from magi.messaging import api
 from magi.messaging.magimessage import MAGIMessage
-from magi.util import helpers
-from subprocess import Popen, PIPE
+from magi.util import helpers, config
+from subprocess import Popen, PIPE, call
 import Queue
 import logging
 import optparse
@@ -11,6 +11,7 @@ import signal
 import sys
 import time
 import yaml
+import os
 
 logging.basicConfig(level=logging.INFO, format=helpers.LOG_FORMAT_MSECS, datefmt=helpers.LOG_DATEFMT)
 log = logging.getLogger()
@@ -86,6 +87,23 @@ def reboot(project, experiment, nodes, noUpdate, noInstall, magiDistDir='/share/
         
     log.info("Done rebooting MAGI daemon on the required nodes")
     
+def getLogs(project, experiment, outputdir='/tmp'):
+    localLogDir = os.path.join(outputdir, "%s_%s" % (project, experiment))
+    helpers.makeDir(localLogDir)
+    
+    experimentConfigFile = helpers.getExperimentConfigFile(project=project, experiment=experiment)
+    experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
+    nodeLogDir = experimentConfig.get('expdl', {}).get('nodePaths', {}).get('config', config.DEFAULT_CONF_DIR)
+    
+    for node in nodeSet:
+        localNodeLogDir = os.path.join(localLogDir, node)
+        helpers.makeDir(localNodeLogDir)
+        cmd = "scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no " \
+              "%s.%s.%s:%s %s" % (node, experiment, project, 
+                                  os.path.join(nodeLogDir, '*.log'), localNodeLogDir)
+        log.info(cmd)
+        call(cmd.split())
+        
 def store_list(option, opt_str, value, parser):
     setattr(parser.values, option.dest, value.split(','))
     
@@ -111,6 +129,12 @@ if __name__ == '__main__':
     
     optparser.add_option("-a", "--aal", dest="aal", action="store", default = None, 
                          help="The yaml-based procedure file to extract the list of nodes")
+    
+    optparser.add_option("-l", "--logs", dest="logs", action="store_true", default=False, 
+                         help="Fetch logs. The -o/--logoutdir option is applicable only when fetching logs.")
+    
+    optparser.add_option("-o", "--logoutdir", dest="logoutdir", default='/tmp',
+                         help="Store logs under the given directory. Default: %default")
 
     optparser.add_option("-g", "--groupmembership", dest="groupmembership", action="store_true", default=False, 
                          help="Fetch group membership detail")
@@ -124,8 +148,7 @@ if __name__ == '__main__':
     optparser.add_option("-r", "--reboot", dest="reboot", action="store_true", default=False, 
                          help="Reboot nodes. The following options are applicable only when rebooting.") 
     
-    optparser.add_option("-d", "--distpath", dest="distpath", default="/share/magi/current", 
-                         help="Location of the distribution") 
+    optparser.add_option("-d", "--distpath", dest="distpath", help="Location of the distribution") 
     
     optparser.add_option("-U", "--noupdate", dest="noupdate", action="store_true", default=False, 
                          help="Do not update the system before installing MAGI")
@@ -153,8 +176,19 @@ if __name__ == '__main__':
         nodeSet.update(helpers.getExperimentNodeList(project=options.project, 
                                                      experiment=options.experiment))
         
+    if options.logs:
+        getLogs(options.project, options.experiment, options.logoutdir)
+        exit(0)
+        
     if options.reboot:
-        reboot(options.project, options.experiment, nodeSet, options.noupdate, options.noinstall, options.distpath)
+        if not options.distpath:
+            experimentConfigFile = helpers.getExperimentConfigFile(project=options.project,
+                                                     experiment=options.experiment)
+            experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
+            distributionPath = experimentConfig.get('expdl', {}).get('distributionPath', config.DEFAULT_DIST_DIR)
+        else:
+            distributionPath = options.distpath
+        reboot(options.project, options.experiment, nodeSet, options.noupdate, options.noinstall, distributionPath)
         log.info("Waiting for transports to be setup")
         time.sleep(20)
 
@@ -168,10 +202,9 @@ if __name__ == '__main__':
                                  agentInfo=options.agentinfo,
                                  timeout=options.timeout)
 
+    log.info("Result:\n%s" %(yaml.dump(result)))
+    
     if not status:
         log.info("Did not receive reply from %s", sorted(list(nodeSet-set(result.keys()))))
     else:
         log.info("Received reply back from all the required nodes")
-        
-    log.info("Result:\n%s" %(yaml.dump(result)))
-
