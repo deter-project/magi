@@ -34,10 +34,7 @@ if __name__ == '__main__':
             agentidl =  helpers.loadIDL(options.agent, options.aal)
             #logging.info(agentidl['dbfields'])
             logging.info("Displaying field names")
-            print
-            for field,desc in agentidl['dbfields'].items():
-                print field, ':', desc
-            print
+            helpers.printDBfields(agentidl)
             logging.info("Loaded IDL file")
         else:
             raise RuntimeError, 'Missing AAL file. Please provide AAL file with option -l'
@@ -70,14 +67,15 @@ if __name__ == '__main__':
         try:
             agentName = dbConfig['agent']
             dataFilter = dbConfig.get('filter', {})
-            xValue = dbConfig['xValue']
+            xValue = graphConfig.get('xValue','created')
             yValue = dbConfig['yValue']
             graphType = graphConfig.get('type', 'line')
             xLabel = graphConfig.get('xLabel', xValue)
             yLabel = graphConfig.get('yLabel', yValue)
             graphTitle = graphConfig.get('title', 'Graph')
         except KeyError:
-            logging.exception("Invalid graph configuration")
+            raise RuntimeError, 'Configuration file incomplete. Database options are missing. Use option -a to get fields'
+            #logging.exception("Invalid graph configuration")
             sys.exit(2)
             
         try:

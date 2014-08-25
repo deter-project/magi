@@ -201,6 +201,23 @@ def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=No
     expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
     
     return expdl['nodeList']
+    
+def printDBfields(agentidl):
+            agentname = agentidl.get('display', 'Agent')
+            desc = agentidl.get('description', 'No description Available')
+            print
+            print 'Agent Name:', agentname
+            print desc
+            print
+            print 'Format of display: Fieldname(type/value): Description'
+            print
+            print 'created (float/sec.msec): Timestamp logged by sensor'
+            print 'host (str): Hostname where sensor is deployed'
+            print 'agent (str):  Name of sensor'
+            dbitems = agentidl.get('dbfields',{})
+            for field,desc in dbitems.items():
+                print field,'(',desc['keytype'],'/',desc['value'],')',':',desc['keydesc']
+            print
 
 #def getAllExperimentNodes(project, experiment):
 #    cmd = "/usr/testbed/bin/node_list -e %s,%s -c" % (project, experiment)
