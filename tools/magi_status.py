@@ -109,8 +109,8 @@ def store_list(option, opt_str, value, parser):
     
 
 if __name__ == '__main__':
-    optparser = optparse.OptionParser(description="Script to get the status of MAGI daemons on experiment nodes \
-                                                    and to reboot them, if required.")
+    optparser = optparse.OptionParser(description="Script to get the status of MAGI daemon processes on experiment nodes, \
+                                                    to reboot them if required, and to download logs.")
      
 #    optparser.add_option("-b", "--bridge", default=None, dest="bridge", 
 #                         help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
