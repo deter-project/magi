@@ -38,22 +38,12 @@ def installPython(base, check, commands):
         except ImportError:
                 pass
     
-        paths = [rpath + '/tarfiles/' + base + '*', rpath + '/' + base + '*']
-
-        fail = False
-        for path in paths:
-                log.info("Looking for disitrbution at %s...",path)
-                if call("tar -C /tmp -xzf %s" % path):
-                        log.error("Failed to untar %s", base)
-                        fail = True
-                else:
-                        fail = False
-                        break
-
-        if fail:
-                raise TarException("Failed to untar %s" % base)
-
-        os.chdir(glob.glob(os.path.join("/tmp", base+'*'))[0])  # Need glob as os.chdir doesn't expand
+        extractDistribution(base, '/tmp')
+        
+        distDir = glob.glob(os.path.join("/tmp", base+'*'))[0] # Need glob as os.chdir doesn't expand
+        log.info("Changing directory to %s" %(distDir))
+        os.chdir(distDir)
+        
         if call("python setup.py %s -f" % commands):
                 log.error("Failed to install %s with commands %s", base, commands)
                 raise PBuildException("Unable to install %s with commands %s" %(base, commands))
@@ -69,25 +59,53 @@ def installC(base, check):
                 log.info("%s already installed, found file %s", base, check)
                 return
 
-        paths = [rpath+'/tarfiles/'+base+'*', rpath+'/'+base+'*']
-        fail = False
-        for path in paths:
-                if call("tar -C /tmp -xzf %s" % path):
-                        fail = True
-                else:
-                        fail = False
-                        break
-
-        if fail:
-                raise TarException("Failed to untar %s" % base)
-
-        os.chdir(glob.glob(os.path.join("/tmp", base+'*'))[0])  # Need glob as os.chdir doesn't expand
+        extractDistribution(base, '/tmp')
+        
+        distDir = glob.glob(os.path.join("/tmp", base+'*'))[0] # Need glob as os.chdir doesn't expand
+        log.info("Changing directory to %s" %(distDir))
+        os.chdir(distDir)
+        
         if call("./configure") or call("make") or call("make install"):
                 log.error("Failed to install %s", base)
                 raise CBuildException("Unable to install %s" % base)
             
         log.info("Successfully installed %s", base)
 
+def installPreBuilt(base):
+    global rpath
+    
+    log.info("Installing %s", base)
+    
+    extractDistribution(base, '/tmp')
+            
+    distDir = glob.glob(os.path.join("/tmp", base+'*'))[0] # Need glob as os.chdir doesn't expand
+    log.info("Changing directory to %s" %(distDir))
+    os.chdir(distDir)
+    
+    if call("sudo rsync bin/* /usr/local/bin/"):
+            log.error("Failed to install %s", base)
+            raise CBuildException("Unable to install %s" % base)
+        
+    log.info("Successfully installed %s", base)
+        
+def extractDistribution(base, destDir):
+    global rpath
+    log.info("Extracting %s to %s" %(base, destDir))
+    
+    paths = [os.path.join(rpath, 'tarfiles', '%s*' %(base)), os.path.join(rpath, '%s*' %(base))]
+    fail = False
+    for path in paths:
+            if call("tar -C %s -xzf %s" % (destDir, path)):
+                    fail = True
+            else:
+                    fail = False
+                    break
+
+    if fail:
+            raise TarException("Failed to untar %s" % base)
+    
+    log.info("Successfully extracted %s to %s" %(base, destDir))
+    
 def isInstalled(program):
         try:
                 import subprocess
@@ -295,11 +313,9 @@ if __name__ == '__main__':
                                     #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
                                     #Copying prebuilt binaries for mongodb
                                     if is_os_64bit():
-                                            call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-x86_64-2.6.2.tgz")
-                                            call("sudo rsync /tmp/mongodb-linux-x86_64-2.6.2/bin/* /usr/local/bin/")
+                                            installPreBuilt('mongodb-linux-x86_64')
                                     else:
-                                            call("tar -C /tmp/ -zxvf " + rpath + "/tarfiles/" + "mongodb-linux-i686-2.6.2.tgz")
-                                            call("sudo rsync /tmp/mongodb-linux-i686-2.6.2/bin/* /usr/local/bin/")
+                                            installPreBuilt('mongodb-linux-i686')
                     else:
                             log.info("Database server is not required on this node")
                             
