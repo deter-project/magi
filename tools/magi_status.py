@@ -8,7 +8,6 @@ import Queue
 import logging
 import optparse
 import signal
-import sys
 import time
 import yaml
 import os
@@ -112,17 +111,17 @@ if __name__ == '__main__':
     optparser = optparse.OptionParser(description="Script to get the status of MAGI daemon processes on experiment nodes, \
                                                     to reboot them if required, and to download logs.")
      
+    optparser.add_option("-p", "--project", dest="project", help="Project name")
+    
+    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
+
 #    optparser.add_option("-b", "--bridge", default=None, dest="bridge", 
 #                         help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
 #    
 #    optparser.add_option("-r", "--port", dest="port", type="int", default=18808, 
-#                         help="Port on which to contact MAGI daemon on the bridge node")
+#                         help="The port to connect to on the bridge node")
 #    
 #    optparser.add_option("-c", "--config", dest="config", help="Experiment configuration file location")
-    
-    optparser.add_option("-p", "--project", dest="project", help="Project name")
-    
-    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
     
     optparser.add_option("-n", "--nodes", dest="nodes", action="callback", callback=store_list, default=[], type="string", 
                          help="Comma-separated list of the nodes to reboot MAGI daemon")
@@ -159,13 +158,17 @@ if __name__ == '__main__':
 
     (options, args) = optparser.parse_args()
 #    if not options.bridge:
-#        if not options.config and (not options.project or not options.experiment):
-#            optparser.print_help()
-#            sys.exit(2)
-    
+#        if not options.project or not options.experiment:
+#            parser.print_help()
+#            parser.error("Missing project and/or experiment name")
+#        (bridgeNode, bridgePort) = helpers.getBridge(project=options.project, experiment=options.experiment)
+#    else:
+#        bridgeNode = options.bridge
+#        bridgePort = options.port
+            
     if not options.project or not options.experiment:
         optparser.print_help()
-        sys.exit(2)
+        optparser.error("Missing project and/or experiment name")
 
     nodeSet = set() 
     if options.aal:
