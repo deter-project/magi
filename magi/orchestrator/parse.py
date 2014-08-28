@@ -3,7 +3,6 @@ import yaml
 import sys
 import cStringIO
 import optparse
-import pdb
 from controlflow import ControlGraph  
 from collections import defaultdict
 from magi.messaging.api import MAGIMessage
@@ -193,7 +192,6 @@ class TriggerList(list):
             tesets = Trigger.getEsets(entry) 
             if tesets:
                 for e in tesets:
-                    print e 
                     completeests.add(e)
         return completeests
     
@@ -203,9 +201,8 @@ class TriggerList(list):
             t = Trigger.getArgs(entry)
             if t:
                 for k,v in t.iteritems():
-                    print k,v
-		    if k == 'event': 
-                    	completeargs.add(v)
+                    if k == 'event': 
+                        completeargs.add(v)
         return completeargs
 
     def __repr__(self):
@@ -493,17 +490,14 @@ class AAL(object):
 
                 if event['type'] == 'trigger':
                     t = TriggerList(event['triggers'])
-                    pdb.set_trace()
                     
-                    
-                    # Check is there are an incoming triggers, specified as "event: waitforme, speciall..."
+                    # Check is there are an incoming triggers, specified as "event: waitforme, special..."
                     feset = t.getArgs()
                     if feset:
                         for k in feset:
                             self.ieventtriggers[key].add(k)
                 
-                
-                    # Check is there are sets of incoming triggers, specified as "eset: [event: waitforme, speciall...] [ event:waitformealso...] "
+                    # Check is there are sets of incoming triggers, specified as "eset: [event: waitforme, special...] [ event:waitformealso...] "
                     feset = t.getEsets()
                     if feset:
                         for k in feset:
@@ -569,14 +563,14 @@ class AAL(object):
             if len(ies) == 0:
                 ies = self.ieventtriggers[k]
             else:
-                ies = ies.union(self.ieventtriggers[k])
+                ies.union(self.ieventtriggers[k])
         
         log.debug("oeventtriggers: %s", self.oeventtriggers)
         for k in self.oeventtriggers:
             if len(ies) == 0:
                 ies = self.oeventtriggers[k]
             else:
-                ies = ies.union(self.oeventtriggers[k])
+                ies.union(self.oeventtriggers[k])
 
         return ies 
 
