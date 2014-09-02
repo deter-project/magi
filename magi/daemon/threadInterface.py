@@ -69,11 +69,14 @@ class ThreadedAgent(threading.Thread):
 		threading.Thread.__init__(self, name=name)
 		self.daemon = True
 		log.debug("Loading source from %s with name %s", sourcepath, name)
+		# Creating __init__.py file (only if one does not exist)
+		# in order to be able to import the agent as a valid python module
+		open(os.path.join(os.path.dirname(sourcepath), '__init__.py'), 'a').close()
 		# TODO: check if this is the best way to get to the module name
 		packagename = sourcepath.split("/")[-2]
 		modulename = sourcepath.split("/")[-1].split(".")[0]
-		__import__('magi.modules.'+packagename)
-		module = imp.load_source('magi.modules.'+packagename+"."+modulename, sourcepath)
+		__import__("magi.modules.%s" %(packagename))
+		module = imp.load_source("magi.modules.%s.%s" %(packagename, modulename), sourcepath)
 
 		self.agent = None
 		self.agentname = name
