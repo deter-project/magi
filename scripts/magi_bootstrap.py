@@ -227,7 +227,7 @@ if __name__ == '__main__':
                     installPython('unittest2', 'unittest2', 'install')
                     installPython('networkx', 'networkx', 'install')
                     #installPython('SQLAlchemy', 'sqlalchemy', 'install')
-                    magidist = 'MAGI-1.5.0'
+                    magidist = 'MAGI-1.6.0'
                     installPython(magidist, 'alwaysinstall', 'install')
                     
                     if not options.nodataman:
