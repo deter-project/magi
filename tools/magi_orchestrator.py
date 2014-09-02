@@ -25,6 +25,11 @@ if __name__ == '__main__':
                          dest="bridge",
                          help="Address of the bridge node to join the "
                               "messaging overlay (ex: control.exp.proj)")
+    optparser.add_option("-c", "--control",
+                         dest="bridge",
+                         help="Address of the bridge node to join the "
+                              "messaging overlay (ex: control.exp.proj). "
+                              "This option exists for backward compatibility.")
     optparser.add_option("-r", "--port",
                          dest="port", type="int", default=18808,
                          help="The port to connect to on the bridge node.")
@@ -77,7 +82,8 @@ if __name__ == '__main__':
     optparser.add_option("-t", "--tunnel",
                          dest="tunnel",
                          help="Tell orchestrator to tunnel data through "
-                              "Deter Ops (users.deterlab.net).",
+                              "Deter Ops (users.deterlab.net). Must specify "
+                              "the bridge node.",
                          default=False,
                          action="store_true")
     optparser.add_option("-u", "--username", 
@@ -171,7 +177,7 @@ if __name__ == '__main__':
         try:
             messaging = api.ClientConnection(options.name, bridgeNode, bridgePort)
         except gaierror as e:
-            logging.critical('Error connecting to %s: %s', options.control, str(e))
+            logging.error("Error connecting to %s: %d" %(bridgeNode, bridgePort))
             exit(3)
     
         signal.signal(signal.SIGUSR1, sigusr1_handler)
