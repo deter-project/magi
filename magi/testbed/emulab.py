@@ -15,15 +15,9 @@ log = logging.getLogger(__name__)
 
 class EmulabTestbed(Testbed):
     
-    def __init__(self, **hint):
+    def __init__(self):
         Testbed.__init__(self)
         self._store = {}
-        if 'project' in hint and 'experiment' in hint:
-            self._store.update(project=hint['project'], 
-                               experiment=['experiment'], 
-                               eid=hint['project']+"/"+hint['experiment'],
-                               node='none', 
-                               controlip='none')
 
     def getExperimentDir(self):
         return os.path.join('/proj', self.getProject(), 'exp', self.getExperiment())
@@ -150,13 +144,15 @@ class EmulabTestbed(Testbed):
         
 # Small test if running this file directly
 if __name__ == "__main__":
+    logging.basicConfig()
     x = EmulabTestbed()
-    print 'Control IP:', x.controlip
     print 'Node Name:', x.nodename
+    print 'FQDN:', x.fqdn
+    print 'Control IP:', x.controlip
     print 'Control IF:', x.controlif
+    print 'Server Node:', x.getServer()
     
     iplist = x.getLocalIPList()
-    print x.getServer()
     print 'Exp. Addresses: %s' % iplist
     print 'Exp. Interface info:'
     for ip in iplist:

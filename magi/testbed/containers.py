@@ -16,14 +16,10 @@ log = logging.getLogger(__name__)
 
 class ContainerExperiment(Testbed):
     
-    def __init__(self, **hint):
+    def __init__(self):
         Testbed.__init__(self)
         self._store = {}
         self._confdir = '/var/containers/config/'
-        if 'project' in hint and 'experiment' in hint:
-            self._store.update(project=hint['project'], experiment=['experiment'], 
-                                eid=hint['project']+"/"+hint['experiment'],
-                                node='none', controlip='none')
 
     def getExperimentDir(self):
         return os.path.join('/proj', self.getProject(), 'exp', self.getExperiment())
@@ -140,9 +136,15 @@ class ContainerExperiment(Testbed):
 if __name__ == "__main__":
     logging.basicConfig()
     x = ContainerExperiment()
-    print x.controlip
-    print x.nodename
-    print x.controlif
-    print x.getInterfaceList()
-    print x._store
+    print 'Node Name:', x.nodename
+    print 'FQDN:', x.fqdn
+    print 'Control IP:', x.controlip
+    print 'Control IF:', x.controlif
+    print 'Server Node:', x.getServer()
+    
+    iplist = x.getLocalIPList()
+    print 'Exp. Addresses: %s' % iplist
+    print 'Exp. Interface info:'
+    for ip in iplist:
+        print '\t%s: %s' % (ip, x.getInterfaceInfo(ip))
 

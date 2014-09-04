@@ -10,13 +10,11 @@ log = logging.getLogger(__name__)
 
 class DesktopExperiment(Testbed):
     
-    def __init__(self, node=None):
+    def __init__(self, **hint):
         Testbed.__init__(self)
         self._store = {}
-        if node is None:
-            self._store['node'] = socket.gethostname()
-        else:
-            self._store['node'] = node 
+        if 'node' in hint:
+            self._store['node'] = hint['node']
 
     def setNodeName(self, nodename):
         self._store['node'] = nodename
@@ -35,7 +33,7 @@ class DesktopExperiment(Testbed):
     def loadEID(self):
         """ Load the nickname file to get the node, experiment and project names """
         try:
-            if not self._store['node']:
+            if 'node' not in self._store:
                 self._store['node'] = socket.gethostname()
                 
             self._store.update(experiment='desktopExperiment', 
@@ -70,8 +68,20 @@ class DesktopExperiment(Testbed):
 
 # Small test if running this file directly
 if __name__ == "__main__":
-    x = DesktopExperiment('tau')
+    logging.basicConfig()
+    x = DesktopExperiment()
     print 'Node Name:', x.nodename
-    y = DesktopExperiment()
-    print 'Node Name:', y.nodename
+    print 'FQDN:', x.fqdn
+    print 'Control IP:', x.controlip
+    print 'Control IF:', x.controlif
+    print 'Server Node:', x.getServer()
+    
+    iplist = x.getLocalIPList()
+    print 'Exp. Addresses: %s' % iplist
+    print 'Exp. Interface info:'
+    for ip in iplist:
+        print '\t%s: %s' % (ip, x.getInterfaceInfo(ip))
+
+    y = DesktopExperiment(node='tau')
+    print 'Configured Node Name:', y.nodename
 
