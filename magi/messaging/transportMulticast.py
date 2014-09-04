@@ -217,9 +217,9 @@ class NeighborTracker(object):
 		"""
 			Record the latest sent id according to the neighbor
 		"""
-		log.info("CurrentID %s from %s", msgid, self.addr)
+		log.debug("CurrentID %s from %s", msgid, self.addr)
 		if boottime != self.boottime:
-			log.info("New boottime (%s) for %s, reseting tracking info to start with %d", boottime, self.addr, msgid)
+			log.debug("New boottime (%s) for %s, reseting tracking info to start with %d", boottime, self.addr, msgid)
 			self.boottime = boottime
 			self.lastlinear = msgid  # don't do the restransmit 1 previous (msgid-1) or we can get really old messages that cause stale issues
 			self.completeset = set()
