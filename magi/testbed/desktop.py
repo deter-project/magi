@@ -2,7 +2,7 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-from base import Testbed
+from base import Testbed, IFObj
 import logging
 import socket
 
@@ -21,10 +21,6 @@ class DesktopExperiment(Testbed):
             self._store['node'] = socket.gethostname()
         else:
             self._store['node'] = node 
-
-        self._store['experiment'] = 'desktop'
-        self._store['project'] = 'desktop'
-        self._store['eid'] = 'desktop'
 
 
     """    Testbed Properties (readonly) """
@@ -61,6 +57,23 @@ class DesktopExperiment(Testbed):
         else:
             return host
 
+    def getExperimentDir(self):
+        return "/tmp"
+    
+    def getControlIP(self):
+        if 'controlip' not in self._store:
+            self.loadEID()
+        return self._store['controlip']
+
+    def getControlIF(self):
+        if 'controlif' not in self._store:
+            self.loadControlInfo()
+        return self._store['controlif']
+
+    def getLocalIPList(self):
+        """returns list of IP """
+        return [self.getControlIP()]
+
     """ Local node properties (readonly) """        
     def getNodeName(self):
         if 'node' not in self._store:
@@ -75,10 +88,28 @@ class DesktopExperiment(Testbed):
     def loadEID(self):
         """ Load the nickname file to get the node, experiment and project names """
         try:
-            self._store.update(node='?', experiment='?', project='?', eid='?', controlip='?')
-            self._store['node'] = socket.gethostname()
+            if not self._store['node']:
+                self._store['node'] = socket.gethostname()
+                
+            self._store.update(experiment='desktopExperiment', 
+                               project='desktopProject', 
+                               eid='desktopExperiment/desktopProject', 
+                               controlip=socket.gethostbyname(socket.gethostname()))
+        except Exception:
+            log.exception("Can't load host information")
+
+    def loadControlInfo(self):
+        """ Load the control IP address and IF name files """
+        try:
+            info = self.getInterfaceInfo(self.getControlIP())
+            self._store['controlif'] = info.name
         except Exception, e:
-            log.error("Can't load my hostname: %s" % e)
+            log.error("Can't load control IF: %s", e)
+
+#    def loadIfConfig(self):
+#        """ Load all of the interface info """
+#        self.iflist = []
+#        self.iflist.append(IFObj(name='eth1', ip='10.0.0.1', mask='255.255.255.0', mac='00:00:00:00:00:01'))
 
     def getTopoGraph(self):
         if 'topograph' not in self._store:
@@ -88,7 +119,7 @@ class DesktopExperiment(Testbed):
     def loadTopoGraph(self):
         import networkx as nx
         graph = nx.Graph()
-        graph.add_node(self.getNodeName())
+        graph.add_node(self.getNodeName(), links={})
         self._store['topograph'] = graph
 
 # Small test if running this file directly

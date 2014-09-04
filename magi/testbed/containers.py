@@ -4,7 +4,7 @@
 # ./GPLv3-LICENSE.txt in the source distribution
 
 from base import Testbed
-from collections import deque, defaultdict
+from collections import defaultdict
 import itertools
 import logging
 import os
@@ -159,7 +159,7 @@ class ContainerExperiment(Testbed):
         
 
     def loadIfConfig(self):
-        """ Load all of the interface info from emulab/boot/tmcc/ifconfig """
+        """ Load all of the interface info from /var/containers/config/hosts """
         self.iflist = []
 
         try:
