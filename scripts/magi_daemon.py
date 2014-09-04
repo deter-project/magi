@@ -8,8 +8,7 @@ import os
 import optparse
 import sys
 
-from magi.daemon.daemon import Daemon
-from magi.util import config, helpers
+from magi.util import config
 from magi import __version__ 
 
 handler = None
@@ -25,9 +24,12 @@ if __name__ ==  '__main__':
                          help="Specify location of the node configuration file, Default: %default, ex: -c localnode.conf ")
 
     (options, args) = optparser.parse_args()
-    
     nodeConfig = config.loadNodeConfig(options.nodeconf)
     
+    #import once the system is cofigured
+    from magi.daemon.daemon import Daemon
+    from magi.util import helpers
+
     if not options.logfile:
         options.logfile = os.path.join(config.getLogDir(), "daemon.log")
     
