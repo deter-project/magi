@@ -150,21 +150,17 @@ def loadConfig(refresh=False):
         log.error("Could not load node configuration. Will work with defaults.")
         config = {}
     
-    _store['configDir'] = config.get('configDir', DEFAULT_CONF_DIR)
-    _store['logDir'] = config.get('logDir', DEFAULT_LOG_DIR)
-    _store['dbDir'] = config.get('dbDir', DEFAULT_DB_DIR)
-    _store['tempDir'] = config.get('tempDir', DEFAULT_TEMP_DIR)
+    localInfo = config.get('localInfo', {})
+    _store['configDir'] = localInfo.get('configDir', DEFAULT_CONF_DIR)
+    _store['logDir'] = localInfo.get('logDir', DEFAULT_LOG_DIR)
+    _store['dbDir'] = localInfo.get('dbDir', DEFAULT_DB_DIR)
+    _store['tempDir'] = localInfo.get('tempDir', DEFAULT_TEMP_DIR)
     
 ## EXPERIMENT CONFIGURATION ##
 
 def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, isDBEnabled=DEFAULT_DB_ENABLED):
     log.info("Creating default experiment configuration") 
-    experimentConfig = validateExperimentConfig(experimentConfig={}, distributionPath=distributionPath, isDBEnabled=isDBEnabled)
-    helpers.makeDir(DEFAULT_CONF_DIR)
-    fp = open(EXPCONF_FILE, 'w')
-    fp.write(yaml.safe_dump(experimentConfig))
-    fp.close()
-    return experimentConfig
+    return loadExperimentConfig(None, distributionPath=distributionPath, isDBEnabled=isDBEnabled)
 
 def loadExperimentConfig(experimentConfigFile=EXPCONF_FILE, distributionPath=None, isDBEnabled=None):
     """ Load the experiment-wide configuration data from file, filename can be overriden """
@@ -285,7 +281,7 @@ def validateExpDL(expdl={}, distributionPath=None):
     
     nodePaths = expdl.setdefault('nodePaths', dict())
     
-    nodePaths.setdefault('config', DEFAULT_CONF_DIR)
+    nodePaths['config'] = DEFAULT_CONF_DIR
     nodePaths.setdefault('logs', DEFAULT_LOG_DIR)
     nodePaths.setdefault('db', DEFAULT_DB_DIR)
     nodePaths.setdefault('temp', DEFAULT_TEMP_DIR)
@@ -302,26 +298,17 @@ def validateExpDL(expdl={}, distributionPath=None):
 
 def createNodeConfig(experimentConfigFile=EXPCONF_FILE):
     log.info("Creating default node configuration") 
-    try:
-        experimentConfig = helpers.loadYaml(experimentConfigFile)
-    except:
-        log.info("No valid experiment configuration found. Creating default.")
-        experimentConfig = dict()
-    nodeConfig = validateNodeConfig(nodeConfig={}, experimentConfig=experimentConfig)
-    helpers.makeDir(DEFAULT_CONF_DIR)
-    fp = open(NODECONF_FILE, 'w')
-    fp.write(yaml.safe_dump(nodeConfig))
-    fp.close()
-    return nodeConfig
+    return loadNodeConfig(None, experimentConfigFile=experimentConfigFile)
 
 def loadNodeConfig(nodeConfigFile=NODECONF_FILE, experimentConfigFile=EXPCONF_FILE):
-    log.info("Loading given experiment configuration")
+    log.info("Loading given node configuration from %s" %(nodeConfigFile))
     try:
         nodeConfig = helpers.loadYaml(nodeConfigFile)
     except:
         log.error("Error loading given node configuration file. Loading default.")
         nodeConfig = dict()
         
+    log.info("Loading given experiment configuration from %s" %(experimentConfigFile))
     try:
         experimentConfig = helpers.loadYaml(experimentConfigFile)
     except:
@@ -356,7 +343,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     localInfo['controlif'] = testbed.controlif
     
     expNodePaths = experimentConfig['expdl']['nodePaths']
-    localInfo['configDir'] = expNodePaths['config']
+    localInfo['configDir'] = DEFAULT_CONF_DIR
     localInfo.setdefault('logDir', expNodePaths['logs'])
     localInfo.setdefault('dbDir', expNodePaths['db'])
     localInfo.setdefault('tempDir', expNodePaths['temp'])
