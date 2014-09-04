@@ -39,6 +39,16 @@ class Testbed(object):
         pass
 
     @property
+    def nodename(self):
+        """ local node name """
+        return self.getNodeName()
+    
+    @property
+    def fqdn(self):
+        """ local node fully qualified doamin name"""
+        return self.getFQDN()
+    
+    @property
     def experiment(self):
         """ the experiment name """
         return self.getExperiment()
@@ -53,12 +63,6 @@ class Testbed(object):
         """ the experiment 'id' string """
         return self.getExperimentID()
 
-
-    @property
-    def nodename(self):
-        """ local node name """
-        return self.getNodeName()
-
     @property
     def controlip(self):
         """ local control interface IP address """
@@ -69,21 +73,107 @@ class Testbed(object):
         """ local control interface name """
         return self.getControlIF()
 
+    @property
+    def topograph(self):
+        """ experiment topology graph """
+        return self.getTopoGraph()
+
+    """    Testbed Properties (readonly) """
+    
+    def getExperiment(self):
+        if 'experiment' not in self._store:
+            self.loadEID()
+        return self._store['experiment']
+
+    def getProject(self):
+        if 'project' not in self._store:
+            self.loadEID()
+        return self._store['project']
+
+    def getExperimentID(self):
+        if 'eid' not in self._store:
+            self.loadEID()
+        return self._store['eid']
+    
+    def getServer(self, FQDN=False):
+        # Gets the complete topology map and returns control if 
+        # if it finds a node named "control" otherwise it returns 
+        # the first node in the alpha-numerically sorted list  
+        topoGraph = self.getTopoGraph()
+        nodes = topoGraph.nodes()
+        nodes.sort()
+        host = nodes[0]
+        for node in nodes:
+            if 'control' == node.lower():
+                host = 'control'
+                break
+        
+        if FQDN:
+            return '%s.%s.%s' % (host, self.experiment, self.project)
+        else:
+            return host    
+
+    def getTopoGraph(self):
+        if 'topograph' not in self._store:
+            self.loadTopoGraph()
+        return self._store['topograph']
+    
+    """ Local node properties (readonly) """
+
+    def getNodeName(self):
+        if 'node' not in self._store:
+            self.loadEID()
+        return self._store['node']
+
+    def getFQDN(self):
+        return "%s.%s.%s" %(self.nodename, self.experiment, self.project)
+    
+    def getControlIP(self):
+        if 'controlip' not in self._store:
+            self.loadControlInfo()
+        return self._store['controlip']
+
+    def getControlIF(self):
+        if 'controlif' not in self._store:
+            self.loadControlInfo()
+        return self._store['controlif']
+
 
     """ Queries for this Node """
 
     def getLocalIPList(self):
-        """ returns list of IP addresses for this node """
-        NIE()
+        """returns list of IP """
+        if 'iflist' not in self._store:
+            self.loadIfConfig()
+        return [obj.ip for obj in self._store['iflist']]
 
     def getLocalIFList(self):
-        """ returns list of interface names for this node """
-        NIE()
+        """returns list of IF """
+        if 'iflist' not in self._store:
+            self.loadIfConfig()
+        return [obj.name for obj in self._store['iflist']]
 
     def getInterfaceList(self):
-        """ returns a list of IFObj's """
-        NIE()
-
+        """ return the list of IFObj's """
+        if 'iflist' not in self._store:
+            self.loadIfConfig()
+        return self._store['iflist']
+        
+    def getInterfaceInfo(self, matchip=None, matchname=None):
+        """ return IFObj for ip or name"""
+        if not matchip and not matchname:
+            raise KeyError("Either IP or interface name should be provided")
+        if 'iflist' not in self._store:
+            self.loadIfConfig()
+        if matchip:
+            for i in self._store['iflist']:
+                if i.ip == matchip:
+                    return i
+        for i in self._store['iflist']:
+            if i.name == matchname:
+                return i
+        raise KeyError("Invalid IP or interface name provided.")
+    
     """ Queries for other Experiment Info """
 
     def getLocalVirtualNodes(self):
@@ -106,7 +196,7 @@ class Testbed(object):
         fp.close()
         return lines
     
-    def getInterfaceInfo(self, matchip=None, matchname=None):
+    def getIfconfigData(self, matchip=None, matchname=None):
         """ Get the name and MAC address for an interface given its IP address, IP can be a regular expression """
         if not matchip and not matchname:
             raise KeyError("Either IP or interface name should be provided")

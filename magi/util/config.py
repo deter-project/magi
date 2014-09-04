@@ -200,10 +200,8 @@ def validateMesDL(mesdl={}):
     """ Validate messaging description """
     if not mesdl:
         mesdl = dict()
-        controlNode = testbed.getServer() 
+        controlNode = testbed.getServer(FQDN=True) 
         log.info("Using %s as control node", controlNode) 
-        if not '.' in controlNode:
-            controlNode += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
         mesdl['bridges'] = list()
         mesdl['overlay'] = list()
         mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 18808 })
@@ -402,7 +400,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     log.debug("Mesdl from experiment wide configuration: %s", mesdl)
     
     if not transportsConfig:
-        nodename_control = testbed.nodename + '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
+        nodename_control = testbed.fqdn
         # For each external connection, add a TCPServer transport    
         for bridge in mesdl['bridges']:
             log.debug("Bridge: %s", bridge)
