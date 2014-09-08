@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 
+from magi.util import helpers, visualization
+from pymongo import MongoClient
+import logging
 import matplotlib
 matplotlib.use('Agg')
-from magi.util import helpers, database, visualization
-
-import logging
 import optparse
 import sys
 
+#cannot import from magi.util.database as it needs testbed specific information
+#that might not be available on all nodes from where magi_graph tool is run
+#from magi.util.database import DB_NAME, COLLECTION_NAME
+DB_NAME = 'magi'
+COLLECTION_NAME = 'experiment_data'
+                
 if __name__ == '__main__':
  
     optparser = optparse.OptionParser(description="Plots the graph for an experiment based on parameters provided. \
@@ -67,6 +73,7 @@ if __name__ == '__main__':
         try:
             agentName = dbConfig['agent']
             dataFilter = dbConfig.get('filter', {})
+            dataFilter['agent'] = agentName
             xValue = graphConfig.get('xValue','created')
             yValue = dbConfig['yValue']
             graphType = graphConfig.get('type', 'line')
@@ -94,7 +101,8 @@ if __name__ == '__main__':
             
             try:
                 logging.info('Attempting to connect to the database')
-                collection = database.getCollection(agentName, bridge, port)
+                connection = MongoClient(bridge, port)
+                collection = connection[DB_NAME][COLLECTION_NAME]
                 logging.info('Connected to the database')
             except RuntimeError as e:
                 logging.critical("Failed connecting to the database : %s", str(e))
@@ -106,11 +114,11 @@ if __name__ == '__main__':
             logging.info('The filter applied for data collected: %s', dataFilter)
             
             """ Populating the X and Y values from the database """
-            firstRecord = collection.findAll(dataFilter).sort(xValue, 1).limit(1)[0]
+            firstRecord = collection.find(dataFilter).sort(xValue, 1).limit(1)[0]
             logging.info('The first timestamp in database: %s', firstRecord[xValue])
 
             logging.info('Fetching data from database')
-            for record in collection.findAll(dataFilter).sort(xValue, 1):
+            for record in collection.find(dataFilter).sort(xValue, 1):
                 x.append("%.8f" % (record[xValue] - firstRecord[xValue]))
                 y.append(record[yValue])
           
