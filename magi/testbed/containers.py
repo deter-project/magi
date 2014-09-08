@@ -63,7 +63,7 @@ class ContainerExperiment(Testbed):
                 if ifobj.name is not None:  # found a match
                     self._store['controlip'] = ifobj.ip
                     
-            self._store['controlif'] = self.getInterfaceInfo(self.controlip).name
+            self._store['controlif'] = self.getIfconfigData(self.controlip).name
         except:
             log.exception("Can't load control interface info")
         
