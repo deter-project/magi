@@ -207,7 +207,7 @@ def validateMesDL(mesdl={}):
         mesdl['bridges'] = list()
         mesdl['overlay'] = list()
         mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 18808 })
-        transportClass = 'Multicast'
+        transportClass = 'TCP'
         if transportClass == 'TCP':
             mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 28808 })
             mesdl['overlay'].append({ 'type': 'TCPTransport', 'members': ['__ALL__'], 'server':controlNode, 'port': 28808 })
