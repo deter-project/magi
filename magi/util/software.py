@@ -126,9 +126,9 @@ class Installer(object):
         pass
 
     def doAndLogCommand(self, command, name):
-        '''Run the given command and dump stdout and stderr to /var/log/magi/.'''
+        '''Run the given command and dump stdout and stderr to the log directory.'''
         # TODO: replace hardcoded file name with magi.util.config.MAGILOG 
-        filename = '/var/log/magi/%s-%s.log' % (self.TYPE, name)
+        filename = os.path.join(config.getLogDir(), '%s-%s.log' % (self.TYPE, name))
         try:
             with open(filename, 'a') as fd: 
                 return run(command, stdout=fd, stderr=subprocess.STDOUT, shell=True) == 0

@@ -1,4 +1,3 @@
-from magi.testbed import testbed
 from subprocess import Popen, PIPE
 import Queue
 import ctypes
@@ -49,6 +48,13 @@ def loadYaml(filename):
     data = yaml.load(fp)
     fp.close()
     return data
+
+def writeYaml(data, filename):
+    """ Load the configuration data from file """
+    fp = open(filename, 'w')
+    stream = yaml.dump(data, fp)
+    fp.close()
+    return stream
 
 def readPropertiesFile(filename):
     import ConfigParser
@@ -143,6 +149,7 @@ def terminateProcess(cmd):
     os.system("kill -9 `ps -ef | grep '" + cmd + "' | grep -v grep | awk '{print $2}'`")
     
 def toControlPlaneNodeName(nodename):
+    from magi.testbed import testbed
     if nodename not in ['localhost', '127.0.0.1'] and '.' not in nodename:
         nodename += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
     return nodename
@@ -157,12 +164,13 @@ def loadIDL(agentName, expProcdureFile):
             config = yaml.load(content)
             return config
 
-def getNodesFromAAL(filename):
+def getNodesFromAAL(filenames):
     nodeSet = set()
-    if filename:
-        aaldata = yaml.load(open(filename, 'r')) 
-        for nodes in aaldata['groups'].values():
-            nodeSet.update(nodes)
+    if filenames:
+        for filename in toSet(filenames):
+            aaldata = yaml.load(open(filename, 'r')) 
+            for nodes in aaldata['groups'].values():
+                nodeSet.update(nodes)
     return nodeSet
 
 def getExperimentConfigFile(project, experiment):

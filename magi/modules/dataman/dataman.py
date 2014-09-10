@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 from magi.messaging.magimessage import MAGIMessage
-from magi.testbed import testbed
-from magi.util import database, helpers
+from magi.util import database, helpers, config
 from magi.util.agent import NonBlockingDispatchAgent, agentmethod
 
 import hashlib
@@ -25,7 +24,61 @@ class DataManAgent(NonBlockingDispatchAgent):
         self.collectionMetadata = dict()
         self.events = dict()
         self.rcvdPongs = set()
+        self.dbProcesses = set()
+        self.dbLogHandler = None
+        self.setupDatabase()
+        self.setupDBLogHandler()
         
+    def setupDatabase(self):
+        log.info("Setting up database")
+        if database.isConfigHost:
+            cp = database.startConfigServer()
+            self.dbProcesses.add(cp)
+            sp = database.startShardServer()
+            self.dbProcesses.add(sp)
+            dp = database.startDBServer()
+            self.dbProcesses.add(dp)
+            database.setBalancerState(False)
+            log.info("Configuring database cluster")
+            database.configureDBCluster()
+        elif database.isCollector:
+            dp = database.startDBServer()
+            self.dbProcesses.add(dp)
+        log.info("Waiting for local database to be added as a shard")
+        database.isShardRegistered(block=True)
+        log.info("Local database has been added as a shard")
+        
+    def setupDBLogHandler(self):
+        log.info("Setting up database log handler")
+        from magi.util.databaseLogHandler import DatabaseHandler
+        #Making sure that the database server is up and running
+        self.dbLogHandler = DatabaseHandler.to(level=logging.INFO)
+        rootLogger = logging.getLogger()
+        rootLogger.addHandler(self.dbLogHandler)
+    
+    @agentmethod()
+    def stop(self, msg):
+        if self.dbLogHandler:
+            log.info("Removing database log handler")
+            rootLogger = logging.getLogger()
+            rootLogger.removeHandler(self.dbLogHandler)
+            
+        log.info("Terminating database processes")
+        for p in self.dbProcesses:
+            try:
+                log.info("Terminating process %d", p.pid)
+                p.terminate()
+            except:
+                log.exception("Could not terminate process %d", p.pid)
+        
+        log.info("Waiting for database processes to terminate")
+        for p in self.dbProcesses:
+            p.wait()
+            log.info("Process %d terminated", p.pid)
+        log.info("All database processes terminated")
+        
+        NonBlockingDispatchAgent.stop(self, msg)
+            
     @agentmethod()
     def getData(self, msg, agents=None, nodes=None, filters=dict(), timestampChunks=None, visited=set()):
         """
@@ -38,7 +91,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         nodes_ = helpers.toSet(nodes)
         
         if not nodes_:
-            nodes_ = testbed.getTopoGraph().nodes()
+            nodes_ = config.getTopoGraph().nodes()
             
         if not agents_:
             if nodes:
@@ -94,7 +147,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         """
             Internal function to check if the local node is the collector for a given node and agent
         """
-        return (self.getCollector(node, agentName) == testbed.getNodeName())
+        return (self.getCollector(node, agentName) == config.getNodeName())
     
     def getCollector(self, node, agentName):
         """
@@ -147,7 +200,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             Alive like method call that will send a pong back to the caller
         """
         args = {
-            "server": testbed.getNodeName(),
+            "server": config.getNodeName(),
             "result": "success"
         }
         call = {'version': 1.0, 'method': 'pong', 'args': args}

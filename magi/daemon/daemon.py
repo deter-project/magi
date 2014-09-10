@@ -300,7 +300,7 @@ class Daemon(threading.Thread):
 			
 		if unLoadStaticAgents:
 			for sAgent in self.staticAgents:
-				sAgent.join(0.5)
+				sAgent.join()
 			
 		#stop process agents as well
 		self.extAgentsThread.unloadAll()

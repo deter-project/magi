@@ -44,6 +44,11 @@ class Testbed(object):
         return self.getNodeName()
     
     @property
+    def server(self):
+        """ server node name """
+        return self.getServer()
+    
+    @property
     def fqdn(self):
         """ local node fully qualified doamin name"""
         return self.getFQDN()
@@ -101,6 +106,8 @@ class Testbed(object):
         # the first node in the alpha-numerically sorted list  
         topoGraph = self.getTopoGraph()
         nodes = topoGraph.nodes()
+        if not nodes:
+            return 'Unknown'
         nodes.sort()
         host = nodes[0]
         for node in nodes:

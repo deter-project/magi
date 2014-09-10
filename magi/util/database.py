@@ -2,7 +2,6 @@
 
 from magi.messaging import api
 from magi.messaging.magimessage import MAGIMessage
-from magi.testbed import testbed
 from magi.util import config, helpers
 
 from pymongo import MongoClient
@@ -41,10 +40,10 @@ isDBEnabled         = dbConfig.get('isDBEnabled', False)
 configHost          = dbConfig.get('configHost')
 sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap', {})
 
-collector = sensorToCollectorMap.get(testbed.nodename, sensorToCollectorMap.get('__ALL__'))
-isConfigHost = (testbed.nodename == configHost)
-isCollector = (testbed.nodename in sensorToCollectorMap.values())
-isSensor = (testbed.nodename in sensorToCollectorMap.keys() or '__ALL__' in sensorToCollectorMap.keys())
+collector = sensorToCollectorMap.get(config.getNodeName(), sensorToCollectorMap.get('__ALL__'))
+isConfigHost = (config.getNodeName() == configHost)
+isCollector = (config.getNodeName() in sensorToCollectorMap.values())
+isSensor = (config.getNodeName() in sensorToCollectorMap.keys() or '__ALL__' in sensorToCollectorMap.keys())
 
 if 'connectionCache' not in locals():
     connectionCache = dict()
@@ -85,7 +84,7 @@ def startConfigServer(timeout=TIMEOUT):
             time.sleep(1)
             if p.poll() is None:
                 log.info("Started mongod config server with pid %s", p.pid)
-                return p.pid
+                return p
             log.debug("Failed to start mongod config server. Will retry.")
             
         log.error("Done trying enough times. Cannot start mongod config server")
@@ -131,7 +130,7 @@ def startShardServer(configHost=configHost, timeout=TIMEOUT):
             time.sleep(1)
             if p.poll() is None:
                 log.info("Started mongo shard server with pid %s", p.pid)
-                return p.pid
+                return p
             log.debug("Failed to start shard config server. Will retry.")
             
         log.error("Done trying enough times. Cannot start mongo shard server")
@@ -180,7 +179,7 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
             time.sleep(1)
             if p.poll() is None:
                 log.info("Started mongod with pid %s", p.pid)
-                return p.pid
+                return p
             log.debug("Failed to start mongod server. Will retry.")
             
         log.error("Done trying enough times. Cannot start database server")
@@ -207,7 +206,7 @@ def createMongoDConfig():
         raise
     return configfile
 
-def registerShard(mongod=testbed.nodename, mongos=testbed.getServer(), timeout=TIMEOUT):
+def registerShard(mongod=config.getNodeName(), mongos=config.getServer(), timeout=TIMEOUT):
     """
         Function to register a database server as a shard in the database cluster
     """
@@ -239,7 +238,7 @@ def registerShard(mongod=testbed.nodename, mongos=testbed.getServer(), timeout=T
     exitlog(functionName, locals())
     raise pymongo.errors.PyMongoError("Done trying enough times. Cannot add the required shard")
 
-def isShardRegistered(dbhost=testbed.nodename, configHost=configHost, block=False):
+def isShardRegistered(dbhost=config.getNodeName(), configHost=configHost, block=False):
     """
         Check if given mongo db host is registered as a shard
     """
@@ -275,7 +274,7 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     
     collector = helpers.toControlPlaneNodeName(collector)
         
-    adminConnection = getConnection(testbed.getServer(), port=ROUTER_SERVER_PORT)
+    adminConnection = getConnection(config.getServer(), port=ROUTER_SERVER_PORT)
     
     log.info("Trying to move chunk %s:%s to %s" %(host, collectionname, collector))
     
@@ -345,7 +344,7 @@ def configureDBCluster():
     log.info("Configuring database cluster acccording to the sensor:collector mapping")
     snodes = set(sensorToCollectorMap.keys())
     if helpers.ALL in sensorToCollectorMap:
-        allnodes = set(testbed.getTopoGraph().nodes())
+        allnodes = set(config.getTopoGraph().nodes())
         snodes.remove(helpers.ALL)
         rnodes = allnodes - snodes
     else:
@@ -396,7 +395,7 @@ def getConnection(dbhost=None, port=DATABASE_SERVER_PORT, block=True, timeout=TI
         stop = start + timeout 
         while time.time() < stop:
             try:
-                if dbhost == testbed.nodename: #In case of a single node experiment /etc/hosts does not get populated
+                if dbhost == config.getNodeName(): #In case of a single node experiment /etc/hosts does not get populated
                     connection = MongoClient('localhost', port)
                 else:
                     connection = MongoClient(dbhost, port)
@@ -530,7 +529,7 @@ class Collection(pymongo.collection.Collection):
                 raise TypeError("each document must be an instance of dict")
             if len(set(Collection.INTERNAL_KEYS) & set(doc.keys())) > 0:
                 raise RuntimeError("The following keys are restricted for internal use: %s" %(Collection.INTERNAL_KEYS))
-            doc['host'] = testbed.nodename
+            doc['host'] = config.getNodeName()
             doc['created'] = time.time()
             doc[AGENT_FIELD] = self.agentName
             
@@ -546,7 +545,7 @@ class Collection(pymongo.collection.Collection):
         if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict")
         
-        spec['host'] = testbed.nodename
+        spec['host'] = config.getNodeName()
         spec[AGENT_FIELD] = self.agentName
         
         return pymongo.collection.Collection.find(self, *args, **kwargs)
@@ -577,7 +576,7 @@ class Collection(pymongo.collection.Collection):
         else:
             spec = spec_or_id
             
-        spec['host'] = testbed.nodename
+        spec['host'] = config.getNodeName()
         spec[AGENT_FIELD] = self.agentName
         return pymongo.collection.Collection.remove(self, spec_or_id, safe, **kwargs)
 

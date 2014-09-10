@@ -73,6 +73,7 @@ software:
 
 from magi.testbed import testbed
 from socket import gethostbyname, gaierror
+from networkx.readwrite import json_graph
 import helpers
 import logging
 import os
@@ -80,101 +81,102 @@ import platform
 import sys
 import yaml
 
-DEFAULT_CONF_DIR  = "/var/log/magi"
-EXPCONF_FILE  = os.path.join(DEFAULT_CONF_DIR, "experiment.conf")
-NODECONF_FILE = os.path.join(DEFAULT_CONF_DIR, "node.conf")
-MAGIPID_FILE  = os.path.join(DEFAULT_CONF_DIR, "magi.pid")
-
 DEFAULT_DIST_DIR  = "/share/magi/current/"
 DEFAULT_DB_ENABLED = True
-DEFAULT_LOG_DIR   = "/var/log/magi" 
-DEFAULT_DB_DIR    = "/var/lib/mongodb"
 DEFAULT_TEMP_DIR  = "/tmp"
 
-nodeConfig = dict()
+NODE_DIR = "/var/log/magi"
+EXPERIMENT_DIR = testbed.getExperimentDir()
+
+NODE_CONFIG = dict()
 #experimentConfig = dict()
-_store = dict()
 
 log = logging.getLogger(__name__)
 
+def setNodeDir(nodeDir):
+    global NODE_DIR
+    NODE_DIR = nodeDir
+    
+def setExperimentDir(experimentDir):
+    global EXPERIMENT_DIR
+    EXPERIMENT_DIR = experimentDir
+     
 #def getExperimentConfig():
 #    """ Fetch the experiment-wide configuration"""
 #    global experimentConfig
 #    if not experimentConfig:
-#        try:
-#            experimentConfig = helpers.loadYaml(EXPCONF_FILE)
-#        except:
-#            log.exception("Could not load experiment configuration from %s", EXPCONF_FILE)
-#            raise
+#        experimentConfig = loadExperimentConfig()
 #    return experimentConfig
 
-def getNodeConfig(refresh=False):
+def getNodeConfig():
     """ Fetch node specific configuration """
-    global nodeConfig
-    if refresh or not nodeConfig:
-        try:
-            nodeConfig = helpers.loadYaml(NODECONF_FILE)
-        except:
-            log.exception("Could not load node configuration from %s", NODECONF_FILE)
-            #raise
-    return nodeConfig
+    global NODE_CONFIG
+    if not NODE_CONFIG:
+        NODE_CONFIG = loadNodeConfig()
+    return NODE_CONFIG
 
-def getConfig(refresh=False):
+def getConfig():
     """ Fetch the node configuration"""
-    return getNodeConfig(refresh)
+    return getNodeConfig()
+
+def getNodeName():
+    return getNodeConfig()['localInfo']['nodename']
+
+def getServer():
+    return getNodeConfig()['localInfo']['server']
+
+def getConfigDir():
+    return getNodeConfig()['localInfo']['configDir']
+
+def getNodeConfFile():
+    return os.path.join(getConfigDir(), 'node.conf')
+
+def getExperimentConfFile():
+    return os.path.join(getConfigDir(), 'experiment.conf')
+
+def getMagiPidFile():
+    return os.path.join(getConfigDir(), 'magi.pid')
 
 def getLogDir():
-    if 'logDir' not in _store:
-        loadConfig()
-    return _store['logDir']
-    
-def getConfigDir():
-    if 'configDir' not in _store:
-        loadConfig()
-    return _store['configDir']
+    return getNodeConfig()['localInfo']['logDir']
 
 def getDbDir():
-    if 'dbDir' not in _store:
-        loadConfig()
-    return _store['dbDir']
+    return getNodeConfig()['localInfo']['dbDir']
 
 def getTempDir():
-    if 'tempDir' not in _store:
-        loadConfig()
-    return _store['tempDir']
+    return getNodeConfig()['localInfo']['tempDir']
 
-def loadConfig(refresh=False):
-    try:
-        config = getConfig(refresh)
-    except:
-        log.error("Could not load node configuration. Will work with defaults.")
-        config = {}
-    
-    localInfo = config.get('localInfo', {})
-    _store['configDir'] = localInfo.get('configDir', DEFAULT_CONF_DIR)
-    _store['logDir'] = localInfo.get('logDir', DEFAULT_LOG_DIR)
-    _store['dbDir'] = localInfo.get('dbDir', DEFAULT_DB_DIR)
-    _store['tempDir'] = localInfo.get('tempDir', DEFAULT_TEMP_DIR)
+def getExperimentDir():
+    return getNodeConfig()['localInfo']['experimentDir']
+
+def getTopoGraph():
+    return json_graph.node_link_graph(getNodeConfig()['topoGraph'])
+
     
 ## EXPERIMENT CONFIGURATION ##
 
 def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, isDBEnabled=DEFAULT_DB_ENABLED):
     log.info("Creating default experiment configuration") 
-    return loadExperimentConfig(None, distributionPath=distributionPath, isDBEnabled=isDBEnabled)
+    return loadExperimentConfig(distributionPath=distributionPath, isDBEnabled=isDBEnabled)
 
-def loadExperimentConfig(experimentConfigFile=EXPCONF_FILE, distributionPath=None, isDBEnabled=None):
+def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled=None):
     """ Load the experiment-wide configuration data from file, filename can be overriden """
-    log.info("Loading given experiment configuration")
     try:
-        experimentConfig = helpers.loadYaml(experimentConfigFile)
+        if (type(experimentConfig) == str):
+            log.info("Loading given experiment configuration from %s" %(experimentConfig))
+            experimentConfig = helpers.loadYaml(experimentConfig)
     except:
         log.error("Error loading given experiment configuration file. Loading default.")
         experimentConfig = dict()
     experimentConfig = validateExperimentConfig(experimentConfig=experimentConfig, distributionPath=distributionPath, isDBEnabled=isDBEnabled)
-    helpers.makeDir(DEFAULT_CONF_DIR)
-    fp = open(EXPCONF_FILE, 'w')
-    fp.write(yaml.safe_dump(experimentConfig))
-    fp.close()
+    
+#    #write experiment config file
+#    expConfFile = getExperimentConfFile()
+#    helpers.makeDir(os.path.dirname(expConfFile))
+#    fp = open(expConfFile, 'w')
+#    fp.write(yaml.safe_dump(experimentConfig))
+#    fp.close()
+    
     return experimentConfig
 
 def validateExperimentConfig(experimentConfig, distributionPath=None, isDBEnabled=None):
@@ -205,7 +207,7 @@ def validateMesDL(mesdl={}):
         mesdl['bridges'] = list()
         mesdl['overlay'] = list()
         mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 18808 })
-        transportClass = 'TCP'
+        transportClass = 'Multicast'
         if transportClass == 'TCP':
             mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 28808 })
             mesdl['overlay'].append({ 'type': 'TCPTransport', 'members': ['__ALL__'], 'server':controlNode, 'port': 28808 })
@@ -267,8 +269,7 @@ def validateExpDL(expdl={}, distributionPath=None):
     if not expdl:
         expdl = dict()
         
-    expdl.setdefault('projectName', testbed.getProject())
-    expdl.setdefault('experimentName', testbed.getExperiment())
+    expdl.setdefault('topoGraph', json_graph.node_link_data(testbed.getTopoGraph()))
     nodeList = testbed.getTopoGraph().nodes()
     nodeList.sort()
     expdl.setdefault('nodeList', nodeList)
@@ -279,9 +280,9 @@ def validateExpDL(expdl={}, distributionPath=None):
     
     nodePaths = expdl.setdefault('nodePaths', dict())
     
-    nodePaths['config'] = DEFAULT_CONF_DIR
-    nodePaths.setdefault('logs', DEFAULT_LOG_DIR)
-    nodePaths.setdefault('db', DEFAULT_DB_DIR)
+    nodePaths.setdefault('config', os.path.join(NODE_DIR, 'config'))
+    nodePaths.setdefault('logs', os.path.join(NODE_DIR, 'logs'))
+    nodePaths.setdefault('db', os.path.join(NODE_DIR, 'db'))
     nodePaths.setdefault('temp', DEFAULT_TEMP_DIR)
     
     testbedPaths = expdl.setdefault('testbedPaths', dict())
@@ -294,32 +295,46 @@ def validateExpDL(expdl={}, distributionPath=None):
 
 ## NODE CONFIGURATION ##
 
-def createNodeConfig(experimentConfigFile=EXPCONF_FILE):
+def createNodeConfig(experimentConfig={}):
     log.info("Creating default node configuration") 
-    return loadNodeConfig(None, experimentConfigFile=experimentConfigFile)
+    return loadNodeConfig(experimentConfig=experimentConfig)
 
-def loadNodeConfig(nodeConfigFile=NODECONF_FILE, experimentConfigFile=EXPCONF_FILE):
-    log.info("Loading given node configuration from %s" %(nodeConfigFile))
+def loadNodeConfig(nodeConfig={}, experimentConfig={}):
+    log.info("LLLOOOOAAAADDD")
+    global NODE_CONFIG
     try:
-        nodeConfig = helpers.loadYaml(nodeConfigFile)
+        if (type(nodeConfig) == str):
+            log.info("Loading given node configuration from %s" %(nodeConfig))
+            nodeConfig = helpers.loadYaml(nodeConfig)
     except:
         log.error("Error loading given node configuration file. Loading default.")
         nodeConfig = dict()
         
-    log.info("Loading given experiment configuration from %s" %(experimentConfigFile))
     try:
-        experimentConfig = helpers.loadYaml(experimentConfigFile)
+        if (type(experimentConfig) == str):
+            log.info("Loading given experiment configuration from %s" %(experimentConfig))
+            experimentConfig = helpers.loadYaml(experimentConfig)
     except:
         log.info("No valid experiment configuration found. Creating default.")
         experimentConfig = dict()
         
-    nodeConfig = validateNodeConfig(nodeConfig=nodeConfig, experimentConfig=experimentConfig)
-    helpers.makeDir(DEFAULT_CONF_DIR)
-    fp = open(NODECONF_FILE, 'w')
-    fp.write(yaml.safe_dump(nodeConfig))
-    fp.close()
-    loadConfig(refresh=True)
-    return nodeConfig
+    NODE_CONFIG = validateNodeConfig(nodeConfig=nodeConfig, experimentConfig=experimentConfig)
+    
+#    #write experiment config file
+#    expConfFile = getExperimentConfFile()
+#    helpers.makeDir(os.path.dirname(expConfFile))
+#    fp = open(expConfFile, 'w')
+#    fp.write(yaml.safe_dump(experimentConfig))
+#    fp.close()
+#    
+#    #write node configuration to file
+#    nodeConfFile = getNodeConfFile()
+#    helpers.makeDir(os.path.dirname(nodeConfFile))
+#    fp = open(nodeConfFile, 'w')
+#    fp.write(yaml.safe_dump(NODE_CONFIG))
+#    fp.close()
+
+    return NODE_CONFIG
 
 def validateNodeConfig(nodeConfig, experimentConfig={}):
     """
@@ -333,18 +348,22 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     # Information about the local node for reference 
     localInfo = nodeConfig.setdefault('localInfo', {})
     
-    localInfo['nodename'] = testbed.nodename
+    localInfo.setdefault('nodename', testbed.nodename)
+    localInfo.setdefault('server', testbed.server)
     localInfo['hostname'] = platform.uname()[1]
     localInfo['distribution'] = "%s %s (%s)" %(platform.dist()[0], platform.dist()[1], platform.dist()[2])
     localInfo['architecture'] = platform.architecture()[0]
-    localInfo['controlip'] = testbed.controlip
-    localInfo['controlif'] = testbed.controlif
+    localInfo.setdefault('controlip', testbed.controlip)
+    localInfo.setdefault('controlif', testbed.controlif)
     
     expNodePaths = experimentConfig['expdl']['nodePaths']
-    localInfo['configDir'] = DEFAULT_CONF_DIR
+    localInfo.setdefault('configDir', expNodePaths['config'])
     localInfo.setdefault('logDir', expNodePaths['logs'])
     localInfo.setdefault('dbDir', expNodePaths['db'])
     localInfo.setdefault('tempDir', expNodePaths['temp'])
+    
+    testbedPaths = experimentConfig['expdl']['testbedPaths']
+    localInfo.setdefault('experimentDir', testbedPaths['experimentDir'])
     
     interfaceInfo = dict()
     topoGraph = testbed.getTopoGraph()
@@ -365,6 +384,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     localInfo['interfaceInfo'] = interfaceInfo
     #config['processAgentsCommPort'] = None
     
+    nodeConfig.setdefault('topoGraph', experimentConfig['expdl']['topoGraph'])
     
     # Information about the location of the software libraries 
     softwareConfig = nodeConfig.setdefault('software', [])

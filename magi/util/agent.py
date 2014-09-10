@@ -6,6 +6,7 @@
 
 import Queue
 import logging
+import os
 import random
 import subprocess
 import sys
@@ -17,7 +18,7 @@ from magi.testbed import testbed
 from magi.util.calls import doMessageAction
 from magi.util.execl import spawn, execAndRead
 from magi.util.distributions import *
-from magi.util import database
+from magi.util import config, database
 
 log = logging.getLogger(__name__)
 
@@ -232,7 +233,7 @@ class TrafficClientAgent(Agent):
         Agent.__init__(self)
         self.subpids = list()
         # TODO: Replace hardcoded value with MAGILOG 
-        self.logfile = '/var/log/magi/%s_%s.log' % (self.__class__.__name__, time.strftime("%Y-%m-%d_%H:%M:%S"))
+        self.logfile = os.path.join(config.getLogDir(), '/%s_%s.log' % (self.__class__.__name__, time.strftime("%Y-%m-%d_%H:%M:%S")))
         self.servers = []
         self.interval = "1"
         self.stopClient(None)
