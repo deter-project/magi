@@ -2,20 +2,15 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-import logging
-import threading
-import imp
-import Queue
-import yaml
-import sys
-import traceback
-from os.path import basename
-
-import magi.modules
-from magi.testbed import testbed
 from magi.messaging.api import MAGIMessage
 from magi.util import helpers
+import Queue
+import imp
+import logging
+import magi.modules
 import os
+import threading
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -87,22 +82,11 @@ class ThreadedAgent(threading.Thread):
 		self.messaging = messaging
 		self.args = args
 		
-		try:
-				# create the agent here, it may install software which is time consuming
-				if self.args: 
-					self.agent = self.getAgent(**self.args)
-				else:
-					self.agent = self.getAgent()
-					
-		except Exception, e:
-				log.error("Agent %s on %s threw an exception %s during agent load.", self.name, self.hostname, e, exc_info=1)
-				log.error("Sending back a RunTimeException event. This may cause the receiver to exit.")
-				exc_type, exc_value, exc_tb = sys.exc_info()
-				filename, line_num, func_name, text = traceback.extract_tb(exc_tb)[-1]
-				filename = basename(filename)
-				self.messaging.trigger(event='RuntimeException', func_name=func_name, agent=self.name, 
-								   nodes=[testbed.nodename], filename=filename, line_num=line_num, error=str(e))
-				return
+		# create the agent here, it may install software which is time consuming
+		if self.args: 
+			self.agent = self.getAgent(**self.args)
+		else:
+			self.agent = self.getAgent()
 
 		#send the load complete event to listeners
 		#9/16: Moved AgentLoadDone trigger to the daemon loadAgent call  
