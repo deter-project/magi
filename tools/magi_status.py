@@ -2,43 +2,112 @@
 
 from magi.messaging import api
 from magi.messaging.magimessage import MAGIMessage
-from magi.util import helpers, config
-from subprocess import Popen, PIPE, call
+from magi.util import helpers
 import Queue
+import base64
+import cStringIO
 import logging
 import optparse
+import os
 import signal
+import tarfile
+import tempfile
 import time
 import yaml
-import os
 
 logging.basicConfig(level=logging.INFO, format=helpers.LOG_FORMAT_MSECS, datefmt=helpers.LOG_DATEFMT)
 log = logging.getLogger()
 
-def getStatus(project, experiment, nodeSet=set(), groupMembership=False, agentInfo=False, timeout=30):
+CLIENT_NAME = "magiStatusTool"
+
+def getStatus(bridgeNode, bridgePort, nodeSet=set(), groupMembership=False, agentInfo=False, timeout=30):
     
-    (bridgeNode, bridgePort) = helpers.getBridge(project=project, experiment=experiment)
     if not nodeSet:
         log.info("Empty node set. Would query for just the bridge node.")
-        nodeSet = set(bridgeNode.split('.')[0])
+        nodeSet = set([bridgeNode.split('.')[0]])
     
-    result = dict()
+    log.info("Node Set: %s" %(nodeSet))
+    
+    args = {'groupMembership': groupMembership,
+            'agentInfo': agentInfo}
+    messaging = sendMessage(bridgeNode, bridgePort, list(nodeSet), 'daemon', 'getStatus', args)
+    
+    result = recieveMessages(messaging, nodeSet, timeout)
+
+    failedNodes = nodeSet - set(result.keys())
+    return ((len(failedNodes) == 0), result)
+
+def reboot(bridgeNode, bridgePort, nodeSet, magiDistDir=None, noUpdate=False, noInstall=False, timeout=30):
+
+    if not nodeSet:
+        log.info("Empty node set. Would query for just the bridge node.")
+        nodeSet = set([bridgeNode.split('.')[0]])
+    
+    log.info("Node Set: %s" %(nodeSet))
+    
+    args = {'distributionDir': magiDistDir,
+            'noUpdate': noUpdate, 
+            'noInstall': noInstall}
+    messaging = sendMessage(bridgeNode, bridgePort, list(nodeSet), 'daemon', 'reboot', args)
+    
+    log.info("Done sending reboot messages to MAGI daemons on the required nodes")
+    
+    recieveMessages(messaging, nodeSet, timeout=5)
+            
+def getLogs(bridgeNode, bridgePort, nodeSet=set(), outputdir='/tmp', timeout=30):
+    
+    if not nodeSet:
+        log.info("Empty node set. Would query for just the bridge node.")
+        nodeSet = set([bridgeNode.split('.')[0]])
+    
+    log.info("Node Set: %s" %(nodeSet))
+        
+    messaging = sendMessage(bridgeNode, bridgePort, list(nodeSet), 'daemon', 'archive', {})
+
+    result = recieveMessages(messaging, nodeSet, timeout)
+
+    helpers.makeDir(outputdir)
+    
+    for node in result:
+        nodeLogDir = os.path.join(outputdir, node)
+        tardata = result[node]
+        scratch = tempfile.TemporaryFile()
+        sp = cStringIO.StringIO(tardata)
+        base64.decode(sp, scratch)
+        sp.close()
+
+        # now untar that into the output directory
+        scratch.seek(0)
+        tar = tarfile.open(fileobj=scratch, mode="r:gz")
+        for m in tar.getmembers():
+            tar.extract(m, nodeLogDir)
+        tar.close()
+        
+    failedNodes = nodeSet - set(result.keys())
+    return ((len(failedNodes) == 0), result.keys())
+
+def sendMessage(bridgeNode, bridgePort, nodes, docks, method, args):
     
     # Join the overlay at the specified bridge node. 
-    messaging = api.ClientConnection("ping", bridgeNode, bridgePort)
-
+    messaging = api.ClientConnection(CLIENT_NAME, bridgeNode, bridgePort)
     
     # Create a ping message and send on the overlay 
     # All node on the overlay will receive it and the daemon will respond with a pong message 
-    msg = MAGIMessage(nodes=list(nodeSet), 
-                      docks='daemon', 
+    msg = MAGIMessage(nodes=nodes, 
+                      docks=docks, 
                       contenttype=MAGIMessage.YAML, 
-                      data=yaml.safe_dump({'method': 'getStatus', 
-                                           'args': {'groupMembership': groupMembership,
-                                                    'agentInfo': agentInfo},
+                      data=yaml.safe_dump({'method': method, 
+                                           'args': args,
                                            'version': 1.0}))
+    log.debug("Sending msg: %s" %(msg))
     messaging.send(msg)
+    
+    return messaging
 
+def recieveMessages(messaging, nodeSet, timeout=30):
+    
+    result = dict()
+    
     # Wait for timeout seconds before stopping 
     start = time.time()
     stop = start + int(timeout) 
@@ -49,7 +118,8 @@ def getStatus(project, experiment, nodeSet=set(), groupMembership=False, agentIn
         current = time.time()
         try:
             msg = messaging.nextMessage(True, timeout=1)
-            if msg.src is not 'ping':
+            log.debug(msg)
+            if msg.src is not CLIENT_NAME:
                 log.info('Node %s' %(msg.src))
                 result[msg.src] = yaml.load(msg.data)
                 nodeSet.discard(msg.src)
@@ -58,51 +128,9 @@ def getStatus(project, experiment, nodeSet=set(), groupMembership=False, agentIn
             #check if there is need to wait any more
             if len(nodeSet) == 0:
                 break
+            
+    return result
 
-    if len(nodeSet) > 0:
-        return (False, result)
-    
-    return (True, result)
-
-def reboot(project, experiment, nodes, noUpdate, noInstall, magiDistDir='/share/magi/current/'):
-    rebootProcesses = []
-    for node in nodes:
-        cmd = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-        cmd += "%s.%s.%s sudo %s/magi_bootstrap.py -p %s" % (node, experiment, project, magiDistDir, magiDistDir)
-        if noUpdate:
-            cmd += ' -U'
-        if noInstall:
-            cmd += ' -N'
-        log.info(cmd)
-        p = Popen(cmd.split(), stdout=PIPE, stderr=PIPE)
-        rebootProcesses.append(p)
-    
-    log.info("Waiting for reboot process to finish")
-    for p in rebootProcesses:
-        (stdout, stderr) = p.communicate()
-        if p.returncode:
-            log.error('Exception while rebooting.\n%s'%stderr)
-            raise RuntimeError('Exception while rebooting.\n%s'%stderr)
-        
-    log.info("Done rebooting MAGI daemon on the required nodes")
-    
-def getLogs(project, experiment, outputdir='/tmp'):
-    localLogDir = os.path.join(outputdir, "%s_%s" % (project, experiment))
-    helpers.makeDir(localLogDir)
-    
-    experimentConfigFile = helpers.getExperimentConfigFile(project=project, experiment=experiment)
-    experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
-    nodeLogDir = experimentConfig.get('expdl', {}).get('nodePaths', {}).get('config', config.DEFAULT_CONF_DIR)
-    
-    for node in nodeSet:
-        localNodeLogDir = os.path.join(localLogDir, node)
-        helpers.makeDir(localNodeLogDir)
-        cmd = "scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no " \
-              "%s.%s.%s:%s %s" % (node, experiment, project, 
-                                  os.path.join(nodeLogDir, '*.log'), localNodeLogDir)
-        log.info(cmd)
-        call(cmd.split())
-        
 def store_list(option, opt_str, value, parser):
     setattr(parser.values, option.dest, value.split(','))
     
@@ -111,17 +139,13 @@ if __name__ == '__main__':
     optparser = optparse.OptionParser(description="Script to get the status of MAGI daemon processes on experiment nodes, \
                                                     to reboot them if required, and to download logs.")
      
-    optparser.add_option("-p", "--project", dest="project", help="Project name")
+    optparser.add_option("-b", "--bridge", default=None, dest="bridge", 
+                         help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
     
-    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
-
-#    optparser.add_option("-b", "--bridge", default=None, dest="bridge", 
-#                         help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
-#    
-#    optparser.add_option("-r", "--port", dest="port", type="int", default=18808, 
-#                         help="The port to connect to on the bridge node")
-#    
-#    optparser.add_option("-c", "--config", dest="config", help="Experiment configuration file location")
+    optparser.add_option("-p", "--port", dest="port", type="int", default=18808, 
+                         help="The port to connect to on the bridge node")
+    
+    optparser.add_option("-c", "--config", dest="config", help="Experiment configuration file location")
     
     optparser.add_option("-n", "--nodes", dest="nodes", action="callback", callback=store_list, default=[], type="string", 
                          help="Comma-separated list of the nodes to reboot MAGI daemon")
@@ -155,51 +179,54 @@ if __name__ == '__main__':
     optparser.add_option("-N", "--noinstall", dest="noinstall", action="store_true", default=False, 
                          help="Do not install MAGI and the supporting libraries")
 
-
-    (options, args) = optparser.parse_args()
-#    if not options.bridge:
-#        if not options.project or not options.experiment:
-#            parser.print_help()
-#            parser.error("Missing project and/or experiment name")
-#        (bridgeNode, bridgePort) = helpers.getBridge(project=options.project, experiment=options.experiment)
-#    else:
-#        bridgeNode = options.bridge
-#        bridgePort = options.port
-            
-    if not options.project or not options.experiment:
-        optparser.print_help()
-        optparser.error("Missing project and/or experiment name")
-
-    nodeSet = set() 
-    if options.aal:
-        nodeSet = helpers.getNodesFromAAL(options.aal) 
-    if options.nodes:
-        nodeSet.update(options.nodes)
-    if not nodeSet:
-        nodeSet.update(helpers.getExperimentNodeList(project=options.project, 
-                                                     experiment=options.experiment))
-        
-    if options.logs:
-        getLogs(options.project, options.experiment, options.logoutdir)
-        exit(0)
-        
-    if options.reboot:
-        if not options.distpath:
-            experimentConfigFile = helpers.getExperimentConfigFile(project=options.project,
-                                                     experiment=options.experiment)
-            experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
-            distributionPath = experimentConfig.get('expdl', {}).get('distributionPath', config.DEFAULT_DIST_DIR)
-        else:
-            distributionPath = options.distpath
-        reboot(options.project, options.experiment, nodeSet, options.noupdate, options.noinstall, distributionPath)
-        log.info("Waiting for transports to be setup")
-        time.sleep(20)
-
     # Terminate if the user presses ctrl+c 
     signal.signal(signal.SIGINT, signal.SIG_DFL) 
 
-    (status, result) = getStatus(project=options.project, 
-                                 experiment=options.experiment, 
+    (options, args) = optparser.parse_args()
+    if options.bridge:
+        bridgeNode = options.bridge
+        bridgePort = options.port
+    elif options.config:
+        (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config)
+    else:
+        optparser.print_help()
+        optparser.error("Missing bridge and "
+                        "experiment configuration file")
+            
+    nodeSet = set() 
+    if options.nodes:
+        nodeSet = helpers.toSet(options.nodes)
+    if options.aal:
+        nodeSet.update(helpers.getNodesFromAAL(options.aal))
+    if not nodeSet and options.config:
+        nodeSet.update(helpers.getExperimentNodeList(experimentConfigFile=options.config))
+        
+    if options.logs:
+        (status, result) = getLogs(bridgeNode=bridgeNode, 
+                                   bridgePort=bridgePort, 
+                                   nodeSet=nodeSet, 
+                                   outputdir=options.logoutdir)
+        log.info("Received logs stored under %s" %(options.logoutdir))
+        exit(0)
+        
+    if options.reboot:
+        distributionPath = None
+        if options.distpath:
+            distributionPath = options.distpath
+        elif options.config:
+            experimentConfig = yaml.load(open(options.config, 'r'))
+            distributionPath = experimentConfig.get('expdl', {}).get('distributionPath')
+        
+        reboot(bridgeNode=bridgeNode, 
+               bridgePort=bridgePort, 
+               nodeSet=nodeSet, 
+               magiDistDir=distributionPath, 
+               noUpdate=options.noupdate, 
+               noInstall=options.noinstall)
+        exit(0)
+
+    (status, result) = getStatus(bridgeNode=bridgeNode, 
+                                 bridgePort=bridgePort, 
                                  nodeSet=nodeSet, 
                                  groupMembership=options.groupmembership,
                                  agentInfo=options.agentinfo,

@@ -10,6 +10,7 @@ from magi.util import config, helpers, database
 from magi.util.agent import agentmethod
 from magi.util.calls import doMessageAction
 from magi.util.software import requireSoftware
+from os.path import basename
 from subprocess import Popen, PIPE
 import base64
 import cStringIO
@@ -20,10 +21,12 @@ import magi.modules
 import magi.modules.dataman
 import shutil
 import signal
+import sys
 import tarfile
 import tempfile
 import threading
 import time
+import traceback
 
 log = logging.getLogger(__name__)
 
@@ -341,7 +344,8 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def getStatus(self, msg, groupMembership=False, agentInfo=False):
-		
+		functionName = self.getStatus.__name__
+		helpers.entrylog(log, functionName, locals())
 		result = dict()
 		result['status'] = True
 		
@@ -359,8 +363,54 @@ class Daemon(threading.Thread):
 			result['agentInfo'] = agentInfo
 		
 		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))	
+		helpers.exitlog(log, functionName)
 		
+	@agentmethod()
+	def archive(self, msg):
+		functionName = self.archive.__name__
+		helpers.entrylog(log, functionName, locals())
+		logDir = config.getLogDir()
+		store = cStringIO.StringIO()
+		logTar = tarfile.open(fileobj=store, mode='w:gz')
+		logTar.add(logDir, arcname=os.path.basename(logDir))
+		logTar.close()
+		result = base64.encodestring(store.getvalue())
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))
+		helpers.exitlog(log, functionName)
+	
+	@agentmethod()
+	def reboot(self, msg, distributionDir=None, noUpdate=False, noInstall=False, expConf=None, nodeConf=None):
+		functionName = self.reboot.__name__
+		helpers.entrylog(log, functionName, locals())
 		
+		if not distributionDir:
+			distributionDir = config.getDistDir()
+		rebootCmd = "sudo %s/magi_bootstrap.py -p %s" %(distributionDir, distributionDir)
+		if noUpdate:
+			rebootCmd += ' --noupdate'
+		if noInstall:
+			rebootCmd += ' --noinstall'
+		
+		if not expConf and not nodeConf:
+			nodeConf = config.getNodeConfFile()
+				
+		if expConf:
+			rebootCmd += ' --expconf %s' %(expConf)
+		if nodeConf:
+			rebootCmd += ' --nodeconf %s' %(nodeConf)
+		
+		log.info("Rebooting: %s" %(rebootCmd))
+		
+		self.messaging.send(MAGIMessage(nodes=msg.src, 
+										docks=msg.srcdock, 
+										contenttype=MAGIMessage.YAML, 
+										data=yaml.safe_dump({'status' : True})))
+		
+		Popen(rebootCmd.split())
+		
+		helpers.exitlog(log, functionName)	
+
+
 	# Internal functions
 
 	def startAgent(self, code=None, name=None, dock=None, execargs=None, idl=None, static=False):
@@ -400,51 +450,60 @@ class Daemon(threading.Thread):
 		
 		# GTL TODO: handle exceptions from threaded agents by removing
 		# the agents and freeing up the dock(s) for the agent.
-
-		if execstyle == 'thread':
-			# A agent should know the hostname and its own name  
-			from magi.daemon.threadInterface import ThreadedAgent
-			agent = ThreadedAgent(self.hostname, name, mainfile, dock, execargs, self.messaging)
-			agent.start()
-			log.debug("Started threaded agent %s", agent)
-			if static:
-				self.staticAgents.append(agent)
+		try:
+			if execstyle == 'thread':
+				# A agent should know the hostname and its own name  
+				from magi.daemon.threadInterface import ThreadedAgent
+				agent = ThreadedAgent(self.hostname, name, mainfile, dock, execargs, self.messaging)
+				agent.start()
+				log.debug("Started threaded agent %s", agent)
+				if static:
+					self.staticAgents.append(agent)
+				else:
+					self.threadAgents.append(agent)
+				#2/13/14 Moved it to threadInterface
+				#self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
+				
 			else:
-				self.threadAgents.append(agent)
-			#2/13/14 Moved it to threadInterface
-			#self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
-			
-		else:
-			# Process agent, use the file as written to disk
-			# TODO Process agent need to know hostname 
-			args = []
-			if execargs and type(execargs) == dict:
-				# I apologize for this abuse
-				args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
-			args.append('hostname='+self.hostname)
-			os.chmod(mainfile, 00777)
-			stderrname = os.path.join(config.getLogDir(), name + '.stderr')
-			stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
-			log.debug("Starting %s, stderr sent to %s", name, stderrname)
-			
-			if execstyle == 'pipe':
-				args.append('execute=pipe')
-				log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
-				agent = Popen([mainfile, name, dock] + args, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
-				self.extAgentsThread.fromNetwork.put(PipeTuple([dock], InputPipe(fileobj=agent.stdout), OutputPipe(fileobj=agent.stdin)))
-
-			elif execstyle == 'socket':
-				args.append('execute=socket')
-				log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
-				agent = Popen([mainfile, name, dock] + args, close_fds=True, stderr=stderr)
-
-			else:
-				log.critical("unknown launch style '%s'", interface['execute'])
-				return False
-			
-			self.pAgentPids[name] = agent.pid
-			#Process agent once up, sends the AgentLoadDone message itself
-			#self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname] )
+				# Process agent, use the file as written to disk
+				# TODO Process agent need to know hostname 
+				args = []
+				if execargs and type(execargs) == dict:
+					# I apologize for this abuse
+					args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
+				args.append('hostname='+self.hostname)
+				os.chmod(mainfile, 00777)
+				stderrname = os.path.join(config.getLogDir(), name + '.stderr')
+				stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
+				log.debug("Starting %s, stderr sent to %s", name, stderrname)
+				
+				if execstyle == 'pipe':
+					args.append('execute=pipe')
+					log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
+					agent = Popen([mainfile, name, dock] + args, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
+					self.extAgentsThread.fromNetwork.put(PipeTuple([dock], InputPipe(fileobj=agent.stdout), OutputPipe(fileobj=agent.stdin)))
+	
+				elif execstyle == 'socket':
+					args.append('execute=socket')
+					log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
+					agent = Popen([mainfile, name, dock] + args, close_fds=True, stderr=stderr)
+	
+				else:
+					log.critical("unknown launch style '%s'", interface['execute'])
+					return False
+				
+				self.pAgentPids[name] = agent.pid
+				#Process agent once up, sends the AgentLoadDone message itself
+				#self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname] )
+				
+		except Exception, e:
+				log.error("Agent %s on %s threw an exception %s during agent load.", name, self.hostname, e, exc_info=1)
+				log.error("Sending back a RunTimeException event. This may cause the receiver to exit.")
+				exc_type, exc_value, exc_tb = sys.exc_info()
+				filename, line_num, func_name, text = traceback.extract_tb(exc_tb)[-1]
+				filename = basename(filename)
+				self.messaging.trigger(event='RuntimeException', func_name=func_name, agent=self.name, 
+								   nodes=[self.hostname], filename=filename, line_num=line_num, error=str(e))
 
 	def extractTarPath(self, cachepath, path):
 		"""
