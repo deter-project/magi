@@ -66,13 +66,15 @@ def readPropertiesFile(filename):
     return dict(kv_pairs)
 
 def toSet(value):
-    if type(value) is list:
-        value = set(value)
-    elif type(value) is str:    
-        value= set([s.strip() for s in value.split(',')])
-    elif value is None:
-        value= set()
-    return value
+    if isinstance(value, set):
+        return value
+    if isinstance(value, list):
+        return set(value)
+    if isinstance(value, str):    
+        return set([s.strip() for s in value.split(',')])
+    if value is None:
+        return set()
+    return set([value])
 
 def toDirected(graph, root):
     """
@@ -150,9 +152,7 @@ def terminateProcess(cmd):
     
 def toControlPlaneNodeName(nodename):
     from magi.testbed import testbed
-    if nodename not in ['localhost', '127.0.0.1'] and '.' not in nodename:
-        nodename += '.%s.%s' % (testbed.getExperiment(), testbed.getProject())
-    return nodename
+    return testbed.toControlPlaneNodeName(nodename)
 
 def loadIDL(agentName, expProcdureFile):
     expAAL = loadYaml(expProcdureFile)

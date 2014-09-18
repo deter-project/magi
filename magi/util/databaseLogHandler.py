@@ -3,8 +3,7 @@ import getpass
 import pymongo
 from datetime import datetime
 from bson import InvalidDocument
-from magi.util import database
-from magi.testbed import testbed
+from magi.util import config, database
 
 class DatabaseFormatter(logging.Formatter):
     def format(self, record):
@@ -15,7 +14,7 @@ class DatabaseFormatter(logging.Formatter):
             record.msg = record.msg % record.args
 
         data.update(
-            host=testbed.nodename,
+            host=config.getNodeName(),
             message=record.msg,
             username=getpass.getuser(),
             time=datetime.now(),

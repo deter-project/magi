@@ -14,7 +14,6 @@ import threading
 import time
 
 from magi.messaging.magimessage import MAGIMessage
-from magi.testbed import testbed
 from magi.util.calls import doMessageAction
 from magi.util.execl import spawn, execAndRead
 from magi.util.distributions import *
@@ -237,6 +236,7 @@ class TrafficClientAgent(Agent):
         self.servers = []
         self.interval = "1"
         self.stopClient(None)
+        self.collection = None
         
     def run(self):
         """
@@ -392,14 +392,14 @@ class ConnectedTrafficClientsAgent(Agent):
                 if connTime < now and not connected:
                     # connect
                     log.info("client %s connecting to server %s" %
-                             (testbed.nodename, server))
+                             (self.hostname, server))
                     self.connect(server)
                     self.connectionTable[server][0] = True
                     self._setNextRunTime()
                 elif connTime + connDuration < now:
                     # disconnect and reset next connection/traffic times.
                     log.info("client %s disconnecting from server %s" %
-                             (testbed.nodename, server))
+                             (self.hostname, server))
                     self.disconnect(server)
                     self._setConnectionTrafficTime(server)
                 elif trafTime < now:
@@ -407,7 +407,7 @@ class ConnectedTrafficClientsAgent(Agent):
                     # traffic generation time.
                     size = eval(self.trafficSize)
                     log.info("%s generating %s bytes of IRC traffic" %
-                             (testbed.nodename, str(size)))
+                             (self.hostname, str(size)))
                     self.generateTraffic(server, int(size))
                     nextTrafStart = trafTime + eval(self.trafficInterval)
                     self.connectionTable[server][1] = nextTrafStart
