@@ -31,23 +31,35 @@ class DataManAgent(NonBlockingDispatchAgent):
         
     def setupDatabase(self):
         log.info("Setting up database")
-        if database.isConfigHost:
-            cp = database.startConfigServer()
-            self.dbProcesses.add(cp)
-            sp = database.startShardServer()
-            self.dbProcesses.add(sp)
+        if database.isDBSharded:
+            log.info("Setting up a distributed database")
+            if database.isConfigHost:
+                log.info("Starting mongo config server")
+                cp = database.startConfigServer()
+                self.dbProcesses.add(cp)
+                log.info("Starting mongo shard server")
+                sp = database.startShardServer()
+                self.dbProcesses.add(sp)
+                log.info("Starting mongo database server")
+                dp = database.startDBServer()
+                self.dbProcesses.add(dp)
+                log.info("Stopping balancer")
+                database.setBalancerState(False)
+                log.info("Configuring database cluster")
+                database.configureDBCluster()
+            elif database.isCollector:
+                log.info("Starting mongo database server")
+                dp = database.startDBServer()
+                self.dbProcesses.add(dp)
+                log.info("Waiting for local database to be added as a shard")
+                database.isShardRegistered(block=True)
+                log.info("Local database has been added as a shard")
+        else:
+            log.info("Setting up a single node database")
+            log.info("Starting mongo database server")
             dp = database.startDBServer()
             self.dbProcesses.add(dp)
-            database.setBalancerState(False)
-            log.info("Configuring database cluster")
-            database.configureDBCluster()
-        elif database.isCollector:
-            dp = database.startDBServer()
-            self.dbProcesses.add(dp)
-        log.info("Waiting for local database to be added as a shard")
-        database.isShardRegistered(block=True)
-        log.info("Local database has been added as a shard")
-        
+            
     def setupDBLogHandler(self):
         log.info("Setting up database log handler")
         from magi.util.databaseLogHandler import DatabaseHandler

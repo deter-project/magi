@@ -37,6 +37,7 @@ TIMEOUT = 900
 dbConfig = config.getConfig().get('database', {})
 
 isDBEnabled         = dbConfig.get('isDBEnabled', False)
+isDBSharded         = dbConfig.get('isDBSharded', True)
 configHost          = dbConfig.get('configHost')
 sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap', {})
 

@@ -79,10 +79,10 @@ import logging
 import os
 import platform
 import sys
-import yaml
 
 DEFAULT_DIST_DIR  = "/share/magi/current/"
 DEFAULT_DB_ENABLED = True
+DEFAULT_DB_SHARDED = True
 DEFAULT_TEMP_DIR  = "/tmp"
 
 NODE_DIR = "/var/log/magi"
@@ -126,8 +126,11 @@ def getServer():
     return getNodeConfig()['localInfo']['server']
 
 def getConfigDir():
-    return getNodeConfig()['localInfo']['configDir']
-
+    try:
+        return NODE_CONFIG['localInfo']['configDir']
+    except:
+        return os.path.join(NODE_DIR, 'config')
+    
 def getNodeConfFile():
     return os.path.join(getConfigDir(), 'node.conf')
 
@@ -138,14 +141,29 @@ def getMagiPidFile():
     return os.path.join(getConfigDir(), 'magi.pid')
 
 def getLogDir():
-    return getNodeConfig()['localInfo']['logDir']
+    try:
+        return NODE_CONFIG['localInfo']['logDir']
+    except:
+        return os.path.join(NODE_DIR, 'logs')
 
 def getDbDir():
-    return getNodeConfig()['localInfo']['dbDir']
+    try:
+        return NODE_CONFIG['localInfo']['dbDir']
+    except:
+        return os.path.join(NODE_DIR, 'db')
 
 def getTempDir():
-    return getNodeConfig()['localInfo']['tempDir']
+    try:
+        return NODE_CONFIG['localInfo']['tempDir']
+    except:
+        return DEFAULT_TEMP_DIR
 
+def getDistDir():
+    try:
+        return NODE_CONFIG['localInfo']['distributionPath']
+    except:
+        return DEFAULT_DIST_DIR
+    
 def getExperimentDir():
     return getNodeConfig()['localInfo']['experimentDir']
 
@@ -236,23 +254,30 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         isDBEnabled = dbdl.setdefault('isDBEnabled', DEFAULT_DB_ENABLED)
         
     if isDBEnabled:
-        if not dbdl.get('sensorToCollectorMap'):
+        isDBSharded = dbdl.setdefault('isDBSharded', DEFAULT_DB_SHARDED)
+        if isDBSharded:
+            if not dbdl.get('sensorToCollectorMap'):
+                dbdl['sensorToCollectorMap'] = dict()
+                topoGraph = testbed.getTopoGraph()
+                for node in topoGraph.nodes():
+                    dbdl['sensorToCollectorMap'][node] = node
+                dbdl['configHost'] = testbed.getServer()
+            else:
+                topoGraph = testbed.getTopoGraph()
+                experimentNodes = topoGraph.nodes()
+                for (sensor, collector) in dbdl['sensorToCollectorMap'].iteritems():
+                    if sensor not in experimentNodes:
+                        del dbdl['sensorToCollectorMap'][sensor]
+                    elif collector not in experimentNodes:
+                        dbdl['sensorToCollectorMap'][sensor] = sensor
+                if dbdl.get('configHost') not in experimentNodes:
+                    dbdl['configHost'] = testbed.getServer()
+        else:
             dbdl['sensorToCollectorMap'] = dict()
             topoGraph = testbed.getTopoGraph()
             for node in topoGraph.nodes():
                 dbdl['sensorToCollectorMap'][node] = node
-            dbdl['configHost'] = testbed.getServer()
-        else:
-            topoGraph = testbed.getTopoGraph()
-            experimentNodes = topoGraph.nodes()
-            for (sensor, collector) in dbdl['sensorToCollectorMap'].iteritems():
-                if sensor not in experimentNodes:
-                    del dbdl['sensorToCollectorMap'][sensor]
-                elif collector not in experimentNodes:
-                    dbdl['sensorToCollectorMap'][sensor] = sensor
-            if dbdl.get('configHost') not in experimentNodes:
-                dbdl['configHost'] = testbed.getServer()
-    
+            dbdl.pop('configHost', None)
     else:
         dbdl = {}
         dbdl['isDBEnabled'] = False
@@ -300,7 +325,6 @@ def createNodeConfig(experimentConfig={}):
     return loadNodeConfig(experimentConfig=experimentConfig)
 
 def loadNodeConfig(nodeConfig={}, experimentConfig={}):
-    log.info("LLLOOOOAAAADDD")
     global NODE_CONFIG
     try:
         if (type(nodeConfig) == str):
@@ -356,11 +380,18 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     localInfo.setdefault('controlip', testbed.controlip)
     localInfo.setdefault('controlif', testbed.controlif)
     
+    #TODO: Setting testbed.nodename for desktop mode
+    # testbed.getTopoGraph() uses the nodename
+    import magi.testbed
+    if isinstance(testbed, magi.testbed.desktop.DesktopExperiment):
+        testbed.setNodeName(localInfo['nodename'])
+    
     expNodePaths = experimentConfig['expdl']['nodePaths']
     localInfo.setdefault('configDir', expNodePaths['config'])
     localInfo.setdefault('logDir', expNodePaths['logs'])
     localInfo.setdefault('dbDir', expNodePaths['db'])
     localInfo.setdefault('tempDir', expNodePaths['temp'])
+    localInfo.setdefault('distributionPath', experimentConfig['expdl']['distributionPath'])
     
     testbedPaths = experimentConfig['expdl']['testbedPaths']
     localInfo.setdefault('experimentDir', testbedPaths['experimentDir'])
@@ -458,9 +489,10 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     
     isDBEnabled = databaseConfig.setdefault('isDBEnabled', dbdl.get('isDBEnabled'))
     if isDBEnabled:
+        databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
         databaseConfig.setdefault('configHost', dbdl['configHost'])
         databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
-        
+            
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig
 
