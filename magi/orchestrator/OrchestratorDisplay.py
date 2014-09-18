@@ -2,6 +2,7 @@
 import pprint
 import time
 import logging
+import parse
 from collections import defaultdict
 
 log = logging.getLogger(__name__)
@@ -39,8 +40,8 @@ class OrchestratorDisplayState(object):
 
     def gotTrigger(self, trigger):
         now = self._timestamp()
-        print '%s : %s : (%s) got trigger: %s' % (
-            self._name('Orchestrator'), self._green('trig'), now, trigger.args['event'])
+        print '%s : %s : (%s) got trigger: %s:%s:%s' % (
+            self._name('Orchestrator'), self._blue('rcvd'), now, trigger.event, list(trigger.nodes), trigger.args)
 
     def streamEnded(self, streamIter):
         now = self._timestamp()
@@ -55,7 +56,7 @@ class OrchestratorDisplayState(object):
             target)
 
     def eventFired(self, streamIter):
-        e = streamIter.getItem()
+        e = streamIter.next()
         to = self._minstr(e.groups)
         if not to:
             to = self._minstr(e.nodes)
@@ -83,13 +84,25 @@ class OrchestratorDisplayState(object):
                 self._name(streamIter), self._blue('sent'), now, e.method, self._minstr(args),
                 to, trigger)
 
+    def triggerCompleted(self, streamIter, trigger):
+        now = self._timestamp()
+        if isinstance(trigger, parse.TimeoutTrigger):
+            print '%s : %s : (%s) trigger completed: timeout:%s' % (
+                self._name(streamIter), self._green('trig'), now, trigger.timeout)
+        elif isinstance(trigger, parse.EventTrigger):
+            print '%s : %s : (%s) trigger completed: %s:%s' % (
+                self._name(streamIter), self._green('trig'), now, trigger.event, trigger.args)
+        else:
+            print '%s : %s : (%s) trigger completed: %s' % (
+                self._name(streamIter), self._green('trig'), now, trigger.__class__.__name__)
+            
     def showTriggerDiffs(self, cache, streams):
         '''Go through all outstanding triggers and find matched in the cache. Display
         the difference between what we've seen and what we want i.e. what we are 
         still waiting on.'''
         now = self._timestamp()
         for si in streams:
-            if si.isTrigger():
+            if si.isNextTrigger():
                 for aal_tr in si.getTriggers():
                     event = aal_tr.args.get('event', 'NOEVENT')
                     timeout = aal_tr.args.get('timeout', None)

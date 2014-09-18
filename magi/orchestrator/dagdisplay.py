@@ -166,7 +166,7 @@ class DagDisplay(object):
         still waiting on.'''
         now = self._timestamp()
         for si in streams:
-            if si.isTrigger():
+            if si.isNextTrigger():
                 for aal_tr in si.getTriggers():
                     event = aal_tr.args.get('event', 'NOEVENT')
                     timeout = aal_tr.args.get('timeout', None)

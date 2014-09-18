@@ -91,7 +91,7 @@ class AALTest(unittest2.TestCase):
         orch = Orchestrator(self.messaging, self.aal)
         thread = orch.runInThread()
         time.sleep(0.5)
-        self._sendTrigger(event='someMethodCall', group='someGroup', nodes=['one'], agent='someAgent', retVal=[False])
+        self._sendTrigger(event='someMethodCall', group='someGroup', nodes=['one'], agent='someAgent', result=[False])
         time.sleep(5)
 
     def test_runtimeException(self):

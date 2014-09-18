@@ -6,7 +6,8 @@ import optparse
 from controlflow import ControlGraph  
 from collections import defaultdict
 from magi.messaging.api import MAGIMessage
-
+from magi.util import helpers
+import time
 
 log = logging.getLogger(__name__)
 
@@ -38,181 +39,203 @@ log = logging.getLogger(__name__)
 
 """
 
-
-class AALParseError(Exception):
-    '''Small wrapper around exception for AAL parse errors.'''
-    def __init__(self, error):
-        self.error = error
-
-    def __str__(self):
-        return repr(self.error)
-
-
-class TriggerData(object):
-    """
-    Wrapper for incoming trigger data that splits key/scalar from
-    key/lists
-    """
-    def __init__(self, datadict):
-        self.args = dict()
-        self.sets = defaultdict(set)
-        self.esets = defaultdict(dict)
-        self.count = [1, 0]  # default is always to look for a single match
-
-        # handle 'meta' constraint data
-        if 'count' in datadict:
-            self.count = [int(datadict['count']), 0]
-            del datadict['count']
-        for k, v in datadict.iteritems():
-            log.debug("unpacking incoming trigger k: %s, v: %s", k,v)
-            if isinstance(v, list):
-                #  Here  we need to check if the value v is a dictionary 
-                for ll in v:
-                    if isinstance(ll,dict):
-                        self.esets[ll['event']] = TriggerData(ll) 
-                    else:
-                        self.sets[k] = set(v)
-            elif isinstance(v, dict):
-                if k == 'retVal':
-                    log.debug("received a dict as return value from agent")
-                    for kk, vv in v.items():
-                        self.args[kk]= vv 
-                else:
-                    log.critical("received a dict on non retVal key, Do not know what to do")
-            else:
-                if (k == 'retVal') and (v == True) is True: 
-                    continue
-                self.args[k] = v
-        log.debug("datadict: %s", datadict)
-        log.debug("sets: %s", self.sets) 
-        log.debug("args: %s", self.args)
-        log.debug("esets: %s", self.esets) 
-        log.debug("count: %s", self.count)
-
-    def update(self, incomingTrigData):
-        '''
-            Update trigger constraints. Should only be called with
-            matching data.
-        '''
-        log.debug("Updating count for trigger %s", incomingTrigData)
-        incomingTrigData.count[1] += 1
-        log.debug("Count needed is %s current is %s", self.count[1], incomingTrigData.count[1]) 
-
-    def reset(self):
-        log.debug("reseting the count for trigger")
-        self.count[1] = 0 
-
-
-    def constraintMatched(self):
-        '''Returns True if meta trigger data matches. '''
-        if self.count[0] and self.count[0] == self.count[1]:
-            # If the current time is passed this value, the trigger
-            # can be deleted.
-            return True
-        ## Todo: current not checking for count 
-        return True
-
-   # def shouldDelete(self, curTime):
-   #     if self.selfDestructTime is None:
-   #         return False   # we don't care about self destruct
-   #     else:
-   #         return curTime > self.selfDestructTime
-
-
-    def getEsets(self):
-        return self.esets
-
-    def getSets(self):
-        return self.sets
-
-    def getArgs(self):
-        return self.args
-
-    def getCount(self):
-        return self.count[0]
-
-    def __repr__(self):
-        if self.sets:
-            setstr = self.sets 
-        else:
-            setstr = "None"
-
-        # esets is a dictionary with events as keys 
-        # the triggerData is just the value within the dict entry
-        if self.esets:
-            esetstr = ""
-            for e in self.esets:
-                esetstr = esetstr + "\n\t\t" + e + ":" + TriggerData.__repr__(self.esets[e])
-        else:
-            esetstr = "None" 
-
-        return "TriggerData count: %s, args: %s, sets: %s, esets: %s" % (self.count, self.args, setstr, esetstr)
-
-
-class Trigger(TriggerData):
+class Trigger():
     """
         Represents a trigger that the event stream wants to wait on.
         May include a timeout to continue regardless of completion.
     """
-    def __init__(self, timeout=sys.maxint, target=None, **kwargs):
+    
+    TIMEOUT = 1
+    EVENT = 2
+    CONJUNCTION = 3
+    DISJUNCTION = 4
+        
+    def __init__(self, triggerData):
         """ Create a new trigger object from the aal """
-        self.timeout = timeout
-        self.target = target
-        TriggerData.__init__(self, kwargs)
-
-    def getEsets(self):
-        return TriggerData.getEsets(self) 
-
-    def getSets(self):
-        return TriggerData.getSets(self) 
-
-    def getArgs(self):
-        return TriggerData.getArgs(self)
-
-    def getCount(self):
-        return TriggerData.getCount(self)
+        self.target = triggerData.pop('target', None)
+        self.active = False
+        
+    def activate(self, activationTime=None):
+        self.active = True
+    
+    def isActive(self):
+        return self.active
+    
+    def getTimeout(self):
+        return 0
 
     def __repr__(self):
-        return "Trigger target:%s, timeout:%s, data: %s" % (
-            self.target, self.timeout, TriggerData.__repr__(self))
+        return "{ \n\tTrigger type: %s \n\tTrigger data: %s \n}" % (
+                self.__class__.__name__, self.__dict__)
 
+class TimeoutTrigger(Trigger):
+    
+    def __init__(self, triggerData):
+        Trigger.__init__(self, triggerData)
+        self.timeout = triggerData['timeout'] / 1000
+        self.timeActivated = None
+        
+    def activate(self, activationTime=None):
+        if not activationTime:
+            activationTime = time.time()
+        Trigger.activate(self, activationTime)
+        self.timeActivated = activationTime
+        
+    def isComplete(self, triggerCache=None):
+        if self.isActive():
+            return time.time() >= (self.timeActivated + self.timeout)
+        return False
+    
+    def getTimeout(self):
+        if self.isActive():
+            return (self.timeActivated + self.timeout)
+        return sys.maxint
+    
+class EventTrigger(Trigger):
+    
+    def __init__(self, triggerData):
+        Trigger.__init__(self, triggerData)
+        self.event = triggerData.pop('event')
+        self.nodes = helpers.toSet(triggerData.pop('nodes', None))
+        self.count = triggerData.pop('count', max(len(self.nodes), 1))
+        triggerData.setdefault('result', True)    
+        self.args = triggerData
+        
+    def isComplete(self, triggerCache):
+        if not triggerCache:
+            return False
+        
+        if self.event in triggerCache:
+            cachedTriggers = triggerCache[self.event]
+            matchingTriggers = []
+            
+            for cachedTrigger in cachedTriggers:
+                match = True
+                for key, value in self.args.iteritems():
+                    if cachedTrigger.args.get(key) != value:
+                        match = False
+                        break
+                if match:
+                    matchingTriggers.append(cachedTrigger)
+            
+            interestedNodeSet = set()
+            
+            for matchingTrigger in matchingTriggers:
+                if self.nodes:
+                    interestedNodeSet |= self.nodes.intersection(matchingTrigger.nodes)
+                else:
+                    interestedNodeSet |= matchingTrigger.nodes
+                
+#            if self.event == 'intfSensed':
+#                print 'isComplete'
+#                print self
+#                print cachedTriggers
+#                print matchingTriggers
+#                print interestedNodeSet
+                
+            return len(interestedNodeSet) >= self.count
+        
+        return False
+        
+class ConjunctionTrigger(Trigger):
+    
+    def __init__(self, triggerData):
+        Trigger.__init__(self, triggerData)
+        self.triggers = TriggerList(triggerData['triggers'])
+        
+    def activate(self, activationTime=None):
+        if not activationTime:
+            activationTime = time.time()
+        Trigger.activate(self, activationTime)
+        for trigger in self.triggers:
+            trigger.activate(activationTime)
+            
+    def isComplete(self, triggerCache=None):
+        for trigger in self.triggers:
+            if not trigger.isComplete(triggerCache):
+                return False
+        return True
+    
+    def getTimeout(self):
+        return max([trigger.getTimeout() for trigger in self.triggers])
+
+class DisjunctionTrigger(Trigger):
+    
+    def __init__(self, triggerData):
+        Trigger.__init__(self, triggerData)
+        self.triggers = TriggerList(triggerData['triggers'])
+
+    def activate(self, activationTime=None):
+        if not activationTime:
+            activationTime = time.time()
+        Trigger.activate(self, activationTime)
+        for trigger in self.triggers:
+            trigger.activate(activationTime)
+                            
+    def isComplete(self, triggerCache=None):
+        for trigger in self.triggers:
+            if trigger.isComplete(triggerCache):
+                return True
+        return False
+    
+    def getTimeout(self):
+        return min([trigger.getTimeout() for trigger in self.triggers])
+                
+def getTriggerType(triggerData):
+    try:
+        if 'timeout' in triggerData:
+            return Trigger.TIMEOUT
+        elif 'event' in triggerData:
+            return Trigger.EVENT
+        elif 'type' in triggerData:
+            if triggerData['type'] == 'AND':
+                return Trigger.CONJUNCTION
+            elif triggerData['type'] == 'OR':
+                return Trigger.DISJUNCTION
+    except:
+        pass
+    
+    raise AttributeError("Invalid trigger data: %s" %(triggerData))
+
+def createTrigger(triggerData):
+    triggerClasses = { Trigger.TIMEOUT : TimeoutTrigger, 
+                       Trigger.EVENT : EventTrigger, 
+                       Trigger.CONJUNCTION : ConjunctionTrigger, 
+                       Trigger.DISJUNCTION : DisjunctionTrigger }
+    
+    return triggerClasses[getTriggerType(triggerData)](triggerData)
+    
+def getEventTriggers(triggers):
+    triggers = helpers.toSet(triggers)
+    eventTriggers = set()
+    for trigger in triggers:
+        if isinstance(trigger, TimeoutTrigger):
+            continue
+        elif isinstance(trigger, EventTrigger):
+            eventTriggers.add(trigger)
+        else:
+            eventTriggers.update(getEventTriggers(trigger.triggers))
+    return eventTriggers
 
 class TriggerList(list):
     """
         The grouping of triggers that we find in an AAL entry
     """
-    def __init__(self, triggerlist=None):
+    def __init__(self, triggerlist=[]):
         for entry in triggerlist:
-            self.append(Trigger(**entry))
-
-    def getEsets(self):
-        completeests = set() 
-        for entry in self:
-            #TODO: make sure it is a event (see below getARgs) 
-            tesets = Trigger.getEsets(entry) 
-            if tesets:
-                for e in tesets:
-                    completeests.add(e)
-        return completeests
+            self.append(createTrigger(dict(entry)))
+        
+    def activate(self, activationTime=None):
+        if not activationTime:
+            activationTime = time.time()
+        for trigger in self:
+            trigger.activate(activationTime)
+            
+    def getTimeout(self):
+        return min([trigger.getTimeout() for trigger in self])
     
-    def getArgs(self):
-        completeargs = set()
-        for entry in self:
-            t = Trigger.getArgs(entry)
-            if t:
-                for k,v in t.iteritems():
-                    if k == 'event': 
-                        completeargs.add(v)
-        return completeargs
-
     def __repr__(self):
-        rstr = 'TriggerList: \n\t'
-        for entry in self:
-            rstr = rstr + Trigger.__repr__(entry)
-            rstr = rstr + '\n\t'
-        rstr = rstr + '\n' 
-        return rstr 
-
+        return 'TriggerList: %s \n' %(list(self))
 
 class EventObject(object):
     """ Represents anything that sits in the event queue and can be sent.  """
@@ -254,26 +277,28 @@ class BaseMethodCall(EventObject):
                             data=yaml.dump(call))]
 
     def __repr__(self):
-        return 'Event: %s(%s) \n\t trigger: %s\n' % (self.method, self.args, self.trigger)
+        return 'Event: %s(%s) \n\t trigger: %s\n' %(self.method, 
+                                                    self.args, 
+                                                    self.trigger)
 
 class EventMethodCall(BaseMethodCall):
-    """ MethodCall class for sending regular method calls from AAL events """
-
+    """ 
+        MethodCall class for sending regular method calls from AAL events 
+    """
     def __init__(self, aalagent, aalevent):
-        # trigger is optional
-        trigger = None if 'trigger' not in aalevent else aalevent['trigger']
         BaseMethodCall.__init__(self, groups=aalagent['group'],
                                 docks=aalagent['dock'],
                                 method=aalevent['method'],
-                                args=aalevent['args'], trigger=trigger)
-    def getEventTrigger(self):
-        return self.trigger
+                                args=aalevent['args'], 
+                                # trigger is optional
+                                trigger=aalevent.get('trigger'))
 
 
 class LoadUnloadAgentCall(BaseMethodCall):
-    """ MethodCall class for sending loadAgent or unloadAgent requests
-    when starting agents """
-
+    """ 
+        MethodCall class for sending loadAgent or unloadAgent requests
+        when starting agents 
+    """
     def __init__(self, load, name, **kwargs):
         """
             Create the load/unload agent call, expected kwargs 'code'
@@ -300,12 +325,10 @@ class LoadUnloadAgentCall(BaseMethodCall):
         BaseMethodCall.__init__(self, groups=kwargs['group'], docks='daemon',
                                 method=method, args=args)
 
-
 class LoadAgentCall(LoadUnloadAgentCall):
     '''Call upon the daemon to load the given agent.'''
     def __init__(self, name, **kwargs):
         LoadUnloadAgentCall.__init__(self, True, name, **kwargs)
-
 
 class UnloadAgentCall(LoadUnloadAgentCall):
     '''Call upon the daemon to unload the given agent.'''
@@ -325,13 +348,11 @@ class GroupCall(BaseMethodCall):
         BaseMethodCall.__init__(self, groups="__ALL__", docks='daemon',
                                 method=method, args=args)
 
-
 class BuildGroupCall(GroupCall):
     """" MethodCall class for sending joinGroup requests when
     joining down groups """
     def __init__(self, name, nodes):
         GroupCall.__init__(self, True, name, nodes)
-
 
 class LeaveGroupCall(GroupCall):
     """" MethodCall class for sending leaveGroup requests when
@@ -340,6 +361,19 @@ class LeaveGroupCall(GroupCall):
         GroupCall.__init__(self, False, name, nodes)
 
 
+class Stream(list):
+    
+    def __init__(self, *args, **kwargs):
+        list.__init__(self, *args, **kwargs)
+        
+    def gettriggerToAgentMaps(self):
+        result = {}
+        for i in  range(0, len(self.wrapped)):
+            item = self[i]
+            if isinstance(item, EventObject):
+                if item.trigger:
+                    result[item.trigger] = item
+            
 
 class AAL(object):
     """
@@ -360,6 +394,7 @@ class AAL(object):
         # TODO: currently the startup stream is always setup for an AAL 
         # Later the experiment may or may not have a startup phase 
         self.startup = True 
+        self.agentLoadTimeout = 200000
         
         if dagdisplay:
             print "dagdisplay True, creating graph" 
@@ -385,14 +420,11 @@ class AAL(object):
             sys.exit(1)
 
         self.aal = yaml.load(yaml_file.getvalue())
-        self.setupStream = list()
-        self.teardownStream = list()
+        self.setupStream = Stream()
+        self.teardownStream = Stream()
         self.streams = dict()
         self.ieventtriggers = defaultdict(set) 
         self.oeventtriggers = defaultdict(set) 
-
-        # The AAL extra-YAML references
-        self._resolveReferences(self.aal)
 
         # Sanity Check: does the AAL have the following directives. 
         # if not, log that they are missing but continue 
@@ -400,6 +432,11 @@ class AAL(object):
             if not k in self.aal.keys():
                 log.critical('missing required key in AAL: %s', k)
 
+        # The AAL extra-YAML references
+        self._resolveReferences(self.aal)
+        
+        ##### STARTUP STREAM #####
+        
         # Define startup stream 
         # By default we add a startup stream 
         if self.startup: 
@@ -411,10 +448,12 @@ class AAL(object):
             for name, nodes in self.aal['groups'].iteritems():
                 self.setupStream.append(
                     TriggerList([
-                        {'event': 'GroupBuildDone', 'group': name, 'nodes': nodes},
-                        {'event': 'GroupBuildDone', 'retVal': False,
-                        'target': 'exit'},
-                        {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
+                        {'event': 'GroupBuildDone', 'group': name, 
+                         'nodes': nodes},
+                        {'event': 'GroupBuildDone', 'result': False, 
+                         'target': 'exit'},
+                        {'timeout': int(groupBuildTimeout), 
+                         'target': 'exit'}]))
 
             # create an internal agent dock using unique name of agent. 
             # if specified in the AAL, do not do this. 
@@ -430,32 +469,34 @@ class AAL(object):
 
             # Add triggers to ensure  the agents are loaded correctly 
             for name, agent in self.aal['agents'].iteritems():
-                timeout = (200000 if not 'loadTimeout' in agent
-                           else agent['loadTimeout'])
+                timeout = agent.get('loadTimeout', self.agentLoadTimeout)
                 self.setupStream.append(
                     TriggerList([
-                        {'event': 'AgentLoadDone',
-                        'agent': name,
-                        'nodes': self.aal['groups'][agent['group']]},
-                        {'event': 'AgentLoadDone', 'agent': name, 'retVal': False,
-                        'target': 'exit'},
+                        {'event': 'AgentLoadDone', 'agent': name, 
+                         'nodes': self.aal['groups'][agent['group']]},
+                        {'event': 'AgentLoadDone', 'agent': name, 
+                         'result': False, 'target': 'exit'},
                         {'timeout': int(timeout), 'target': 'exit'} 
                          ]))
 
+
+        ##### TEARDOWN STREAM #####
+        
         # We always define a teardown stream as jumping to target exit 
         # activates this stream 
         # tear down the experiment, unload agents, leave groups.
         for name, agent in self.aal['agents'].iteritems():
             self.teardownStream.append(UnloadAgentCall(name, **agent))
         for name, agent in self.aal['agents'].iteritems():
+            timeout = agent.get('loadTimeout', self.agentLoadTimeout)
             # Use the same timeouts as setup for teardown stream
             self.teardownStream.append(
                 TriggerList([
                         {'event': 'AgentUnloadDone',
                         'agent': name,
                         'nodes': self.aal['groups'][agent['group']]},
-                        {'event': 'AgentUnloadDone', 'agent': name, 'retVal': False,
-                        'target': 'exit'},
+                        {'event': 'AgentUnloadDone', 'agent': name, 
+                         'result': False, 'target': 'exit'},
                         {'timeout': int(timeout), 'target': 'exit'} 
                          ]))
 
@@ -464,73 +505,38 @@ class AAL(object):
         for name, nodes in self.aal['groups'].iteritems():
             self.teardownStream.append(
                 TriggerList([
-                    {'event': 'GroupTeardownDone', 'group': name, 'nodes': nodes},
-                    {'event': 'GroupTeardownDone', 'retVal': False,
+                    {'event': 'GroupTeardownDone', 'group': name, 
+                     'nodes': nodes},
+                    {'event': 'GroupTeardownDone', 'result': False,
                     'target': 'exit'},
                     {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
 
-        #if dagdisplay:
-            #callgraph = pydot.Dot(graph_type='digraph',fontname="Verdana")
-            #callgraph.add_node(pydot.Node('Setup',label='Setup'))
-            #callgraph.add_node(pydot.Node('TearDown', label='TearDown'))
-            #c = dict()
-            #firstmessages = list()  
+
+        ##### EVENT STREAMS #####
 
         for key, estream in self.aal['eventstreams'].iteritems():
-            newstream = list()
+            newstream = Stream()
             self.streams[key] = newstream
-            if dagdisplay:
-                #c[key]=pydot.Cluster(key,label=key)
-                self.cgraph.createCluster(key) 
-
             for event in estream:
                 # The eventstream consists of triggers and events. 
                 # First we process the type trigger, then event. 
-                # we log errors if it is not an event or trigger. 
-
-                if event['type'] == 'trigger':
-                    t = TriggerList(event['triggers'])
-                    
-                    # Check is there are an incoming triggers, specified as "event: waitforme, special..."
-                    feset = t.getArgs()
-                    if feset:
-                        for k in feset:
-                            self.ieventtriggers[key].add(k)
-                
-                    # Check is there are sets of incoming triggers, specified as "eset: [event: waitforme, special...] [ event:waitformealso...] "
-                    feset = t.getEsets()
-                    if feset:
-                        for k in feset:
-                            self.ieventtriggers[key].add(k)
-
-                    if dagdisplay:
-                        self.cgraph.addTrigger(key,t)
-
-                    newstream.append(t)
-
-                elif event['type'] == 'event':
+                # we log errors if it is not an event or trigger.
+                if event['type'] == 'event':
                     agent = self.aal['agents'][event['agent']]
                     newstream.append(EventMethodCall(agent, event))
                     if 'trigger' in event:
                         self.oeventtriggers[key].add(event['trigger'])
-                    if dagdisplay: 
-                        self.cgraph.addEvent(key,event)
-                        # Error: it is not an event or a trigger type     
+                        
+                elif event['type'] == 'trigger':
+                    triggerList = TriggerList(event['triggers'])
+                    newstream.append(triggerList)
+                    self.ieventtriggers[key].update(set([trigger.event 
+                                                         for trigger in 
+                                                         getEventTriggers(triggerList)]))
+                        
                 else:
                     log.warning("Skipping unknown stream entry type %s",
                                 event['type'])
-
-            if dagdisplay:
-                self.cgraph.finishCluster(key)
-
-        if dagdisplay:
-        # The for loop ends, the current eventstream is processed 
-#       # Create a call graph for the curent event stream
-            self.cgraph.finishControlgraph()
-            self.cgraph.writepng()
-            #print self.cgraph
-            
-
 
     def getSetupStream(self):
         return self.setupStream
@@ -556,35 +562,6 @@ class AAL(object):
     def getTotalStreams(self):
         return len(self.aal['eventstreams'])
 
-    def getInterStreamEvents(self):
-        ies = set()
-        log.debug("ieventtriggers: %s", self.ieventtriggers)
-        for k in self.ieventtriggers:
-            if len(ies) == 0:
-                ies = self.ieventtriggers[k]
-            else:
-                ies.union(self.ieventtriggers[k])
-        
-        log.debug("oeventtriggers: %s", self.oeventtriggers)
-        for k in self.oeventtriggers:
-            if len(ies) == 0:
-                ies = self.oeventtriggers[k]
-            else:
-                ies.union(self.oeventtriggers[k])
-
-        return ies 
-
-    def __repr__(self):
-        print "Setup Stream" 
-        print self.setupStream
-        print "Stream\n\n" 
-        for s in self.getStartKeys():
-            print s 
-            print self.streams[s] 
-        print "Teardown Stream" 
-        print self.teardownStream
-
-
     def _resolveReferences(self, aal):
         '''
         The Agent AAL file syntax allows extra-YAML references. This
@@ -595,7 +572,7 @@ class AAL(object):
         Arg: aal, the loaded aal file to resolve.
         '''
         # The only extra-YAML reference right now is 'agent' in the
-        # event stream triggers. So find those are modify to the list
+        # event stream triggers. So find those and modify to the list
         # of nodes in the group.
         # aal['eventstreams']['triggers]['agent'] --> aal['groups']['nodes']
 
@@ -604,38 +581,87 @@ class AAL(object):
                 'eventstreams' not in aal):
             raise AALParseError('agents or groups or eventstreams not found in'
                                 'AAL file. Unable to continue.')
+            
+        # Map outgoing triggers to respective agents
+        triggerToAgentMap = {}
+        for stream in aal['eventstreams']:
+            for event in aal['eventstreams'][stream]:
+                if event['type'] == 'event':
+                    if 'trigger' in event:
+                        trigger = event['trigger']
+                        agent = event['agent']
+                        # Store trigger to agent mapping
+                        triggerToAgentMap.setdefault(trigger, agent)
+                    
+        # Map agents to corresponding nodes
+        agentToNodesMap = {}
+        for agent in aal['agents']:
+            # For the agent, find the group
+            if 'group' not in aal['agents'][agent]:
+                raise AALParseError('No "group" found in agent'
+                                    ' %s' % agent)
 
+            group = aal['agents'][agent]['group']
+            if group not in aal['groups']:
+                raise AALParseError('Unable to find group %s '
+                                    'in groups.' % group)
+
+            # Got the group, find the nodes.
+            nodes = set(aal['groups'][group])
+            
+            # Store trigger to nodes mapping
+            agentToNodesMap[agent] = nodes
+
+                                                            
+        def updateTrigger(triggerData):
+            triggeType = getTriggerType(triggerData)
+            if triggeType in [Trigger.TIMEOUT]:
+                pass
+            elif triggeType in [Trigger.EVENT]:
+                triggerEvent = triggerData['event']
+                if triggerEvent not in triggerToAgentMap:
+                    raise AALParseError('No outgoing event for trigger '
+                                        '"%s"' %(triggerEvent))
+                #triggerData.setdefault('agent', triggerToAgentMap[triggerEvent])
+                #triggerAgent = triggerData['agent']
+                triggerAgent = triggerData.get('agent', triggerToAgentMap[triggerEvent])
+                if triggerAgent not in agentToNodesMap:
+                    raise AALParseError('Outgoing trigger "%s" mapped to '
+                                        'non-existing agent "%s"' %(triggerEvent, 
+                                                                    triggerAgent))
+                triggerData.setdefault('nodes', agentToNodesMap[triggerAgent])
+            else:
+                for trigger in triggerData['triggers']:
+                    updateTrigger(trigger)
+
+        # Update incoming triggers with agents and nodes
         for stream in aal['eventstreams']:
             for event in aal['eventstreams'][stream]:
                 if event['type'] == 'trigger':
                     for trigger in event['triggers']:
-                        if 'agent' in trigger:
-                            agent = trigger['agent']
-                            if agent not in aal['agents']:
-                                raise AALParseError('Agent "%s" referenced in'
-                                                    'trigger %s does not '
-                                                    'appear in AAL file.' %
-                                                    (agent, trigger))
+                        updateTrigger(trigger)                
 
-                            # Got the agent, find the group
-                            if 'group' not in aal['agents'][agent]:
-                                raise AALParseError('No "group" found in agent'
-                                                    ' %s' % agent)
+    def __repr__(self):
+        rstr = "Setup Stream\n\n" 
+        rstr += str(self.setupStream)
+        rstr += "\n\nEvent Streams\n\n" 
+        for s in self.getStartKeys():
+            rstr += s 
+            rstr += "\n\n"
+            rstr += str(self.streams[s])
+            rstr += "\n\n"
+        rstr += "Teardown Stream\n\n" 
+        rstr += str(self.teardownStream)
+        return rstr
+        
+class AALParseError(Exception):
+    '''Small wrapper around exception for AAL parse errors.'''
+    def __init__(self, error):
+        self.error = error
 
-                            group = aal['agents'][agent]['group']
-                            if group not in aal['groups']:
-                                raise AALParseError('Unable to find group %s '
-                                                    'in groups.' % group)
-
-                            # Got the group, find the nodes.
-                            nodes = aal['groups'][group]
-
-                            # Got the nodes, do the substitution.
-                            del trigger['agent']
-                            trigger['nodes'] = nodes
-
-
-
+    def __str__(self):
+        return repr(self.error)
+    
 if __name__ == "__main__":
     optparser = optparse.OptionParser()
     optparser.add_option("-f", "--file", dest="file", help="AAL Events file", default=[], action="append")
@@ -644,6 +670,23 @@ if __name__ == "__main__":
     x = AAL(files=options.file, dagdisplay=True)
     print "Incoming Event triggers", x.ieventtriggers
     print "Outgoing Event triggers", x.oeventtriggers
+    
+    outGoingEventTriggers = set()
+    for triggerSet in x.oeventtriggers.values():
+        outGoingEventTriggers |= triggerSet
+        
+    inComingEventTriggers = set()
+    for triggerSet in x.ieventtriggers.values():
+        inComingEventTriggers |= triggerSet
+        
+    print "outGoingEventTriggers: ", outGoingEventTriggers
+    print "inComingEventTriggers: ", inComingEventTriggers
+    
+    if inComingEventTriggers.issubset(outGoingEventTriggers):
+        print 'Incoming event triggers is a subset of outgoing event triggers'
+    else:
+        log.error('Incoming event triggers is not a subset of outgoing event triggers')
+        
     print x.__repr__()
 
 
