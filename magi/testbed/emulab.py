@@ -18,9 +18,46 @@ class EmulabTestbed(Testbed):
     def __init__(self):
         Testbed.__init__(self)
         self._store = {}
+    
+    """    Testbed Properties (readonly) """
+    
+    @property
+    def experiment(self):
+        """ the experiment name """
+        return self.getExperiment()
 
+    @property
+    def project(self):
+        """ the project name """
+        return self.getProject()
+
+    @property
+    def eid(self):
+        """ the experiment 'id' string """
+        return self.getExperimentID()
+    
+    def getExperiment(self):
+        if 'experiment' not in self._store:
+            self.loadEID()
+        return self._store['experiment']
+
+    def getProject(self):
+        if 'project' not in self._store:
+            self.loadEID()
+        return self._store['project']
+
+    def getExperimentID(self):
+        if 'eid' not in self._store:
+            self.loadEID()
+        return self._store['eid']
+    
     def getExperimentDir(self):
         return os.path.join('/proj', self.getProject(), 'exp', self.getExperiment())
+
+    def toControlPlaneNodeName(self, nodename):
+        if nodename not in ['localhost', '127.0.0.1'] and '.' not in nodename:
+            nodename += '.%s.%s' % (self.getExperiment(), self.getProject())
+        return nodename
 
     """ Queries for this Node """
     def getLocalVirtualNodes(self):

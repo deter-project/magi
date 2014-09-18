@@ -54,21 +54,6 @@ class Testbed(object):
         return self.getFQDN()
     
     @property
-    def experiment(self):
-        """ the experiment name """
-        return self.getExperiment()
-
-    @property
-    def project(self):
-        """ the project name """
-        return self.getProject()
-
-    @property
-    def eid(self):
-        """ the experiment 'id' string """
-        return self.getExperimentID()
-
-    @property
     def controlip(self):
         """ local control interface IP address """
         return self.getControlIP()
@@ -84,21 +69,6 @@ class Testbed(object):
         return self.getTopoGraph()
 
     """    Testbed Properties (readonly) """
-    
-    def getExperiment(self):
-        if 'experiment' not in self._store:
-            self.loadEID()
-        return self._store['experiment']
-
-    def getProject(self):
-        if 'project' not in self._store:
-            self.loadEID()
-        return self._store['project']
-
-    def getExperimentID(self):
-        if 'eid' not in self._store:
-            self.loadEID()
-        return self._store['eid']
     
     def getServer(self, FQDN=False):
         # Gets the complete topology map and returns control if 
@@ -119,6 +89,12 @@ class Testbed(object):
             return '%s.%s.%s' % (host, self.experiment, self.project)
         else:
             return host    
+    
+    def getExperimentDir(self):
+        NIE()
+        
+    def toControlPlaneNodeName(self, nodename):
+        NIE()
 
     def getTopoGraph(self):
         if 'topograph' not in self._store:

@@ -1,29 +1,28 @@
+
 #!/usr/bin/env python
 # Copyright (C) 2012 University of Southern California
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-from base import Testbed
+from base import IFObj
 from collections import defaultdict
+from emulab import EmulabTestbed
+from magi.util.execl import pipeIn
 import itertools
 import logging
-import os
 import re
 import socket
 import xml.etree.ElementTree as ET
 
 log = logging.getLogger(__name__)
 
-class ContainerExperiment(Testbed):
+class ContainerExperiment(EmulabTestbed):
     
     def __init__(self):
-        Testbed.__init__(self)
+        EmulabTestbed.__init__(self)
         self._store = {}
         self._confdir = '/var/containers/config/'
 
-    def getExperimentDir(self):
-        return os.path.join('/proj', self.getProject(), 'exp', self.getExperiment())
-    
     """ Queries for this Node """
     
     def amAVirtualNode(self):
@@ -131,6 +130,39 @@ class ContainerExperiment(Testbed):
 
     def getTopoXml(self): return self.readAllLines(open(self._confdir+'topo.xml'))
     def getPhysTopoXml(self): return self.readAllLines(open(self._confdir+'phys_topo.xml'))
+    
+    def getIfconfigData(self, matchip=None, matchname=None):
+        """ Get the name and MAC address for an interface given its IP address, IP can be a regular expression """
+        if not matchip and not matchname:
+            raise KeyError("Either IP or interface name should be provided")
+        
+        (ip, name, mac, mask) = (None, None, None, None)
+
+        # TODO: linux output right now, can generalize for bsd with a couple additions
+        for line in pipeIn('ifconfig'):
+            # new interface name entry
+            if line[0].isalpha():  
+                if matchip and re.match(matchip, str(ip)): # see if we already had match on previous entry, uses re
+                    return IFObj(ip, name, mac, mask)
+                elif matchname and re.match(matchname, str(name)): # see if we already had match on previous entry, uses re
+                    return IFObj(ip, name, mac, mask)
+            
+                # Otherwise start new entry
+                (ip, name, mac, mask) = (None, None, None, None)
+                p = line.split()
+                name = p[0]
+                if p[3] == 'HWaddr': 
+                    mac = p[4]
+
+            elif 'inet addr' in line:
+                p = line.split()
+                ip = p[1].split(':')[1]
+                if 'Mask' in p[2]:
+                    mask = p[2].split(':')[1]
+                else:
+                    mask = p[3].split(':')[1]
+
+        return IFObj(matchip, None, None, None)
     
 # Small test if running this file directly
 if __name__ == "__main__":

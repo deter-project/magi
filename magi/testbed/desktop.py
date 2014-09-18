@@ -28,6 +28,9 @@ class DesktopExperiment(Testbed):
     def getServer(self, FQDN=False):
         return Testbed.getServer(self, FQDN=False)
     
+    def toControlPlaneNodeName(self, nodename):
+        return nodename
+    
     """ Functions that actually load the data into our _store """
 
     def loadEID(self):
@@ -36,9 +39,6 @@ class DesktopExperiment(Testbed):
             if 'node' not in self._store:
                 self._store['node'] = socket.gethostname()
                 
-            self._store.update(experiment='desktopExperiment', 
-                               project='desktopProject', 
-                               eid='desktopExperiment/desktopProject')
         except Exception:
             log.exception("Can't load host information")
 
