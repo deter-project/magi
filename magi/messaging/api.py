@@ -51,8 +51,7 @@ class Messenger(object):
 			TCPTransport('192.168.1.50', 17708)
 			MulticastTransport('192.168.1.40', '255.239.13.4')
 		"""
-#		self.txqueue.put(TransportRequest(transport, keepConnected))
-		self.thread.addTransport(transport, keepConnected)
+		self.txqueue.put(TransportRequest(transport, keepConnected))
 
 	def join(self, group, caller = "default"):
 		""" 
@@ -61,8 +60,7 @@ class Messenger(object):
 			The call option allows one to attach an 'ID' to the join request so that someone else joining and leaving
 			the same group doesn't cause the official leave to actually occur.
 		"""
-#		self.txqueue.put(GroupRequest("join", group, caller))
-		self.thread.processGroupRequest(GroupRequest("join", group, caller))
+		self.txqueue.put(GroupRequest("join", group, caller))
 		self.groupMembership[group].add(caller)
 
 	def leave(self, group, caller = "default"):
@@ -71,8 +69,7 @@ class Messenger(object):
 			This messaging object will no longer receive messages for this group.
 			If the caller joined with a caller value, it must use the same value for the leave request
 		"""
-#		self.txqueue.put(GroupRequest("leave", group, caller))
-		self.thread.processGroupRequest(GroupRequest("leave", group, caller))
+		self.txqueue.put(GroupRequest("leave", group, caller))
 		self.groupMembership[group].discard(caller)
 		if not self.groupMembership[group]:
 			del self.groupMembership[group]

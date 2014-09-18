@@ -144,7 +144,6 @@ class WorkerThread(threading.Thread):
 			transport.inmessages = []
 
 
-
 	def processUserRequests(self):
 		"""
 			Process all the requests that have come through the user API
@@ -152,32 +151,23 @@ class WorkerThread(threading.Thread):
 		"""
 		while not self.txqueue.empty():
 			obj = self.txqueue.get_nowait()
-			log.debug("Processing locally created message %s", obj.msg)
-			if type(obj.msg.data) not in (str, buffer):
-				log.error("Dropping message, data is of type %s, needs to be a string or buffer", type(obj.msg.data))
-				return
-			obj.msg._receivedon = self.transportMap[0]
-			obj.msg._userargs = obj.args
-			self.queues['OUT'].append(obj.msg)
-
-#			if isinstance(obj, TransmitRequest):
-#				log.debug("Processing locally created message %s", obj.msg)
-#				if type(obj.msg.data) not in (str, buffer):
-#					log.error("Dropping message, data is of type %s, needs to be a string or buffer", type(obj.msg.data))
-#					return
-#				obj.msg._receivedon = self.transportMap[0]
-#				obj.msg._userargs = obj.args
-#				self.queues['OUT'].append(obj.msg)
+			if isinstance(obj, TransmitRequest):
+				log.debug("Processing locally created message %s", obj.msg)
+				if type(obj.msg.data) not in (str, buffer):
+					log.error("Dropping message, data is of type %s, needs to be a string or buffer", type(obj.msg.data))
+					return
+				obj.msg._receivedon = self.transportMap[0]
+				obj.msg._userargs = obj.args
+				self.queues['OUT'].append(obj.msg)
 		
-#			elif isinstance(obj, TransportRequest):
-#				log.info("Request to add new transport %s to map keepConnected: %s" % (obj.transport, obj.keepConnected))
-#				self.addTransport(obj.transport, obj.keepConnected)
+			elif isinstance(obj, TransportRequest):
+				log.info("Request to add new transport %s to map keepConnected: %s" % (obj.transport, obj.keepConnected))
+				self.addTransport(obj.transport, obj.keepConnected)
 
-#			elif isinstance(obj, GroupRequest):
-#				log.debug("Request to %s group %s from local node", obj.type, obj.group)
-#				for proc in self.processors:
-#					proc.groupRequest(obj)
-
+			elif isinstance(obj, GroupRequest):
+				log.debug("Request to %s group %s from local node", obj.type, obj.group)
+				for proc in self.processors:
+					proc.groupRequest(obj)
 
 
 	def routeMessage(self, msg):
@@ -307,11 +297,6 @@ class WorkerThread(threading.Thread):
 		self.addTransport(oldTransport)
 	
 	
-	def processGroupRequest(self, obj):
-		log.debug("Request to %s group %s from local node", obj.type, obj.group)
-		for proc in self.processors:
-			proc.groupRequest(obj)
-
 	###### MsgIntf ###
 
 	def send(self, msg):
