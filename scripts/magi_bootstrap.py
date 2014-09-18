@@ -240,76 +240,102 @@ if __name__ == '__main__':
             # Now that MAGI is installed on the local node, import utilities 
             from magi import __version__
             from magi.util import config, helpers
-    
-            # create a MAGI node configuration file only if one is not explicitly specified 
-            if not options.nodeconf:
-                    log.info("MAGI node configuration file has not been provided as an input argument")
-                    log.info("Testing to see if one is present")
-                    
-                    createNodeConfig = False 
-                    try: 
-                            # Create a MAGI node configuration file if one is not present or needs to be recreated 
-#                            if options.force == True:
-#                                    log.info("force flag set. Need to (re)create node configuration file.")  
-#                                    createNodeConfig  = True
-#                            elif os.path.exists(config.getNodeConfFile()):
-#                                    log.info("Found a node configuration file at %s. Using it.", config.getNodeConfFile()) 
-#                                    nodeConfig = config.loadNodeConfig(config.getNodeConfFile()) 
-#                            else:
-#                                    # Node configuration file does not exist
-#                                    log.info("No valid node configuration file found at %s. Need to create one.", config.getNodeConfFile())
-#                                    createNodeConfig = True 
-                            createNodeConfig = True
-                            if createNodeConfig: 
-                                    log.info("Creating a new node configuration file")
-                                
-                                    # 7/24/2014 The messaging overlay and the database configuration is now explicitly defined
-                                    # in an experiment wide configuration file. The experiment wide configuration file format 
-                                    # is documented in magi/util/config.py. The experiment wide configuration file contains the messaging 
-                                    # overlay configuration and the database configuration.
-                                    # 
-                                    # In the absence of messaging overlay configuration, the bootstrap process defines a simple messaging 
-                                    # overlay that starts two servers; one externally facing for the experimenter to connect to the experiment
-                                    # and one internally facing to forward magi messages to all the experiment nodes. 
-                                    # The node that hosts both the servers is chosen as follows:
-                                    #    - it checks to see if a node named "control" is present in the experiment 
-                                    #      If present, it is chosen 
-                                    #   -  else, the first node in an alpha-numerically sorted  
-                                    #      list of all node names is used  
-                                    #
-                                    # In the absence of database configuration, the bootstrap process defines a simple configuration, with
-                                    # each sensor collecting data locally. The database config node is also chosen using the above steps.
-                                    #
-                                    # It then stores the configuration file at config.EXPCONF_FILE location 
-                                    # 
-                                    log.info("Checking to see if a experiment configuration is provided")
-                                    if not options.expconf:
-                                            log.info("No experiment configuration file specified")      
-                                            experimentConfig = config.createExperimentConfig(distributionPath=rpath, isDBEnabled=not options.nodataman)
-                                    else:
-                                            log.info("Using experiment configuration file at %s", options.expconf)
-                                            experimentConfig = config.loadExperimentConfig(options.expconf, distributionPath=rpath, isDBEnabled=not options.nodataman)
-                                            
-                                    # Use the experiment configuration file to create node specific configuration
-                                    nodeConfig = config.createNodeConfig(experimentConfig=experimentConfig) 
-                                    
-                                    helpers.writeYaml(nodeConfig, config.getNodeConfFile())
-                                    log.info("Created a node configuration file at %s", config.getNodeConfFile())
-                                    
-                                    helpers.writeYaml(experimentConfig, config.getExperimentConfFile())
-                                    log.info("Created a experiment configuration file at %s", config.getExperimentConfFile()) 
-                                    
-                                    if (config.getNodeName() == config.getServer()):
-                                        import shutil
-                                        log.info("Copying experiment.conf to testbed experiment directory %s" %(config.getExperimentDir()))
-                                        shutil.copy(config.getExperimentConfFile(), config.getExperimentDir())
-                                    
-                    except Exception, e:
-                            log.error("MAGI configuration failed, things probably aren't going to run: %s", e, exc_info=True)
             
-            else:
-                    nodeConfig = config.loadNodeConfig(options.nodeconf, options.expconf) 
-                    
+            try:
+                # 7/24/2014 The messaging overlay and the database configuration is now explicitly defined
+                # in an experiment wide configuration file. The experiment wide configuration file format 
+                # is documented in magi/util/config.py. The experiment wide configuration file contains the messaging 
+                # overlay configuration and the database configuration.
+                # 
+                # In the absence of messaging overlay configuration, the bootstrap process defines a simple messaging 
+                # overlay that starts two servers; one externally facing for the experimenter to connect to the experiment
+                # and one internally facing to forward magi messages to all the experiment nodes. 
+                # The node that hosts both the servers is chosen as follows:
+                #    - it checks to see if a node named "control" is present in the experiment 
+                #      If present, it is chosen 
+                #   -  else, the first node in an alpha-numerically sorted  
+                #      list of all node names is used  
+                #
+                # In the absence of database configuration, the bootstrap process defines a simple configuration, with
+                # each sensor collecting data locally. The database config node is also chosen using the above steps.
+                # 
+                
+                config.setNodeDir(options.nodedir)
+                
+                log.info("Checking to see if a experiment configuration is provided")
+                if not options.expconf:
+                        log.info("MAGI experiment configuration file has not been provided as an input argument")
+                        log.info("Testing to see if one is present")
+                        
+                        createExperimentConfig = False 
+                        
+                        # Create a MAGI experiment configuration file if one is not present or needs to be recreated 
+                        if options.force == True:
+                                log.info("force flag set. Need to (re)create node configuration file.")  
+                                createExperimentConfig  = True
+                        else:
+                            experimentConfigFile = config.getExperimentConfFile()
+                            if os.path.exists(experimentConfigFile):
+                                    log.info("Found an experiment configuration file at %s. Using it.", experimentConfigFile) 
+                                    experimentConfig = config.loadExperimentConfig(experimentConfig=experimentConfigFile, 
+                                                                                   distributionPath=rpath, 
+                                                                                   isDBEnabled=not options.nodataman)
+                            else:
+                                    # Experiment configuration file does not exist
+                                    log.info("No valid experiment configuration file found at %s. Need to create one.", experimentConfigFile)
+                                    createExperimentConfig = True 
+
+                        if createExperimentConfig: 
+                                log.info("Creating a new experiment configuration file")
+                                experimentConfig = config.createExperimentConfig(distributionPath=rpath, isDBEnabled=not options.nodataman)
+                                
+                else:
+                        log.info("Using experiment configuration file at %s", options.expconf)
+                        experimentConfig = config.loadExperimentConfig(options.expconf, distributionPath=rpath, isDBEnabled=not options.nodataman)
+                                                
+                # create a MAGI node configuration file only if one is not explicitly specified 
+                if not options.nodeconf:
+                        log.info("MAGI node configuration file has not been provided as an input argument")
+                        log.info("Testing to see if one is present")
+                        
+                        createNodeConfig = False 
+                        # Create a MAGI node configuration file if one is not present or needs to be recreated 
+                        if options.force == True:
+                                log.info("force flag set. Need to (re)create node configuration file.")  
+                                createNodeConfig  = True
+                        elif os.path.exists(config.getNodeConfFile()):
+                                log.info("Found a node configuration file at %s. Using it.", config.getNodeConfFile()) 
+                                nodeConfig = config.loadNodeConfig(nodeConfig=config.getNodeConfFile(), experimentConfig=experimentConfig) 
+                        else:
+                                # Node configuration file does not exist
+                                log.info("No valid node configuration file found at %s. Need to create one.", config.getNodeConfFile())
+                                createNodeConfig = True 
+
+                        if createNodeConfig: 
+                                log.info("Creating a new node configuration file")
+                                # Use the experiment configuration to create node specific configuration
+                                nodeConfig = config.createNodeConfig(experimentConfig=experimentConfig) 
+                
+                else:
+                        log.info("Using node configuration file at %s", options.nodeconf)
+                        nodeConfig = config.loadNodeConfig(nodeConfig=options.nodeconf, experimentConfig=experimentConfig) 
+                        
+                helpers.makeDir(os.path.dirname(config.getNodeConfFile()))
+                helpers.writeYaml(nodeConfig, config.getNodeConfFile())
+                log.info("Created a node configuration file at %s", config.getNodeConfFile())
+                
+                helpers.makeDir(os.path.dirname(config.getExperimentConfFile()))
+                helpers.writeYaml(experimentConfig, config.getExperimentConfFile())
+                log.info("Created a experiment configuration file at %s", config.getExperimentConfFile()) 
+            
+            except:
+                    log.exception("MAGI configuration failed, things probably aren't going to run")
+                                
+            if (config.getNodeName() == config.getServer()):
+                import shutil
+                log.info("Copying experiment.conf to testbed experiment directory %s" %(config.getExperimentDir()))
+                shutil.copy(config.getExperimentConfFile(), config.getExperimentDir())
+                                        
             # Now that the system is configured, import database library
             from magi.util import database
             
