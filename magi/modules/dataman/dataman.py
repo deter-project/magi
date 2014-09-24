@@ -55,10 +55,11 @@ class DataManAgent(NonBlockingDispatchAgent):
                 database.isShardRegistered(block=True)
                 log.info("Local database has been added as a shard")
         else:
-            log.info("Setting up a single node database")
-            log.info("Starting mongo database server")
-            dp = database.startDBServer()
-            self.dbProcesses.add(dp)
+            log.info("Setting up a non-distributed database")
+            if database.isCollector:
+                log.info("Starting mongo database server")
+                dp = database.startDBServer()
+                self.dbProcesses.add(dp)
             
     def setupDBLogHandler(self):
         log.info("Setting up database log handler")
