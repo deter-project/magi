@@ -184,33 +184,45 @@ class Testbed(object):
         if not matchip and not matchname:
             raise KeyError("Either IP or interface name should be provided")
         
-        (ip, name, mac, mask) = (None, None, None, None)
-
         # TODO: linux output right now, can generalize for bsd with a couple additions
+        
+        #Because the interface information is found in multiple lines
+        #flag indicates if gathering information about an interface is in progress
+        flag = False
+        
         for line in pipeIn('ifconfig'):
-            # new interface name entry
-            if line[0].isalpha():  
-                if matchip and re.match(matchip, str(ip)): # see if we already had match on previous entry, uses re
-                    return IFObj(ip, name, mac, mask)
-                elif matchname and re.match(matchname, str(name)): # see if we already had match on previous entry, uses re
-                    return IFObj(ip, name, mac, mask)
-            
-                # Otherwise start new entry
+            # flag not True would indicate that we are looking for a new entry
+            # if first character is line isalpha, then it is the beginning of a new interface entry
+            if not flag and line[0].isalpha(): 
+                # Start new entry
                 (ip, name, mac, mask) = (None, None, None, None)
                 p = line.split()
                 name = p[0]
                 if p[3] == 'HWaddr': 
                     mac = p[4]
+                    
+                # set flag
+                flag = True
 
-            elif 'inet addr' in line:
+            elif flag and 'inet addr' in line:
                 p = line.split()
                 ip = p[1].split(':')[1]
                 if 'Mask' in p[2]:
                     mask = p[2].split(':')[1]
                 else:
                     mask = p[3].split(':')[1]
-
-        return IFObj(matchip, None, None, None)
+                    
+                # all information should be complete by now
+                # try to match with the required, and if successfully matched, return information
+                if matchip and re.match(matchip, str(ip)): # see if we already had match on previous entry, uses re
+                    return IFObj(ip, name, mac, mask)
+                elif matchname and re.match(matchname, str(name)): # see if we already had match on previous entry, uses re
+                    return IFObj(ip, name, mac, mask)
+                
+                # unset flag, look for another entry
+                flag = False
+                
+        return IFObj(matchip, matchname, None, None)
     
     def getHostForName(self, name): return socket.gethostbyname(name)
 
