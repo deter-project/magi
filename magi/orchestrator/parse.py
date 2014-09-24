@@ -72,7 +72,7 @@ class TimeoutTrigger(Trigger):
     
     def __init__(self, triggerData):
         Trigger.__init__(self, triggerData)
-        self.timeout = triggerData['timeout'] / 1000
+        self.timeout = triggerData.get('timeout', 0) / 1000
         self.timeActivated = None
         
     def activate(self, activationTime=None):
@@ -126,16 +126,16 @@ class EventTrigger(Trigger):
                 else:
                     interestedNodeSet |= matchingTrigger.nodes
                 
-#            if self.event == 'intfSensed':
-#                print 'isComplete'
-#                print self
-#                print cachedTriggers
-#                print matchingTriggers
-#                print interestedNodeSet
-                
             return len(interestedNodeSet) >= self.count
         
         return False
+    
+    def isEqual(self, trigger):
+        return self.event == trigger.event and self.args == trigger.args
+    
+    def merge(self, trigger):
+        self.nodes.update(trigger.nodes)
+        self.count = max(len(self.nodes), 1)
         
 class ConjunctionTrigger(Trigger):
     
@@ -183,20 +183,17 @@ class DisjunctionTrigger(Trigger):
                 
 def getTriggerType(triggerData):
     try:
-        if 'timeout' in triggerData:
-            return Trigger.TIMEOUT
-        elif 'event' in triggerData:
+        if 'event' in triggerData:
             return Trigger.EVENT
         elif 'type' in triggerData:
             if triggerData['type'] == 'AND':
                 return Trigger.CONJUNCTION
             elif triggerData['type'] == 'OR':
                 return Trigger.DISJUNCTION
+        return Trigger.TIMEOUT
     except:
         pass
     
-    raise AttributeError("Invalid trigger data: %s" %(triggerData))
-
 def createTrigger(triggerData):
     triggerClasses = { Trigger.TIMEOUT : TimeoutTrigger, 
                        Trigger.EVENT : EventTrigger, 
@@ -381,7 +378,7 @@ class AAL(object):
         ordered set of events and triggers
     """
 
-    def __init__(self, files=None, data=None, groupBuildTimeout=20000, dagdisplay=False):
+    def __init__(self, files=None, data=None, groupBuildTimeout=20000, dagdisplay=False, triggerCheck=False):
         """
             Create a new AAL object using either files or a
             string object (data).
@@ -537,7 +534,22 @@ class AAL(object):
                 else:
                     log.warning("Skipping unknown stream entry type %s",
                                 event['type'])
-
+        
+        
+        outGoingEventTriggers = set()
+        for triggerSet in self.oeventtriggers.values():
+            outGoingEventTriggers |= triggerSet
+            
+        inComingEventTriggers = set()
+        for triggerSet in self.ieventtriggers.values():
+            inComingEventTriggers |= triggerSet
+            
+        if inComingEventTriggers.issubset(outGoingEventTriggers):
+            log.info('Incoming event triggers is a subset of outgoing event triggers')
+        elif not triggerCheck:
+            log.error('Incoming event triggers is not a subset of outgoing event triggers')
+            raise AALParseError('Incoming event triggers is not a subset of outgoing event triggers')
+        
     def getSetupStream(self):
         return self.setupStream
 
@@ -653,7 +665,8 @@ class AAL(object):
         rstr += "Teardown Stream\n\n" 
         rstr += str(self.teardownStream)
         return rstr
-        
+
+      
 class AALParseError(Exception):
     '''Small wrapper around exception for AAL parse errors.'''
     def __init__(self, error):
@@ -668,25 +681,5 @@ if __name__ == "__main__":
     (options, args) = optparser.parse_args()
 
     x = AAL(files=options.file, dagdisplay=True)
-    print "Incoming Event triggers", x.ieventtriggers
-    print "Outgoing Event triggers", x.oeventtriggers
-    
-    outGoingEventTriggers = set()
-    for triggerSet in x.oeventtriggers.values():
-        outGoingEventTriggers |= triggerSet
-        
-    inComingEventTriggers = set()
-    for triggerSet in x.ieventtriggers.values():
-        inComingEventTriggers |= triggerSet
-        
-    print "outGoingEventTriggers: ", outGoingEventTriggers
-    print "inComingEventTriggers: ", inComingEventTriggers
-    
-    if inComingEventTriggers.issubset(outGoingEventTriggers):
-        print 'Incoming event triggers is a subset of outgoing event triggers'
-    else:
-        log.error('Incoming event triggers is not a subset of outgoing event triggers')
-        
     print x.__repr__()
-
 

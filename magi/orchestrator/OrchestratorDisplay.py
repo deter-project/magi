@@ -87,82 +87,58 @@ class OrchestratorDisplayState(object):
     def triggerCompleted(self, streamIter, trigger):
         now = self._timestamp()
         if isinstance(trigger, parse.TimeoutTrigger):
-            print '%s : %s : (%s) trigger completed: timeout:%s' % (
+            print '%s : %s : (%s) trigger completed: timeout: %s' % (
                 self._name(streamIter), self._green('trig'), now, trigger.timeout)
         elif isinstance(trigger, parse.EventTrigger):
-            print '%s : %s : (%s) trigger completed: %s:%s' % (
+            print '%s : %s : (%s) trigger completed: %s: %s' % (
                 self._name(streamIter), self._green('trig'), now, trigger.event, trigger.args)
         else:
             print '%s : %s : (%s) trigger completed: %s' % (
                 self._name(streamIter), self._green('trig'), now, trigger.__class__.__name__)
             
-    def showTriggerDiffs(self, cache, streams):
+    def waitingOnTriggers(self, cache, streams):
         '''Go through all outstanding triggers and find matched in the cache. Display
         the difference between what we've seen and what we want i.e. what we are 
         still waiting on.'''
         now = self._timestamp()
-        for si in streams:
-            if si.isNextTrigger():
-                for aal_tr in si.getTriggers():
-                    event = aal_tr.args.get('event', 'NOEVENT')
-                    timeout = aal_tr.args.get('timeout', None)
-                    timeout = '' if not timeout else ' timeout: %d' % aal_tr.args.timeout
-                    if not len(aal_tr.sets):
-                        print '%s : %s : (%s) trigger %s waiting for anything %s' % (
-                            self._name(si.name), self._red('wait'), now, event, timeout)
+        for streamItr in streams:
+            if streamItr.isNextTrigger():
+                for trigger in streamItr.next():
+                    if isinstance(trigger, parse.TimeoutTrigger):
+                        timeout = trigger.timeActivated + trigger.timeout - time.time()
+                        print '%s : %s : (%s) timeout trigger will complete in %d seconds' % (
+                            self._name(streamItr.name), self._red('wait'), now, timeout)
+                    elif isinstance(trigger, parse.EventTrigger):
+                        event = trigger.event
+                        completedNodes = set()
+                        for cachedTrigger in cache[event]:
+                            if cachedTrigger.isEqual(trigger):
+                                completedNodes = cachedTrigger.nodes
+                                break
+                        remainingNodes = trigger.nodes - completedNodes
+                        print '%s : %s : (%s) event trigger %s waiting to be received from nodes %s' % (
+                            self._name(streamItr.name), self._red('wait'), now, event, self._minstr(remainingNodes))
                     else:
-                        diff = set()
-                        for key in aal_tr.sets:
-                            if not event in cache:
-                                # no cached instances, show it all
-                                diff = aal_tr.sets[key]
-                            else:
-                                for cache_tr in cache[event]:
-                                    diff.update(cache_tr.sets[key] - aal_tr.sets[key])
-                                
-                            print '%s : %s : (%s) trigger %s waiting on %s: %s %s' % (
-                                self._name(si.name), self._red('wait'), now, event, key, 
-                                self._minstr(diff), timeout)
+                        print '%s : %s : (%s) %s waiting to be completed' % (
+                            self._name(streamItr.name), self._red('wait'), now, trigger.__class__.__name__)
 
-    def waitingOnTriggers(self, streamIter):
+    def exitOnFalse(self, trigger):
         now = self._timestamp()
-        for td in streamIter.getTriggers():
-            timeout = 0 if not 'timeout' in td.args else td.args['timeout']
-            nodes = self._minstr(td.sets['nodes']) if 'nodes' in td.sets else 'unknown'
-            print '%s : %s : (%s) trigger %s, timeout: %d, nodes: %s' % (
-                self._name(streamIter.name), self._red('wait'), now, td.args['event'], 
-                timeout, nodes)
-
-    def triggerMatched(self, streamIter, trigger):
-        now = self._timestamp()
-        group = ' ' if not 'group' in trigger.args else ' ' + trigger.args['group'] + ' '
-        name = ' ' if not 'name' in trigger.args else ' ' + trigger.args['name'] + ' '
-
-        event = None if not 'event' in trigger.args else ' ' + trigger.args['event'] + ' '
-        if event is None:
-            event = ' ' if not 'eset' in trigger.sets else ' ' + str(trigger.sets['eset']) + ' '
-
-        print '%s : %s : (%s) trigger %s%s%scomplete.' % (
-            self._name(streamIter), self._green('done'), now,
-            event, group, name)
-
-    def exitOnFalse(self, td):
-        now = self._timestamp()
-        group = self._minstr(td.args['group']) if 'group' in td.args else 'unknown'
-        nodes = self._minstr(td.sets['nodes']) if 'nodes' in td.sets else 'unknown'
-        method = td.args['event'] if 'event' in td.args else 'unknown'
-        name = td.args['name'] if 'name' in td.args else 'unknown'
+        nodes = self._minstr(trigger.nodes) if trigger.nodes else 'unknown'
+        method = trigger.event
+        group = trigger.args.get('group', 'unknown')
+        name = trigger.args.get('name', 'unknown')
         print '%s : %s : (%s) method %s returned False on agent %s in group %s and on node(s): %s.' % (
             self._name(None), self._red('exit'), now, method, name, group, nodes)
 
-    def exitRunTimeException(self, td):
+    def exitRunTimeException(self, trigger):
         now = self._timestamp()
-        nodes = self._minstr(td.sets['nodes']) if 'nodes' in td.sets else 'unknown'
-        func_name = td.args['func_name'] if 'func_name' in td.args else 'unknown'
-        filename = td.args['filename'] if 'filename' in td.args else 'unknown'
-        line_num = td.args['line_num'] if 'line_num' in td.args else 'unknown'
-        agent = td.args['agent'] if 'agent' in td.args else 'unknown'
-        error = td.args['error'] if 'error' in td.args else 'unknown'
+        nodes = self._minstr(trigger.nodes) if trigger.nodes else 'unknown'
+        func_name = trigger.args.get('func_name', 'unknown')
+        filename = trigger.args.get('filename', 'unknown')
+        line_num = trigger.args.get('line_num', 'unknown')
+        agent = trigger.args.get('agent', 'unknown')
+        error = trigger.args.get('error', 'unknown')
         print ('%s : %s : (%s) Run-time exception in agent %s on node(s) %s '
                'in method %s, line %s, in file %s. Error: %s' % (
                    self._name(None), self._red('exit'), now, agent, nodes, 

@@ -88,7 +88,7 @@ class Orchestrator(object):
     
     # if True, show current state
     show_state = False
-
+    
     def __init__(self, messenger, aal, verbose=False, exitOnFailure=True, 
             useColor=True, dagdisplay=False):
         """
@@ -100,7 +100,7 @@ class Orchestrator(object):
         # If true, stop the current streams
         self.stopStreams = False
         # If true, attempt to run teardownStreams when shutting down
-        self.doTeardown = False
+        self.doTearDown = False
 
         self.messaging = messenger
         self.aal = aal
@@ -150,12 +150,13 @@ class Orchestrator(object):
 
         self.runStreams()
 
-        if self.doTeardown:
+        if self.doTearDown:
             log.info("Running Exit Stream")
             self.streams = {'exit' : 
                             StreamIterator('exit', 
                                            self.aal.getTeardownStream())}
             self.stopStreams = False
+            self.exitOnFailure = False
             self.runStreams()
 
         self.messaging.leave("control", "orchestrator")
@@ -194,6 +195,7 @@ class Orchestrator(object):
         log.debug('running stream: \n%s', self.streams)
         while len(self.streams) > 0 and not self.stopStreams:
             try:
+                
                 msg = None
                 # minimumTimeout is the minimum timeout for the currently
                 # staged event/triggers. This is usually zero unless
@@ -211,10 +213,6 @@ class Orchestrator(object):
                     except Queue.Empty: 
                         pass
 
-                    if Orchestrator.show_state:
-                        self.display.showTriggerDiffs(self.triggerCache, self.streams.values())
-                        Orchestrator.show_state = False        
-                    
                     if not msg:
                         continue
 
@@ -247,6 +245,10 @@ class Orchestrator(object):
             except Queue.Empty:
                 pass
 
+            if Orchestrator.show_state:
+                self.display.waitingOnTriggers(self.triggerCache, self.streams.values())
+                Orchestrator.show_state = False
+                    
             # continue until nothing can move forward anymore
             progress = True
             while progress:
@@ -284,9 +286,6 @@ class Orchestrator(object):
                         triggerList = streamIter.next()
                         for trigger in triggerList:
                             if trigger.isComplete(self.triggerCache):
-                                import parse
-                                if isinstance(trigger, (parse.ConjunctionTrigger, parse.DisjunctionTrigger)):
-                                    print trigger
                                 self.display.triggerCompleted(streamIter, trigger)
                                 self.jumpToTarget(streamIter, trigger)
                                 progress = True
@@ -311,7 +310,7 @@ class Orchestrator(object):
             if trigger.target == 'exit':
                 self.display.streamJump(streamIter, trigger.target)
                 self.stopStreams = True  # stop current streams
-                self.doTeardown = True   # attempt a clean teardown before exit
+                self.doTearDown = True   # attempt a clean teardown before exit
             elif self.aal.hasStream(trigger.target):
                 self.display.streamJump(streamIter, trigger.target)
                 self.streams[trigger.target] = StreamIterator(trigger.target, self.aal.getStream(trigger.target))
@@ -327,9 +326,15 @@ class Orchestrator(object):
             Return the value that was appended or modified.
         """
         event = incoming.event
-        
         log.debug('trigger cache: %s' % self.triggerCache) 
-        self.triggerCache[event].append(incoming)
+        merged = False
+        for trigger in self.triggerCache[event]:
+            if trigger.isEqual(incoming):
+                trigger.merge(incoming)
+                merged = True
+                break
+        if not merged:
+            self.triggerCache[event].append(incoming)
         log.debug('Updated trigger cache: %s' % self.triggerCache) 
         
         return self.triggerCache[event]

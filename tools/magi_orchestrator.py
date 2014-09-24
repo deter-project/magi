@@ -11,11 +11,19 @@ import logging.handlers
 import optparse
 import os.path
 import signal
+import time
 
-def sigusr1_handler(signum, name):
+lastSignalRcvd = 0
+
+def signal_handler(signum, frame):
     '''Set the flag in the Orchestrator module that causes current
-    state to be printed to stdout when we get signal USR1.'''
+    state to be printed to stdout when we get signal SIGINT.'''
+    global lastSignalRcvd
+    if time.time() - lastSignalRcvd < 2:
+        exit(0)
+    lastSignalRcvd = time.time()
     Orchestrator.show_state = True
+    print "Send SIGINT signal (ctrl+c) again within next 2 seconds to quit"
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
@@ -180,7 +188,7 @@ if __name__ == '__main__':
             logging.error("Error connecting to %s: %d" %(bridgeNode, bridgePort))
             exit(3)
     
-        signal.signal(signal.SIGUSR1, sigusr1_handler)
+        signal.signal(signal.SIGINT, signal_handler)
     
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
