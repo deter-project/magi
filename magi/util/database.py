@@ -74,7 +74,7 @@ def startConfigServer(timeout=TIMEOUT):
             raise
 
         log.info("Trying to start mongo config server")
-        mongod = ['/usr/local/bin/mongod', '--configsvr', 
+        mongod = ['mongod', '--configsvr', 
                   '--dbpath', dbPath, 
                   '--port', str(CONFIG_SERVER_PORT), 
                   '--logpath', os.path.join(config.getLogDir(), "mongoc.log")]
@@ -120,7 +120,7 @@ def startShardServer(configHost=configHost, timeout=TIMEOUT):
         getConnection(configHost, port=CONFIG_SERVER_PORT, timeout=timeout)
         
         log.info("Trying to start mongo shard server")
-        mongos = ['/usr/local/bin/mongos', '--configdb', '%s:%d'%(configHost, CONFIG_SERVER_PORT), 
+        mongos = ['mongos', '--configdb', '%s:%d'%(configHost, CONFIG_SERVER_PORT), 
                   '--port', str(ROUTER_SERVER_PORT), 
                   '--noAutoSplit', 
                   '--logpath', os.path.join(config.getLogDir(), "mongos.log")]
@@ -172,7 +172,7 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
             raise
 
         log.info("Trying to start mongo database server")
-        mongod = ['/usr/local/bin/mongod', '--config', configfile, '--port', str(DATABASE_SERVER_PORT), '--shardsvr', '--journal', '--smallfiles']
+        mongod = ['mongod', '--config', configfile, '--port', str(DATABASE_SERVER_PORT), '--shardsvr', '--journal', '--smallfiles']
         log.info("Running %s", mongod)
         
         while time.time() < stop:
