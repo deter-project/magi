@@ -1,0 +1,9 @@
+#!/bin/sh
+
+cd $1
+tar xzf $2/jonpy-0.07.tar.gz
+cd jonpy-0.07
+# GTL - building the dist doesn;t work in Magi
+# we don't have support yet for caching tar files.
+# python setup.py bdist
+python setup.py install
