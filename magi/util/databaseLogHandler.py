@@ -39,7 +39,8 @@ class DatabaseHandler(logging.Handler):
                 port=database.DATABASE_SERVER_PORT, 
                 level=logging.NOTSET):
         """ Create a handler for a given  """
-        connection = database.getConnection()
+        #Making sure that the database server is up and running
+        connection = database.getConnection(host=host, port=port)
         collection = pymongo.collection.Collection(database=connection[database.DB_NAME], 
                                                         name=database.LOG_COLLECTION_NAME)
         return cls(collection, level=level)
@@ -52,7 +53,8 @@ class DatabaseHandler(logging.Handler):
         """ Init log handler and store the collection handle """
         logging.Handler.__init__(self, level)
         if (type(collection) == str):
-            connection = database.getConnection()
+            #Making sure that the database server is up and running
+            connection = database.getConnection(host=host, port=port)
             self.collection = pymongo.collection.Collection(database=connection[database.DB_NAME], 
                                                             name=database.LOG_COLLECTION_NAME)
         else:
