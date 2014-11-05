@@ -116,8 +116,8 @@ class OrchestratorDisplayState(object):
                                 completedNodes = cachedTrigger.nodes
                                 break
                         remainingNodes = trigger.nodes - completedNodes
-                        print '%s : %s : (%s) event trigger %s waiting to be received from nodes %s' % (
-                            self._name(streamItr.name), self._red('wait'), now, event, self._minstr(remainingNodes))
+                        print '%s : %s : (%s) event trigger %s : %s waiting to be received from nodes %s' % (
+                            self._name(streamItr.name), self._red('wait'), now, trigger.event, trigger.args, self._minstr(remainingNodes))
                     else:
                         print '%s : %s : (%s) %s waiting to be completed' % (
                             self._name(streamItr.name), self._red('wait'), now, trigger.__class__.__name__)

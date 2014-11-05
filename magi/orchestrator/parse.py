@@ -58,6 +58,9 @@ class Trigger():
     def activate(self, activationTime=None):
         self.active = True
     
+    def deActivate(self, activationTime=None):
+        self.active = False
+        
     def isActive(self):
         return self.active
     
@@ -94,12 +97,16 @@ class TimeoutTrigger(Trigger):
 class EventTrigger(Trigger):
     
     def __init__(self, triggerData):
+        functionName = self.__init__.__name__
+        helpers.entrylog(log, functionName, locals())
+    
         Trigger.__init__(self, triggerData)
         self.event = triggerData.pop('event')
         self.nodes = helpers.toSet(triggerData.pop('nodes', None))
         self.count = triggerData.pop('count', max(len(self.nodes), 1))
-        triggerData.setdefault('result', True)    
         self.args = triggerData
+        if not self.args:
+            self.args = {'result' : True}
         
     def isComplete(self, triggerCache):
         if not triggerCache:
@@ -195,12 +202,16 @@ def getTriggerType(triggerData):
         pass
     
 def createTrigger(triggerData):
+    log.debug('Creating new trigger')
     triggerClasses = { Trigger.TIMEOUT : TimeoutTrigger, 
                        Trigger.EVENT : EventTrigger, 
                        Trigger.CONJUNCTION : ConjunctionTrigger, 
                        Trigger.DISJUNCTION : DisjunctionTrigger }
     
-    return triggerClasses[getTriggerType(triggerData)](triggerData)
+    triggerType = getTriggerType(triggerData)
+    log.debug('Trigger Type: %s' %(triggerType))
+    
+    return triggerClasses[triggerType](dict(triggerData))
     
 def getEventTriggers(triggers):
     triggers = helpers.toSet(triggers)
@@ -220,7 +231,7 @@ class TriggerList(list):
     """
     def __init__(self, triggerlist=[]):
         for entry in triggerlist:
-            self.append(createTrigger(dict(entry)))
+            self.append(createTrigger(dict(entry))) #cloning entry to not change the original
         
     def activate(self, activationTime=None):
         if not activationTime:
@@ -447,8 +458,6 @@ class AAL(object):
                     TriggerList([
                         {'event': 'GroupBuildDone', 'group': name, 
                          'nodes': nodes},
-                        {'event': 'GroupBuildDone', 'result': False, 
-                         'target': 'exit'},
                         {'timeout': int(groupBuildTimeout), 
                          'target': 'exit'}]))
 
@@ -471,8 +480,6 @@ class AAL(object):
                     TriggerList([
                         {'event': 'AgentLoadDone', 'agent': name, 
                          'nodes': self.aal['groups'][agent['group']]},
-                        {'event': 'AgentLoadDone', 'agent': name, 
-                         'result': False, 'target': 'exit'},
                         {'timeout': int(timeout), 'target': 'exit'} 
                          ]))
 
@@ -492,8 +499,6 @@ class AAL(object):
                         {'event': 'AgentUnloadDone',
                         'agent': name,
                         'nodes': self.aal['groups'][agent['group']]},
-                        {'event': 'AgentUnloadDone', 'agent': name, 
-                         'result': False, 'target': 'exit'},
                         {'timeout': int(timeout), 'target': 'exit'} 
                          ]))
 
@@ -504,8 +509,6 @@ class AAL(object):
                 TriggerList([
                     {'event': 'GroupTeardownDone', 'group': name, 
                      'nodes': nodes},
-                    {'event': 'GroupTeardownDone', 'result': False,
-                    'target': 'exit'},
                     {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
 
 
@@ -546,9 +549,9 @@ class AAL(object):
             
         if inComingEventTriggers.issubset(outGoingEventTriggers):
             log.info('Incoming event triggers is a subset of outgoing event triggers')
-        elif not triggerCheck:
-            log.error('Incoming event triggers is not a subset of outgoing event triggers')
-            raise AALParseError('Incoming event triggers is not a subset of outgoing event triggers')
+        elif triggerCheck:
+            log.error('Incoming event triggers are not a subset of outgoing event triggers')
+            raise AALParseError('Incoming event triggers are not a subset of outgoing event triggers')
         
     def getSetupStream(self):
         return self.setupStream
@@ -632,8 +635,9 @@ class AAL(object):
             elif triggeType in [Trigger.EVENT]:
                 triggerEvent = triggerData['event']
                 if triggerEvent not in triggerToAgentMap:
-                    raise AALParseError('No outgoing event for trigger '
+                    log.warning('No outgoing event for trigger '
                                         '"%s"' %(triggerEvent))
+                    return
                 #triggerData.setdefault('agent', triggerToAgentMap[triggerEvent])
                 #triggerAgent = triggerData['agent']
                 triggerAgent = triggerData.get('agent', triggerToAgentMap[triggerEvent])

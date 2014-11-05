@@ -1,14 +1,21 @@
 #!/usr/bin/env python
-import logging
-import threading
-import yaml
-import time
+
 import Queue
 from collections import defaultdict
+import copy
+import logging
+from socket import gethostname
+import threading
+import time
 
-from parse import EventObject, TriggerList, createTrigger
 from magi.orchestrator.OrchestratorDisplay import OrchestratorDisplayState
 from magi.orchestrator.dagdisplay import DagDisplay
+from magi.util import helpers
+import yaml
+
+from magi.db import Collection
+from parse import EventObject, TriggerList, createTrigger
+
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +114,7 @@ class Orchestrator(object):
         
         # save triggers based on 'event' value for quicker lookup
         self.triggerCache = defaultdict(list)
+        self.activeTriggerCache = defaultdict(list)
         
         self.exitOnFailure = exitOnFailure
         self.verbose = verbose
@@ -114,6 +122,12 @@ class Orchestrator(object):
         self.display = OrchestratorDisplayState(color=useColor)
         if dagdisplay:
             self.dagdisplay = DagDisplay()
+
+        self.collection = None
+        try:
+            self.collection = Collection.getCollection('orchestrator', gethostname())
+        except:
+            log.error('Cannot initialize database')
 
     def runInThread(self):
 
@@ -229,19 +243,28 @@ class Orchestrator(object):
                         # The only messages we react to are triggers.
                         # there is no real reason for this though,
                         # if want to introduce new message types.
-                        # cacheTrigger adds the new trigger to the cache, and
-                        # returns the list of triggers corresponding to the 
-                        # incoming trigger event.
-                        newTrigger = createTrigger(yaml.load(msg.data))
-                        self.cacheTrigger(newTrigger)
+                        try:
+                            newTriggerData = yaml.load(msg.data)
+                            newTriggerData.setdefault('nodes', msg.src)
+                            #newTriggerData['timestamp'] = time.time()
+                            newTrigger = createTrigger(newTriggerData)
+                            
+                            # cacheTrigger adds the new trigger to the cache, and
+                            # returns the list of triggers corresponding to the 
+                            # incoming trigger event.
+                            self.cacheTrigger(newTrigger)
+                            
+                            if self._triggerCausesExitCondition(newTrigger):
+                                self.stop(doTearDown=True)
+                                continue
+                            
+                            if self.verbose:
+                                self.display.gotTrigger(newTrigger)
+                        except:
+                            # Not a valid trigger
+                            log.exception('Not a valid trigger message')
+                            pass
                         
-                        if self._triggerCausesExitCondition(newTrigger):
-                            self.stop(doTearDown=True)
-                            continue
-                        
-                        if self.verbose:
-                            self.display.gotTrigger(newTrigger)
-            
             except Queue.Empty:
                 pass
 
@@ -277,8 +300,20 @@ class Orchestrator(object):
                             # this event has an accompanying trigger
                             # if the cache has the same trigger, it becomes
                             # stale now, and should be removed
-                            self.triggerCache.pop(event.trigger, None)
+                            #self.triggerCache.pop(event.trigger, None)
+                            self.invalidateTriggers(event.trigger, None)
                             
+                        #Collecting outgoing event data into the database    
+                        if self.collection:
+                            self.collection.insert({'type' : 'event', 
+                                                    'streamName' : streamIter.getName(), 
+                                                    'method' : event.method,
+                                                    'args' : event.args,
+                                                    'trigger' : event.trigger, 
+                                                    'groups' : event.groups, 
+                                                    'nodes' : event.nodes,
+                                                    'docks' : event.docks})
+            
                         streamIter.advance()
                         progress = True
                         
@@ -325,17 +360,34 @@ class Orchestrator(object):
             it just gets added to the end of the list
             Return the value that was appended or modified.
         """
-        event = incoming.event
         log.debug('trigger cache: %s' % self.triggerCache) 
-        merged = False
-        for trigger in self.triggerCache[event]:
-            if trigger.isEqual(incoming):
-                trigger.merge(incoming)
-                merged = True
-                break
-        if not merged:
-            self.triggerCache[event].append(incoming)
+        
+        #Collecting incoming trigger data into the database
+        if self.collection:
+            self.collection.insert({'type' : 'trigger',
+                                    'event' : incoming.event,
+                                    'nodes' : list(incoming.nodes), 
+                                    'args' : incoming.args})
+        
+        # Invalidate existing triggers that the new trigger overrides
+        self.invalidateTriggers(incoming.event, incoming.nodes)
+        
+        for node in incoming.nodes:
+            nodeTrigger = copy.copy(incoming)
+            nodeTrigger.nodes = set([node])
+            nodeTrigger.activate()
+            self.triggerCache[nodeTrigger.event].append(nodeTrigger)
+            self.activeTriggerCache[nodeTrigger.event].append(nodeTrigger)
+        
         log.debug('Updated trigger cache: %s' % self.triggerCache) 
         
-        return self.triggerCache[event]
+        return self.activeTriggerCache[incoming.event]
 
+    def invalidateTriggers(self, triggerEvent, nodes):
+        nodes = helpers.toSet(nodes)
+        activeTriggers = self.activeTriggerCache[triggerEvent]
+        for trigger in activeTriggers:
+            if (not nodes) or (trigger.nodes.issubset(nodes)):
+                trigger.deActivate()
+                activeTriggers.remove(trigger)
+            
