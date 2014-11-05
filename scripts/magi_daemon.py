@@ -32,6 +32,7 @@ if __name__ ==  '__main__':
         options.logfile = os.path.join(config.getLogDir(), "daemon.log")
     
     helpers.makeDir(os.path.dirname(options.logfile))
+    helpers.makeDir(config.getTempDir())
             
     # Roll over the old log and create a new one
     # Note here that we will have at most 5 logs 
