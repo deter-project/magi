@@ -128,12 +128,13 @@ def doMessageAction(obj, msg, messaging=None):
 				return
 			
 		if 'trigger' in data:
-			if retVal is None:
-				log.error("Agent %s does not provide return value for method", str(obj))
-				messaging.trigger(event='RuntimeException', agent=str(obj), nodes=[config.getNodeName()], error="no return value")
-				return 
-			else:
-				messaging.trigger(event=data['trigger'], nodes=[config.getNodeName()], result=retVal)
+			if not isinstance(retVal, dict):
+				if retVal is None:
+					retVal = True
+				retVal = {'result' : retVal}
+			args = retVal
+			args['nodes'] = config.getNodeName()
+			messaging.trigger(event=data['trigger'], **args)
 				
 	else:
 		log.warn('got message without supported (or any?) action')
