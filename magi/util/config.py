@@ -225,7 +225,7 @@ def validateMesDL(mesdl={}):
         mesdl['bridges'] = list()
         mesdl['overlay'] = list()
         mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 18808 })
-        transportClass = 'TCP'
+        transportClass = 'Multicast'
         if transportClass == 'TCP':
             mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 28808 })
             mesdl['overlay'].append({ 'type': 'TCPTransport', 'members': ['__ALL__'], 'server':controlNode, 'port': 28808 })
@@ -254,29 +254,23 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         isDBEnabled = dbdl.setdefault('isDBEnabled', DEFAULT_DB_ENABLED)
         
     if isDBEnabled:
-        isDBSharded = dbdl.setdefault('isDBSharded', DEFAULT_DB_SHARDED)
-        if isDBSharded:
-            if not dbdl.get('sensorToCollectorMap'):
-                dbdl['sensorToCollectorMap'] = dict()
-                topoGraph = testbed.getTopoGraph()
-                for node in topoGraph.nodes():
-                    dbdl['sensorToCollectorMap'][node] = node
-                dbdl['configHost'] = testbed.getServer()
-            else:
-                topoGraph = testbed.getTopoGraph()
-                experimentNodes = topoGraph.nodes()
-                for (sensor, collector) in dbdl['sensorToCollectorMap'].iteritems():
-                    if sensor not in experimentNodes:
-                        del dbdl['sensorToCollectorMap'][sensor]
-                    elif collector not in experimentNodes:
-                        dbdl['sensorToCollectorMap'][sensor] = sensor
-                if dbdl.get('configHost') not in experimentNodes:
-                    dbdl['configHost'] = testbed.getServer()
-        else:
+        topoGraph = testbed.getTopoGraph()
+        experimentNodes = topoGraph.nodes()
+        isDBSharded = dbdl.setdefault('isDBSharded', False if len(experimentNodes) == 1 else DEFAULT_DB_SHARDED)
+        if not dbdl.get('sensorToCollectorMap'):
             dbdl['sensorToCollectorMap'] = dict()
-            topoGraph = testbed.getTopoGraph()
-            for node in topoGraph.nodes():
+            for node in experimentNodes:
                 dbdl['sensorToCollectorMap'][node] = node
+        else:
+            for (sensor, collector) in dbdl['sensorToCollectorMap'].iteritems():
+                if sensor not in experimentNodes:
+                    del dbdl['sensorToCollectorMap'][sensor]
+                elif collector not in experimentNodes:
+                    dbdl['sensorToCollectorMap'][sensor] = sensor
+        if isDBSharded:
+            if dbdl.get('configHost') not in experimentNodes:
+                dbdl['configHost'] = testbed.getServer()
+        else:
             dbdl.pop('configHost', None)
     else:
         dbdl = {}
@@ -305,9 +299,10 @@ def validateExpDL(expdl={}, distributionPath=None):
     
     nodePaths = expdl.setdefault('nodePaths', dict())
     
-    nodePaths.setdefault('config', os.path.join(NODE_DIR, 'config'))
-    nodePaths.setdefault('logs', os.path.join(NODE_DIR, 'logs'))
-    nodePaths.setdefault('db', os.path.join(NODE_DIR, 'db'))
+    nodeDir = nodePaths.setdefault('root', NODE_DIR)
+    nodePaths.setdefault('config', os.path.join(nodeDir, 'config'))
+    nodePaths.setdefault('logs', os.path.join(nodeDir, 'logs'))
+    nodePaths.setdefault('db', os.path.join(nodeDir, 'db'))
     nodePaths.setdefault('temp', DEFAULT_TEMP_DIR)
     
     testbedPaths = expdl.setdefault('testbedPaths', dict())
@@ -387,6 +382,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
         testbed.setNodeName(localInfo['nodename'])
     
     expNodePaths = experimentConfig['expdl']['nodePaths']
+    localInfo.setdefault('rootDir', expNodePaths['root'])
     localInfo.setdefault('configDir', expNodePaths['config'])
     localInfo.setdefault('logDir', expNodePaths['logs'])
     localInfo.setdefault('dbDir', expNodePaths['db'])
@@ -489,9 +485,12 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     
     isDBEnabled = databaseConfig.setdefault('isDBEnabled', dbdl.get('isDBEnabled'))
     if isDBEnabled:
-        databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
-        databaseConfig.setdefault('configHost', dbdl['configHost'])
+        isDBSharded = databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
         databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
+        if isDBSharded:
+            databaseConfig.setdefault('configHost', dbdl['configHost'])
+        else:
+            databaseConfig.pop('configHost', None)
             
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig

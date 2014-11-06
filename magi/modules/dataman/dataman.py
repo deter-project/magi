@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 
-from magi.messaging.magimessage import MAGIMessage
-from magi.util import database, helpers, config
-from magi.util.agent import NonBlockingDispatchAgent, agentmethod
-
 import hashlib
 import logging
 import pickle
 import threading
 import time
+
+from magi.messaging.magimessage import MAGIMessage
+from magi.util import database, helpers, config
+from magi.util.agent import NonBlockingDispatchAgent, agentmethod
+import pymongo
 import yaml
+
+from magi.db.Collection import AGENT_FIELD
+
 
 log = logging.getLogger(__name__)
 
@@ -20,16 +24,23 @@ def getAgent():
 class DataManAgent(NonBlockingDispatchAgent):
     
     def __init__(self, *args, **kwargs):
-        NonBlockingDispatchAgent.__init__(self, *args, **kwargs)
-        self.collectionMetadata = dict()
-        self.events = dict()
-        self.rcvdPongs = set()
-        self.dbProcesses = set()
-        self.dbLogHandler = None
-        self.setupDatabase()
-        self.setupDBLogHandler()
-        
+        try:
+            NonBlockingDispatchAgent.__init__(self, *args, **kwargs)
+            self.collectionMetadata = dict()
+            self.events = dict()
+            self.rcvdPongs = set()
+            self.dbProcesses = set()
+            self.dbLogHandler = None
+            self.setupDatabase()
+            self.setupDBLogHandler()
+        except:
+            log.exception('Exception while initializing data manager')
+            self.stop(None)
+            
     def setupDatabase(self):
+        functionName = self.setupDatabase.__name__
+        helpers.entrylog(log, functionName, locals())
+        
         log.info("Setting up database")
         if database.isDBSharded:
             log.info("Setting up a distributed database")
@@ -46,7 +57,7 @@ class DataManAgent(NonBlockingDispatchAgent):
                 log.info("Stopping balancer")
                 database.setBalancerState(False)
                 log.info("Configuring database cluster")
-                database.configureDBCluster()
+                self.configureDBCluster()
             elif database.isCollector:
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
@@ -60,14 +71,64 @@ class DataManAgent(NonBlockingDispatchAgent):
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
                 self.dbProcesses.add(dp)
+                
+        helpers.exitlog(log, functionName)
+         
+    def configureDBCluster(self):
+        """
+            Function to configure the mongo db setup for an experiment.
+            This is an internal function called by the bootstrap process.
+        """
+        functionName = self.configureDBCluster.__name__
+        helpers.entrylog(log, functionName, locals())
+        
+        log.info("Registering collector database servers as shards")
+        cnodes = set(database.sensorToCollectorMap.values())
+        for collector in cnodes:
+            database.registerShard(collector)
             
+        log.info("Configuring database cluster according to the sensor:collector mapping")
+        snodes = set(database.sensorToCollectorMap.keys())
+        if helpers.ALL in database.sensorToCollectorMap:
+            allnodes = set(config.getTopoGraph().nodes())
+            snodes.remove(helpers.ALL)
+            rnodes = allnodes - snodes
+        else:
+            rnodes = set()
+            
+        for sensor in snodes:
+            database.moveChunk(sensor, 
+                               database.sensorToCollectorMap[sensor])
+            database.moveChunk(sensor, 
+                               database.sensorToCollectorMap[sensor], 
+                               database.LOG_COLLECTION_NAME)
+            
+        for sensor in rnodes:
+            database.moveChunk(sensor, 
+                               database.sensorToCollectorMap[helpers.ALL])
+            database.moveChunk(sensor, 
+                               database.sensorToCollectorMap[helpers.ALL], 
+                               database.LOG_COLLECTION_NAME)
+        
+        log.info('Creating index on field: %s' %(AGENT_FIELD))
+        configConn = database.getConnection(host=config.getServer(), 
+                                            port=database.ROUTER_SERVER_PORT)
+        configConn[database.DB_NAME][database.COLLECTION_NAME].ensure_index([(AGENT_FIELD, 
+                                                                              pymongo.ASCENDING)])
+        
+        helpers.exitlog(log, functionName)
+       
     def setupDBLogHandler(self):
+        functionName = self.setupDBLogHandler.__name__
+        helpers.entrylog(log, functionName, locals())
+        
         log.info("Setting up database log handler")
         from magi.util.databaseLogHandler import DatabaseHandler
-        #Making sure that the database server is up and running
         self.dbLogHandler = DatabaseHandler.to(level=logging.INFO)
         rootLogger = logging.getLogger()
         rootLogger.addHandler(self.dbLogHandler)
+        
+        helpers.exitlog(log, functionName)
     
     @agentmethod()
     def stop(self, msg):
@@ -98,7 +159,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             Request to fetch data
         """
         functionName = self.getData.__name__
-        entrylog(functionName, locals())
+        helpers.entrylog(log, functionName, locals())
         
         agents_ = helpers.toSet(agents)
         nodes_ = helpers.toSet(nodes)
@@ -123,7 +184,11 @@ class DataManAgent(NonBlockingDispatchAgent):
                 filters_copy['host'] = node
                 nodedata = []
                 for tsChunk in timestampChunks:
-                    nodedata = nodedata + database.getData(agent, filters_copy, tsChunk, database.getConnection(database.configHost, port=database.ROUTER_SERVER_PORT))
+                    nodedata = nodedata + database.getData(agent, 
+                                                           filters_copy, 
+                                                           tsChunk, 
+                                                           database.configHost, 
+                                                           database.ROUTER_SERVER_PORT)
                 data[agent][node] = nodedata
         
         args = {
@@ -140,11 +205,11 @@ class DataManAgent(NonBlockingDispatchAgent):
         log.debug('Sending message')
         self.messenger.send(msg)
         
-        exitlog(functionName)
+        helpers.exitlog(log, functionName)
         
     def getSensorAgents(self, node):
         """
-            Internal function to fetch the list of collections for a given node
+            Internal function to fetch the list of sensor agents for a given node
         """
         call = {'version': 1.0, 'method': 'getCollectionMetadata'}
         querymsg = MAGIMessage(nodes=node, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))  
@@ -167,12 +232,12 @@ class DataManAgent(NonBlockingDispatchAgent):
             Internal function to fetch the collector for a given node and agent
         """
         functionName = self.getCollector.__name__
-        entrylog(functionName, locals())
+        helpers.entrylog(log, functionName, locals())
         
         node = node.split(".")[0]
         
         result = database.sensorToCollectorMap.get(node, database.sensorToCollectorMap.get('__ALL__'))
-        exitlog(functionName, result)
+        helpers.exitlog(log, functionName, result)
         return result
         
     @agentmethod()
@@ -181,7 +246,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             Request for collector information
         """
         functionName = self.getCollectionMetadata.__name__
-        entrylog(functionName, locals())
+        helpers.entrylog(log, functionName, locals())
         
         args = {
             "collectionMetadata" : database.collectionHosts
@@ -190,7 +255,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         msg = MAGIMessage(nodes=msg.src, docks='dataman', contenttype=MAGIMessage.YAML, data=yaml.dump(call))
         self.messenger.send(msg)
         
-        exitlog(functionName)
+        helpers.exitlog(log, functionName)
     
     @agentmethod()
     def putCollectionMetadata(self, msg, collectionMetadata):
@@ -198,14 +263,14 @@ class DataManAgent(NonBlockingDispatchAgent):
             Response for collector information request
         """
         functionName = self.putCollectionMetadata.__name__
-        entrylog(functionName, locals())
+        helpers.entrylog(log, functionName, locals())
         
         self.collectionMetadata[msg.src] = CachedItem(msg.src, collectionMetadata)
         queryHash = self.digest("CollectionMetadata", msg.src)
         self.events[queryHash].set()
         self.events[queryHash].clear()
         
-        exitlog(functionName)
+        helpers.exitlog(log, functionName)
     
     @agentmethod()
     def ping(self, msg):
@@ -241,7 +306,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             
     def digest(self, *args):
         functionName = self.digest.__name__
-        entrylog(functionName, locals())
+        helpers.entrylog(log, functionName, locals())
         m = hashlib.md5()
         for arg in args:
             if type(arg) is set:
@@ -250,21 +315,9 @@ class DataManAgent(NonBlockingDispatchAgent):
                 arg.sort()
             m.update(str(arg))
         result = m.hexdigest()
-        exitlog(functionName, result)
+        helpers.exitlog(log, functionName, result)
         return result
     
-def entrylog(functionName, arguments=None):
-    if arguments == None:
-        log.debug("Entering function %s", functionName)
-    else:
-        log.debug("Entering function %s with arguments: %s", functionName, arguments)
-
-def exitlog(functionName, returnValue=None):
-    if returnValue == None:
-        log.debug("Exiting function %s", functionName)
-    else:
-        log.debug("Exiting function %s with return value: %s", functionName, returnValue)
-
 class CachedItem(object):
     def __init__(self, key, value, duration=60):
         self.key = key

@@ -68,6 +68,7 @@ class Agent(object):
         classes can override this if they want, but probably want to
         override confirmConfiguration() instead.
         '''
+        log.info("Setting agent configuration %s" %(kwargs))
         for k, v in kwargs.iteritems():
             try:
                 setattr(self, k, v)
@@ -231,8 +232,6 @@ class TrafficClientAgent(Agent):
     def __init__(self):
         Agent.__init__(self)
         self.subpids = list()
-        # TODO: Replace hardcoded value with MAGILOG 
-        self.logfile = os.path.join(config.getLogDir(), '/%s_%s.log' % (self.__class__.__name__, time.strftime("%Y-%m-%d_%H:%M:%S")))
         self.servers = []
         self.interval = "1"
         self.stopClient(None)
@@ -242,6 +241,8 @@ class TrafficClientAgent(Agent):
         """
         Called by daemon in the agent's thread to perform the thread main
         """
+        self.logfile = os.path.join(config.getLogDir(), '%s_%s.log' % (self.name, time.strftime("%Y-%m-%d_%H:%M:%S")))
+        
         if database.isDBEnabled:
             self.collection = database.getCollection(self.name)
             

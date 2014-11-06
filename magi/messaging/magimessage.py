@@ -1,6 +1,9 @@
 
-import struct
 import logging
+import struct
+
+from magi.util import helpers
+
 
 log = logging.getLogger(__name__)
 debug = False
@@ -47,30 +50,9 @@ class MAGIMessage(object):
 		self.contenttype = kwargs.pop('contenttype', MAGIMessage.NONE)
 		self.data = kwargs.pop('data', None)
 
-		self.dstgroups = kwargs.pop('groups', set())
-		self.dstnodes  = kwargs.pop('nodes', set())
-		self.dstdocks  = kwargs.pop('docks', set())
-
-		if type(self.dstgroups) is list:
-			self.dstgroups = set(self.dstgroups)
-		elif type(self.dstgroups) is str:	
-			self.dstgroups = set([s.strip() for s in self.dstgroups.split(',')])
-		elif self.dstgroups is None:
-			self.dstgroups = set()
-
-		if type(self.dstnodes) is list:
-			self.dstnodes = set(self.dstnodes)
-		elif type(self.dstnodes) is str:
-			self.dstnodes = set([s.strip() for s in self.dstnodes.split(',')])
-		elif self.dstnodes is None:
-			self.dstnodes = set()
-
-		if type(self.dstdocks) is list:
-			self.dstdocks = set(self.dstdocks)
-		elif type(self.dstdocks) is str:
-			self.dstdocks = set([s.strip() for s in self.dstdocks.split(',')])
-		elif self.dstdocks is None:
-			self.dstdocks = set()
+		self.dstgroups = helpers.toSet(kwargs.pop('groups', set()))
+		self.dstnodes  = helpers.toSet(kwargs.pop('nodes', set()))
+		self.dstdocks  = helpers.toSet(kwargs.pop('docks', set()))
 
 		self.sequence  = kwargs.pop('sequence', None)
 		self.sequenceid  = kwargs.pop('sequenceid', None)
