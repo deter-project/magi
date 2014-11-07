@@ -197,7 +197,7 @@ def createMongoDConfig(configDir=TEMP_DIR,
     """
     try:
         log.info("Creating mongo db config file")
-        configfile = os.path.join(TEMP_DIR, "mongod.conf")
+        configfile = os.path.join(configDir, "mongod.conf")
         f = open(configfile, 'w')
         f.write('dbpath=%s\n'%(dbPath))
         f.write('logpath=%s\n'%(logPath))
