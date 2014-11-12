@@ -46,7 +46,7 @@ class DesktopExperiment(Testbed):
         """ Load the control IP address and IF name """
         try:
             self._store.update(controlip='?', controlif='?')
-            self._store['controlip'] = socket.gethostbyname(socket.gethostname())
+            self._store['controlip'] = socket.gethostbyname(self.nodename)
             self._store['controlif'] = self.getInterfaceInfo(self.controlip).name
         except:
             log.exception("Can't load control interface info")
