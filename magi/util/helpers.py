@@ -227,6 +227,14 @@ def printDBfields(agentidl):
                 print field,'(',desc['keytype'],'/',desc['value'],')',':',desc['keydesc']
             print
 
+chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
+def getMulticast(arg1, arg2, channel):
+    return "239.255.%d.%d" % (_str2byte(arg1), (_str2byte(arg2)+channel)%255)
+def _intval(x, y):
+    return x + chars.find(y)
+def _str2byte(strin):
+    return reduce(_intval, strin, 0) % 255
+
 #def getAllExperimentNodes(project, experiment):
 #    cmd = "/usr/testbed/bin/node_list -e %s,%s -c" % (project, experiment)
 #    (output, err) = Popen(cmd.split(), stdout=PIPE).communicate()

@@ -2,14 +2,18 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-from base import Testbed, IFObj
 from collections import defaultdict
-from magi.util.execl import execAndRead, pipeIn
 import itertools
 import logging
 import os
 import shlex
 import sys
+
+from magi.util import helpers
+from magi.util.execl import execAndRead, pipeIn
+
+from base import Testbed, IFObj
+
 
 log = logging.getLogger(__name__)
 
@@ -179,6 +183,9 @@ class EmulabTestbed(Testbed):
         else:
             return execAndRead("/usr/local/etc/emulab/findif %s" % (mac))[0].strip()            
         
+    def getMulticastAddress(self):
+        return helpers.getMulticast(self.project, self.experiment, 0)
+    
 # Small test if running this file directly
 if __name__ == "__main__":
     logging.basicConfig()
