@@ -19,6 +19,8 @@ class DesktopExperiment(Testbed):
     def setNodeName(self, nodename):
         self._store['node'] = nodename
         self.loadTopoGraph()
+        self.loadControlInfo()
+        self.loadIfConfig()
         
     def getExperimentDir(self):
         return "/tmp"
