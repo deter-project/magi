@@ -18,6 +18,7 @@ class DesktopExperiment(Testbed):
 
     def setNodeName(self, nodename):
         self._store['node'] = nodename
+        self.loadTopoGraph()
         
     def getExperimentDir(self):
         return "/tmp"
@@ -63,7 +64,7 @@ class DesktopExperiment(Testbed):
     def loadTopoGraph(self):
         import networkx as nx
         graph = nx.Graph()
-        graph.add_node(self.getNodeName(), links={})
+        graph.add_node(self.nodename, links={})
         self._store['topograph'] = graph
 
 # Small test if running this file directly
