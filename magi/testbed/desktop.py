@@ -18,6 +18,9 @@ class DesktopExperiment(Testbed):
 
     def setNodeName(self, nodename):
         self._store['node'] = nodename
+        self.loadTopoGraph()
+        self.loadControlInfo()
+        self.loadIfConfig()
         
     def getExperimentDir(self):
         return "/tmp"
@@ -46,7 +49,7 @@ class DesktopExperiment(Testbed):
         """ Load the control IP address and IF name """
         try:
             self._store.update(controlip='?', controlif='?')
-            self._store['controlip'] = socket.gethostbyname(socket.gethostname())
+            self._store['controlip'] = socket.gethostbyname(self.nodename)
             self._store['controlif'] = self.getInterfaceInfo(self.controlip).name
         except:
             log.exception("Can't load control interface info")
@@ -63,7 +66,7 @@ class DesktopExperiment(Testbed):
     def loadTopoGraph(self):
         import networkx as nx
         graph = nx.Graph()
-        graph.add_node(self.getNodeName(), links={})
+        graph.add_node(self.nodename, links={})
         self._store['topograph'] = graph
 
 # Small test if running this file directly

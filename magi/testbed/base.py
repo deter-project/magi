@@ -6,6 +6,7 @@ import re
 import socket
 
 from magi.util.execl import pipeIn
+from magi.util import helpers
 
 def NIE():
     """ 
@@ -225,4 +226,7 @@ class Testbed(object):
         return IFObj(matchip, matchname, None, None)
     
     def getHostForName(self, name): return socket.gethostbyname(name)
+    
+    def getMulticastAddress(self):
+        return helpers.getMulticast('project', 'experiment', 0)
 

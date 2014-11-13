@@ -230,7 +230,7 @@ def validateMesDL(mesdl={}):
             mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 28808 })
             mesdl['overlay'].append({ 'type': 'TCPTransport', 'members': ['__ALL__'], 'server':controlNode, 'port': 28808 })
         elif transportClass == 'Multicast':
-            mesdl['overlay'].append({ 'type': 'MulticastTransport', 'members': ['__ALL__'], 'address': getMulticast(testbed.project, testbed.experiment, 0), 'port': 28808 })
+            mesdl['overlay'].append({ 'type': 'MulticastTransport', 'members': ['__ALL__'], 'address': testbed.getMulticastAddress(), 'port': 28808 })
     else:
         bridges = mesdl.get('bridges', {})
         if not bridges:
@@ -505,14 +505,6 @@ def getArch():
         ver = 'xp'
     arch = "%s-%s-%s" % (name, ver, machine)  # arch string to use for cached software lookup/saving
     return arch.replace('/', '')
-
-chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
-def getMulticast(arg1, arg2, channel):
-    return "239.255.%d.%d" % (_str2byte(arg1), (_str2byte(arg2)+channel)%255)
-def _intval(x, y):
-    return x + chars.find(y)
-def _str2byte(strin):
-    return reduce(_intval, strin, 0) % 255
 
 #def keysExist(project=None, experiment=None, keydir=None):
 #    """

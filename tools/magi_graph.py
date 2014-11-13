@@ -21,8 +21,8 @@ if __name__ == '__main__':
                                                     needs to be provided to be able to connect to the experiment.\
                                                     Need to provide build a graph specific configuration for plotting.")
                                                     
-    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
-    optparser.add_option("-p", "--project", dest="project", help="Project name")
+    optparser.add_option("-d", "--dbhost", dest="dbhost", help="Database host")
+    optparser.add_option("-p", "--dbport", dest="dbport", type="int", default=27017, help="Database port")
     optparser.add_option("-x", "--experimentConfig", dest="experimentConfig", help="Experiment configuration file")
     optparser.add_option("-c", "--config", dest="config", help="Graph configuration file")
     optparser.add_option("-a", "--agent", dest="agent", help="Agent name. This is used to fetch available database fields")
@@ -43,18 +43,25 @@ if __name__ == '__main__':
             helpers.printDBfields(agentidl)
             logging.info("Loaded IDL file")
         else:
-            raise RuntimeError, 'Missing AAL file. Please provide AAL file with option -l'
-            sys.exit(2)
+            optparser.print_help()
+            optparser.error("Missing AAL file")
     else:                            
         if options.config is None:
             optparser.print_help()
-            sys.exit(2)
+            optparser.error("Missing configuration file")
      
         logging.info("Attempting to get the database config host from the experiment")
-        dbConfigNode = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig, 
-                                               project=options.project, 
-                                               experiment=options.experiment)
-        #logging.info(dbConfigNode)
+        if options.dbhost:
+            dbHost = options.dbhost
+        elif options.experimentConfig:
+            dbHost = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig)
+        else:
+            optparser.print_help()
+            optparser.error("Missing database host and experiment configuration file")
+            
+        dbPort = options.dbport
+        
+        #logging.info(dbPort)
         logging.info("Got the database config host from the experiment")                                  
     
         logging.info("Attempting to load the graph configuration file")
@@ -89,19 +96,15 @@ if __name__ == '__main__':
             tunnel_cmd = None		
             if options.tunnel:
                 logging.info("Attempting to establish SSH tunnel")
-                tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', 27018,
-                                                     dbConfigNode, 27017,
+                tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', dbPort,
+                                                     dbHost, dbPort,
                                                      options.username)
-                bridge = 'localhost'
-                port = 27018
+                dbHost = 'localhost'
                 logging.info('Tunnel setup done')
-            else:
-                bridge = dbConfigNode
-                port = 27017
             
             try:
                 logging.info('Attempting to connect to the database')
-                connection = MongoClient(bridge, port)
+                connection = MongoClient(dbHost, dbPort)
                 collection = connection[DB_NAME][COLLECTION_NAME]
                 logging.info('Connected to the database')
             except RuntimeError as e:

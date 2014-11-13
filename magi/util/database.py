@@ -66,8 +66,10 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
     """
         Function to start a database server on the node
     """
+    helpers.makeDir(config.getDbDir())
     return Server.startDBServer(port=DATABASE_SERVER_PORT, 
-                         configfile=configfile, 
+                         configfile=configfile,
+                         configDir=config.getConfigDir(), 
                          dbPath=os.path.join(config.getDbDir(), "mongodb"), 
                          logPath=os.path.join(config.getLogDir(), "mongodb.log"), 
                          timeout=timeout)

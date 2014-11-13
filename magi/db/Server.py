@@ -123,7 +123,8 @@ def startShardServer(port=ROUTER_SERVER_PORT,
         raise
 
 def startDBServer(port=DATABASE_SERVER_PORT,
-                  configfile=None, 
+                  configfile=None,
+                  configDir=TEMP_DIR, 
                   dbPath=os.path.join(TEMP_DIR, "mongodb"), 
                   logPath=os.path.join(TEMP_DIR, "mongodb.log"),
                   block=True,
@@ -142,7 +143,9 @@ def startDBServer(port=DATABASE_SERVER_PORT,
             return
 
         if configfile is None:
-            configfile = createMongoDConfig()
+            configfile = createMongoDConfig(configDir=configDir,
+                                            dbPath=dbPath, 
+                                            logPath=logPath)
             
         mongo_conf = helpers.readPropertiesFile(configfile)
 
@@ -186,14 +189,15 @@ def startDBServer(port=DATABASE_SERVER_PORT,
         log.exception("Exception while setting up mongo db database server")
         raise
 
-def createMongoDConfig(dbPath=os.path.join(TEMP_DIR, "mongodb"), 
+def createMongoDConfig(configDir=TEMP_DIR,
+                       dbPath=os.path.join(TEMP_DIR, "mongodb"), 
                        logPath=os.path.join(TEMP_DIR, "mongodb.log")):
     """
         Function to create a default Mongo DB configuration file
     """
     try:
         log.info("Creating mongo db config file")
-        configfile = os.path.join(TEMP_DIR, "mongod.conf")
+        configfile = os.path.join(configDir, "mongod.conf")
         f = open(configfile, 'w')
         f.write('dbpath=%s\n'%(dbPath))
         f.write('logpath=%s\n'%(logPath))
