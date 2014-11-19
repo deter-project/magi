@@ -27,30 +27,39 @@ def signal_handler(signum, frame):
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
-    optparser.add_option("-p", "--project", dest="project", help="Project name")
-    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
     optparser.add_option("-b", "--bridge",
                          dest="bridge",
                          help="Address of the bridge node to join the "
                               "messaging overlay (ex: control.exp.proj)")
+    
     optparser.add_option("-c", "--control",
                          dest="bridge",
                          help="Address of the bridge node to join the "
                               "messaging overlay (ex: control.exp.proj). "
                               "This option exists for backward compatibility.")
+    
     optparser.add_option("-r", "--port",
                          dest="port", type="int", default=18808,
                          help="The port to connect to on the bridge node.")
+    
+    optparser.add_option("-i", "--config", dest="config", help="Experiment configuration file location")
+    
+    optparser.add_option("-p", "--project", dest="project", help="Project name")
+    
+    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
+
     optparser.add_option("-f", "--events",
                          dest="events",
                          help="The procedure.aal file(s) to use. Can be specified"
                               " multiple times for multiple AAL files",
                          action="append", 
                          default=[])  # real default added below
+    
     optparser.add_option("-o", "--logfile",
                          dest="logfile",
                          help="If given, log to the file instead of the "
                               "console (stdout).")
+    
     optparser.add_option("-l", "--loglevel",
                          dest="loglevel",
                          help="The level at which to log. Must be one of "
@@ -59,17 +68,20 @@ if __name__ == '__main__':
                          default='info',
                          choices=['none', 'all', 'debug', 'info', 'warning',
                                   'error', 'critical'])
+    
     optparser.add_option("-n", "--name", 
                          dest="name",
                          help="Name using which to connect to the messaging plane. " 
                               "Default: %default",
                          default="pyorch")
+    
     optparser.add_option("-x", "--exitOnFailure",
                          dest="exitOnFailure",
                          help="If any method call fails (returns False), then"
                               " exit all streams, unload all agents, and exit"
                               " the orchestrator. Default value is True",
                          default=True)
+    
     optparser.add_option("-g", "--groupBuildTimeout",
                          dest="groupBuildTimeout",
                          type="int", default=20000,
@@ -77,16 +89,19 @@ if __name__ == '__main__':
                               "in the given AAL, use the timeout given (in "
                               "milliseconds) when waiting for group "
                               "formation to complete.")
+    
     optparser.add_option("--nocolor",
                          dest="nocolor",
                          help="If given, do not use color in output.",
                          action='store_true')
+    
     optparser.add_option("-v", "--verbose",
                          dest="verbose",
                          help="Tell orchestrator to print info about what "
                               "its doing",
                          default=False,
                          action="store_true")
+    
     optparser.add_option("-t", "--tunnel",
                          dest="tunnel",
                          help="Tell orchestrator to tunnel data through "
@@ -94,15 +109,18 @@ if __name__ == '__main__':
                               "the bridge node.",
                          default=False,
                          action="store_true")
+    
     optparser.add_option("-u", "--username", 
                          dest="username", 
                          help="Username for creating tunnel. Required only if "
                               "different from current shell username.")
+    
     optparser.add_option("-d", "--display", 
                          dest="display",
                          help="Display the procedure execution graphically",
                          default=False,
                          action="store_true")
+    
     optparser.add_option("-j", "--justparse", 
                          dest="justparse",
                          help="Parse and display the procedure file specified with -f",
@@ -166,14 +184,17 @@ if __name__ == '__main__':
     if options.justparse:
         exit(0)
     
-    if not options.bridge:
-        if not options.project or not options.experiment:
-            optparser.print_help()
-            optparser.error("Missing project and/or experiment name")
-        (bridgeNode, bridgePort) = helpers.getBridge(project=options.project, experiment=options.experiment)
-    else:
+    if options.bridge:
         bridgeNode = options.bridge
         bridgePort = options.port
+    elif options.config or (options.project and options.experiment):
+        (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config, 
+                                                     project=options.project, 
+                                                     experiment=options.experiment)
+    else:
+        optparser.print_help()
+        optparser.error("Missing bridge information and "
+                        "experiment configuration information")
         
     try:   
         tunnel_cmd = None
