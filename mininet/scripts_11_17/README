@@ -1,0 +1,20 @@
+Case study 1
+
+Instructions for Running case study 1 on mininet
+
+1. Location of files
+	- Apache agent is located in scripts_11_12 directory
+	- No change in Http-client agent
+	- PktCounter agent is in same directory (scripts_11_17)
+	- change AAL file to correctly specify location of agents and location of node configuration files on local machine
+
+2. Running Case study
+	$ sudo ./case_study_1.py -a cs_procedure.aal
+	- This creates 2 node topology with hosts h1 and h2. 
+	- It starts magi daemon on each host(with h1 being TCP server)
+	- Next it starts magi orchestrator on h1 with the aal script provided and executes case study 1.
+
+	$ sudo ./case_study_1.py -a cs_procedure_monitor.aal
+	- This is similar to previous case except it starts packet counter agent on h1 for monitoring data flow
+
+	It also generates graph of data flow. Necessary commands are added inside script for automation purpose.
