@@ -31,45 +31,19 @@ Transport_t * enqueue(Transport_t *transport,AgentRequest_t *req)
 	pthread_mutex_lock(&transport->qlock);
     if (transport->rear == NULL)
     {
-	printf("Enqueing rear-NULL\n");
+	printf("Queue NULL, Enqueing\n");
         transport->rear = (Queue_t *)malloc(sizeof(Queue_t));
-  /*     MAGIMessage_t* m;
-	 if(req->reqType == 5)
-        {
-                 m = req->data;
-		printf("enqueue: data \n");
-		printf("%s\n",m->data);
-                char * data = malloc(strlen(m->data)+1);
-                strcpy(data,m->data);
-                m->data = data;
-                printf("enqueue-new malloc MAGI data: %s\n",m->data);
-        }
-*/
-
         transport->rear->next= NULL;
         transport->rear->req=req;
 	transport->rear->req->data = req->data;
         transport->front = transport->rear;
-	if(req->reqType == 5)
-        {
-                MAGIMessage_t* m = req->data;
-//                printf("enqueue MAGI data: %s\n",m->data);
-        }
 
     }
     else
     {
+	printf("Queue not NULL; Enqueing at rear\n");
         Queue_t* temp=(Queue_t *)malloc(sizeof(Queue_t));
 	temp->req = req;
-	if(req->reqType == 5)
-	{
-		MAGIMessage_t* m = temp->req->data;
-		char * data = malloc(strlen(m->data)+1);
-		strcpy(data,m->data);
-		m->data = data;
-		printf("enqueue-new malloc MAGI data: %s\n",m->data);
-	}
-
 	temp->next = NULL;
         transport->rear->next = temp;
 	transport->rear = temp;
@@ -93,20 +67,11 @@ AgentRequest_t* dequeue(Transport_t *transport)
     	}
    	else
    	{
-		printf("got an element on queue\n");
+		printf("Dequeue: Got an element on the queue\n");
 	    	AgentRequest_t* node;
-    		node =	front->req;
-                if(node->reqType == 5)
-                {
-                        MAGIMessage_t* m = node->data;
-                        printf("dequeue MAGI data: %s\n",m->data);
-			m = front->req->data;
-			printf("front : %s\n",m->data);
-                }
-    
+    		node =	front->req;  
 	    	transport->front = front->next; 
 	    	//free(front)
-
 		if(transport->front == NULL)
 	    	{
 			transport->rear = NULL;
@@ -128,7 +93,9 @@ int isEmpty(Transport_t* transport)
  ************************************* */
 void sendOut(AgentRequest_t* req)
 {
+	printf("Entering sendOut\n");
 	enqueue(outTransport,req);
+	printf("Exiting sendOut\n");
 
 }
 /***************************************************************
@@ -146,15 +113,8 @@ void* sendThd()
 			/*Msg in the queue to be sent out*/
 			int length =0;
 			char* msg;
-			printf("Sending out req type:%d\n",req->reqType);
-		        if(req->reqType == 5)
-			{
-        	        MAGIMessage_t* m = req->data;
-                	printf("sendThd MAGI data: %s\n",m->data);
-	        	}
-
+			printf("SndThd: Sending out req type:%d\n",req->reqType);
 			msg = AgentEncode(req,&length);
-			printf("SndThd: Encode compelte\n");
 			log_info(logger,"Sending out msg on socket...\n");
 			int err = send(fd, msg, length, 0);
 			if(err == -1)
@@ -175,7 +135,6 @@ Listen Thread
 
 void* listenThd()
 {
-printf("Inside ListenThd\n");
 	while(1)
 	{
 		int len = read(fd,msg,sizeof(msg)); 
@@ -188,6 +147,7 @@ printf("Inside ListenThd\n");
 			continue;
 		}
 		log_info(logger,"Received a AgentRequest message...\n");
+		printf("ListenThd: Received an AgentRequest message\n");
 		char* ptr = msg;
 		ptr=ptr+8;
 		uint32_t totalLen;
@@ -202,9 +162,9 @@ printf("Inside ListenThd\n");
 			memcpy(msg+len_t,tmp,len1);
 			len_t +=len1;
 		}
-		printf("Got a message on listen queue\n");
+		//printf("Got a message on listen queue\n");
 		AgentRequest_t* req = AgentDecode(msg);
-		printf("listenThd: decode complete...enqueing\n"); 	
+		printf("ListenThd: decode complete...enqueing\n"); 	
 		inTransport = enqueue(inTransport,req);
 		
 		/*Notify next() if non-blocking*/
@@ -332,7 +292,7 @@ void init_connection(int argc,char** argv)
 	if(hostName == NULL)
 		hostName = "MAGIdaemon";
 	if(commPort == 0)
-		commPort = 18810;	
+		commPort = 18809;	
 
 	/*Log the parsed info*/
 	

@@ -1,7 +1,7 @@
 #include "AgentTransport.h"
 extern Transport_t* inTransport,*outTransport;
 extern Logger* logger;
-
+int stop_flag = 0;
 extern char *agentName,*dockName,*logFileName,*commGroup,*commHost,*hostName;
 extern int log_level,commPort;
 /*************************************
@@ -40,11 +40,12 @@ MAGIMessage_t* next(int block)
  ************************************* */
 AgentRequest_t* createAgentRequest(AgentRequestType_t reqType,char* data)
 {
+	printf("Entering CreateAgentRequest\n");
 	AgentRequest_t* req = (AgentRequest_t*)malloc(sizeof(AgentRequest_t));
 	req->reqType = reqType;
 	req->options = NULL;
 	req->data = data;
-	printf("CreateAgentReq data: %s\n%s\n",data,req->data);
+	printf("Exiting CreateAgentRequest\n");
 	return req;
 }
 
@@ -53,9 +54,9 @@ AgentRequest_t* createAgentRequest(AgentRequestType_t reqType,char* data)
  ************************************* */
 void listenDock(char* dock)
 {
-	//printf("Inside listenDock\n");
+	printf("Inside listenDock\n");
 	AgentRequest_t* req = createAgentRequest(LISTEN_DOCK,dock);
-	//printf("Created req\n");
+	printf("Exiting listenDock\n");
 	sendOut(req);
 }
 
@@ -97,22 +98,25 @@ void leaveGroup(char* group)
 	 */
 MAGIMessage_t* create_MAGIMessage(char* srcdock, char* node, char* group, char* dstdock, contentType_t contenttype, char* data)
 	{
+		printf("Entering create_MAGIMessage\n");
 		MAGIMessage_t* magiMsg = (MAGIMessage_t*)malloc(sizeof(MAGIMessage_t));
 		if(srcdock)
 			insert_header(magiMsg, SRCDOCK, strlen(srcdock)+1, srcdock);
 		if(node)
-			insert_header(magiMsg, DSTNODES, strlen(node)+1, srcdock);
+			insert_header(magiMsg, DSTNODES, strlen(node)+1, node);
 		if(group)
-			insert_header(magiMsg, DSTGROUPS, strlen(group)+1, srcdock);
+			insert_header(magiMsg, DSTGROUPS, strlen(group)+1, group);
 		if(dstdock)
-			insert_header(magiMsg, DSTNODES, strlen(dstdock)+1, srcdock);
+			insert_header(magiMsg, DSTNODES, strlen(dstdock)+1, dstdock);
 		magiMsg->contentType = contenttype;
 		magiMsg->data = data;
 
 		magiMsg->flags = 0;
-		magiMsg->headerLength = calHlen(magiMsg->headers);
+		magiMsg->headerLength = calHlen(magiMsg->headers)+6;
 		magiMsg->id = 0; 
-		magiMsg->length= 2+magiMsg->headerLength+strlen(data)+1;
+		magiMsg->length= 2+magiMsg->headerLength+strlen(data);
+		printf("Exiting create_MAGIMessage\n");
+
 		return magiMsg;
 	}
 
@@ -124,11 +128,11 @@ MAGIMessage_t* create_MAGIMessage(char* srcdock, char* node, char* group, char* 
 /*AgentRequest header options - end with NULL*/
 void MAGIMessageSend(MAGIMessage_t* magi,char* arg,...)
 {
-	
+	printf("Entering MAGIMessageSend\n");
 	AgentRequest_t* req = createAgentRequest(MESSAGE,magi);
 	req->data = (char*)magi;
 	MAGIMessage_t* t = req->data;
-	printf("MAGIMSGSend : %s/n",t->data);
+	
 	if(arg !=NULL)
 	{
 		va_list kw;
@@ -168,44 +172,49 @@ void MAGIMessageSend(MAGIMessage_t* magi,char* arg,...)
 		}while((args = va_arg(kw, char*)) != NULL);
    	 	va_end(arg);
 	}
-	printf("MAGI sendMsg calling sendOut\n");
-	int len =0;
-	//AgentEncode(req,&len);
+//	printf("MAGI sendMsg calling sendOut\n");
+//	int len =0;
+//	char* buf =AgentEncode(req,&len);
+//	AgentDecode(buf);
 	//printf("MAGI msg encode chk success.. Calling sendOut()\n");
+	printf("Exiting MAGIMessageSend\n");
 	sendOut(req);
 }
 
 void trigger(char* groups, char* docks, contentType_t contenttype, char* data)
 {
-
+	printf("Entering trigger\n");
 	MAGIMessage_t* msg = create_MAGIMessage(NULL, NULL, groups, docks, contenttype, data);
 	printf("trigger:Created MAGI msg for trigger %s\n",msg->data);
 	MAGIMessageSend(msg,NULL);
-	//printf("trigger_gen complete\n");
+	printf("Exiting trigger\n");
 
 }
 
 void send_start_trigger()
 {
-	char data[100]; 
-	sprintf(data,"nodes:%s,event:AgentLoadDone,agent:%s",hostName,agentName);
+	printf("Entering send_start_trigger\n");
+	char* data = (char*)malloc(100);
+	char temp[100]; 
+	sprintf(temp,"{nodes: %s, event: AgentLoadDone, agent: %s}",hostName,agentName);
+	strcpy(data,temp);
 	//printf("trigger msg -> %s\n",data);
-	trigger(NULL,NULL,MESSAGE,data);
-	printf("start_trigger complete\n");
+	trigger("control",NULL,MESSAGE,data);
+	printf("Exiting send_start_trigger\n");
 }
 
 typedef struct {
   char *name;
   int aCnt;
   char* argList[10];
-  void (*func)();  
+  int (*func)();  
 }fMap;
 
 fMap* function_map;
 
 typedef struct fList{
 	char* name;
-	void* fptr;
+	int* fptr;
 	int aCnt;
 	struct fList* next;
 	char* argList[10];
@@ -261,6 +270,8 @@ fMap* create_functionMap()
 		temp = temp->next;
 
 	}  
+	if(count == 0)
+		return NULL;
 
 	function_map = malloc(count*sizeof(fMap));
 	int i = 0; 
@@ -281,8 +292,31 @@ fMap* create_functionMap()
 		cnt--;  
 		i++;
 	}
+	return function_map;
 
 }  
+
+void stopFunc()
+{
+	stop_flag = 1;
+	return;
+}
+
+
+int agentStart(int argc, char** argv)
+{
+	addFunc("stop",&stopFunc,0,NULL);
+	fMap* t;
+	if((t= create_functionMap())==NULL)
+		return -1;
+	init_connection(argc,argv);
+	start_connection();
+	send_start_trigger();
+	while(!stop_flag)
+		sleep(1);
+	printf("Agent closing connection...");
+	
+}
 
 union Data
 {
@@ -323,9 +357,9 @@ union Data data[10]; /*10 args max*/
 
 		}
       		if(argcnt ==1)
-			function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s);
+			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s);
 		else if(argcnt == 2)
-			function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s);
+			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s);
 		else if(argcnt == 3)
 			function_map[i].func(atoi(args[0]),atoi(args[1]),atoi(args[2]));
 		printf("Done\n");
@@ -335,3 +369,17 @@ union Data data[10]; /*10 args max*/
 
   return -1;
 }
+ 
+/*
+int main()
+{
+hostName = "testCServer";
+agentName = "c_agent";
+printf("Sending out Trigger message\n");
+					char ndata[250];
+					sprintf(ndata,"{event:%s,result:%d,nodes:%s}","testCase",60,hostName);
+					char* td = (char*)malloc(strlen(ndata)+1);
+					strcpy(td,ndata);
+					trigger("control", "control", YAML, td);
+					printf("Sent a trigger message\n");
+}*/

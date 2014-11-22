@@ -73,8 +73,9 @@ char * AgentEncode(AgentRequest_t* msg,uint32_t* bufLen)
 	uint16_t headerlen =0;
 	uint32_t totalLen =0;
 	char * data = NULL;
+	printf("Entering AgentEncode\n");
 	uint32_t hlen = calculate_hlen(msg);
-	printf("hlen:%d\n",hlen);
+	//printf("hlen:%d\n",hlen);
 	/*TotalLength-4, HeaderLen-2B, RequestType -1B,options*/
 	char * hbuf = (char*)malloc(8+hlen+4+2+1);/*total size of the request message header*/
 
@@ -118,18 +119,29 @@ char * AgentEncode(AgentRequest_t* msg,uint32_t* bufLen)
 		}
 		tmp = tmp->next;
 	}
+char* temp;
 
 	/*Copy the data*/
 	if(msg->reqType == 5)
 	{
 		/*Get the length of the Magi message structure*/
 		MAGIMessage_t* magiMsg = (MAGIMessage_t*)msg->data;
+		printf("\nAgentEncode: magiMsg->data : %s\n",magiMsg->data);
+	//	printf("length:%d\n,hlength:%d\n,id:%d\n,flags:%d\n,contentType:%d\n,datalen:%d\n",magiMsg->length,magiMsg->headerLength,magiMsg->id,magiMsg->flags,magiMsg->contentType,strlen(magiMsg->data));
 	//	totalLen = magiMsg->length+4+8; //total magi msg size
 		/*MAGI header and data is encoded*/
 		uint32_t bufLen;
 		printf("Calling MAGIEncode\n");
-		data = MAGIMessageEncode(magiMsg,&bufLen);
-		printf("MAGIEncode Complete:%d\n",bufLen);
+			
+			MAGIMessageEncode(&data,magiMsg,&bufLen);
+			if(data == NULL)
+				printf("\ndata is NULL\n");
+		/*temp = malloc(bufLen);
+		memcpy(temp,data,bufLen);*/
+		//printf("MAGIEncode Complete:%d\n",bufLen);
+//		MAGIMessageDecode(data);
+//		printf("decode works!\n");
+//		printf("MAGIEncode ok!");
 		totalLen+=bufLen;
 
 	}
@@ -137,12 +149,12 @@ char * AgentEncode(AgentRequest_t* msg,uint32_t* bufLen)
 	{
 		/*Data is a string*/
 		totalLen = strlen(msg->data); /*Should '\0' be included?*/
-		data = msg->data; /*This can be on the heap or stack*/
-
+		//strcpy(temp,msg->data); /*This can be on the heap or stack*/
+		data = msg->data;
 	}
 
 	/*Data and options have been copied to the buffer*/
-printf("headerlen:%d\n",headerlen);
+//printf("headerlen:%d\n",headerlen);
 	headerlen += 1;
 	totalLen = totalLen+headerlen+2;
 	totalLen = htonl(totalLen);
@@ -152,16 +164,16 @@ printf("headerlen:%d\n",headerlen);
 	memcpy(hbuf+8+4,&headerlen,2);
 	totalLen = ntohl(totalLen);
         headerlen = ntohs(headerlen);
-printf("lengths calculated %d \n", totalLen);	
+//printf("lengths calculated %d \n", totalLen);	
 	/*Header Encode complete. Add (Magi header+Magi data encoded buffer)*/
 	char* buf = (char*)malloc(totalLen+4+8); /*Final buffer*/
-printf("headerlen: %d\n",headerlen);
-//printf("strlen of data : %d\n",strlen(data));
 	memcpy(buf,hbuf,headerlen+6+8); /*Only the header+options part */
-//printf("buf: %s\nhbuf:%s\n",buf,hbuf);	
+//printf("AgentReq - totalLen:%d\n headerLen:%d\n",totalLen,headerlen);	
+
 	memcpy(buf+headerlen+6+8,data,totalLen - headerlen - 2); /*Just the data*/
 	*bufLen = totalLen+4+8;
-	printf("returning enc msg\n");
+//	printf("returning enc msg\n");
+	printf("Exiting AgentEncode\n");
 	return buf;	
 }
 
@@ -175,6 +187,7 @@ printf("headerlen: %d\n",headerlen);
 
 AgentRequest_t*  AgentDecode(char* buf)
 {
+	printf("Entering AgentDecode\n");
 	char magi[8]; 
 	memcpy(magi,buf,8);
 	if(strncmp(magi,"MAGI\x88MSG",8))
@@ -182,7 +195,7 @@ AgentRequest_t*  AgentDecode(char* buf)
 		printf("Invalid Agent msg\n");
 		return NULL;
 	} //taken care in the transport module
-	printf("In Agent Message decode\n");
+	
 	AgentRequest_t *msg = (AgentRequest_t*) malloc(sizeof(AgentRequest_t));
 	uint32_t totalLen;
 	uint16_t headerLen;
@@ -198,7 +211,7 @@ AgentRequest_t*  AgentDecode(char* buf)
 	memcpy(&typ,(char*)buf+6,1);
 	msg->reqType = (uint8_t)typ;
 	char* data = buf+2+4+headerLen;
-printf("totalLen : %d\n headerLen: %d\n reqType: %d\n",totalLen,headerLen,msg->reqType);
+//printf("totalLen : %d\n headerLen: %d\n reqType: %d\n",totalLen,headerLen,msg->reqType);
 	/*Extract data*/
 //printf("data %s\n",data);
 	switch(msg->reqType)
@@ -270,7 +283,8 @@ printf("totalLen : %d\n headerLen: %d\n reqType: %d\n",totalLen,headerLen,msg->r
 		msg->options = header;
 	}
 	}
-	printf("Agent Decode success\n");
+//	printf("Agent Decode success\n");
+printf("Exiting AgentDecode\n");
 	return msg;
 
 }

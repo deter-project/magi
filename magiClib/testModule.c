@@ -13,11 +13,11 @@
 
 extern fargs_t funcArgs;
 char* nodeName;
-int add(int a, char*b) 
+int add(int a, int b) 
 {
 	printf("Function add\n");
-	printf("a: %d\nb:%s\n", a,b);
-	return a;	
+	printf("a: %d\nb:%d\n", a,b);
+	return a+b;	
 }
 
 float divide(char**args) 
@@ -33,22 +33,6 @@ float divide(char**args)
 
 int main(int argc, char **argv)
 {
-
-	init_connection(argc,argv);
-	start_connection();
-	addFunc("add",&add,2,"int","char*");
-//	addFunc("divide")
-	create_functionMap();
-	send_start_trigger();
-
-
-//	int block =1;
-//	MAGIMessage_t* in;
-	while(1)
-{
-		sleep(1);
-	//	in= next(block);
-	//	if(in)
- 			//call_function((funcArgs.func),&(funcArgs.args));
-	}
+	addFunc("add",&add,2,"int","int");
+	agentStart(argc,argv);
 }

@@ -1,0 +1,3 @@
+execute: socket
+mainfile: testmod
+compilecmd: make all
