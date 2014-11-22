@@ -22,8 +22,10 @@ if __name__ == '__main__':
                                                     Need to provide build a graph specific configuration for plotting.")
                                                     
     optparser.add_option("-d", "--dbhost", dest="dbhost", help="Database host")
-    optparser.add_option("-p", "--dbport", dest="dbport", type="int", default=27017, help="Database port")
+    optparser.add_option("-r", "--dbport", dest="dbport", type="int", default=27017, help="Database port")
     optparser.add_option("-x", "--experimentConfig", dest="experimentConfig", help="Experiment configuration file")
+    optparser.add_option("-p", "--project", dest="project", help="Project name")
+    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
     optparser.add_option("-c", "--config", dest="config", help="Graph configuration file")
     optparser.add_option("-a", "--agent", dest="agent", help="Agent name. This is used to fetch available database fields")
     optparser.add_option("-l", "--aal", dest="aal", help="AAL (experiment procedure) file. This is also used to fetch available database fields")
@@ -50,20 +52,20 @@ if __name__ == '__main__':
             optparser.print_help()
             optparser.error("Missing configuration file")
      
-        logging.info("Attempting to get the database config host from the experiment")
         if options.dbhost:
             dbHost = options.dbhost
-        elif options.experimentConfig:
-            dbHost = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig)
+        elif options.experimentConfig or (options.project and options.experiment):
+            logging.info("Fetching database config host based on the experiment information")
+            dbHost = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig,
+                                             project=options.project, 
+                                             experiment=options.experiment)
+            logging.info("Fetched database config host: %s" %(dbHost))    
         else:
             optparser.print_help()
-            optparser.error("Missing database host and experiment configuration file")
+            optparser.error("Missing database host and experiment configuration information")
             
         dbPort = options.dbport
         
-        #logging.info(dbPort)
-        logging.info("Got the database config host from the experiment")                                  
-    
         logging.info("Attempting to load the graph configuration file")
         config = helpers.loadYaml(options.config)
         logging.info("Graph configuration loaded")
@@ -107,8 +109,8 @@ if __name__ == '__main__':
                 connection = MongoClient(dbHost, dbPort)
                 collection = connection[DB_NAME][COLLECTION_NAME]
                 logging.info('Connected to the database')
-            except RuntimeError as e:
-                logging.critical("Failed connecting to the database : %s", str(e))
+            except:
+                logging.exception("Failed connecting to the database %s:%s" %(dbHost, str(dbPort)))
                 sys.exit(2)
 
             """ X and Y list values for the graph """
@@ -116,15 +118,19 @@ if __name__ == '__main__':
             y=[]
             logging.info('The filter applied for data collected: %s', dataFilter)
             
-            """ Populating the X and Y values from the database """
-            firstRecord = collection.find(dataFilter).sort(xValue, 1).limit(1)[0]
-            logging.info('The first timestamp in database: %s', firstRecord[xValue])
-
-            logging.info('Fetching data from database')
-            for record in collection.find(dataFilter).sort(xValue, 1):
-                x.append("%.8f" % (record[xValue] - firstRecord[xValue]))
-                y.append(record[yValue])
-          
+            try:
+                """ Populating the X and Y values from the database """
+                firstRecord = collection.find(dataFilter).sort(xValue, 1).limit(1)[0]
+                logging.info('The first timestamp in database: %s', firstRecord[xValue])
+    
+                logging.info('Fetching data from database')
+                for record in collection.find(dataFilter).sort(xValue, 1):
+                    x.append("%.8f" % (record[xValue] - firstRecord[xValue]))
+                    y.append(record[yValue])
+            except:
+                logging.exception("Error fetching data")
+                sys.exit(2)
+                
             logging.info('Constructed the x and y values for graph')
   
             """ Check for type of graph needed and print """          

@@ -1,0 +1,62 @@
+## The agent implementation and addressing information 
+agents:
+  client_agent:
+    group: client_group
+    path: /home/seth/http_client/http_client.tar.gz
+    execargs: {servers: [h1], interval: '5', sizes: 'minmax(1000,10000)'}
+
+  server_agent:
+    group: server_group
+    path: /home/seth/apache/apache.tar.gz 
+    execargs: []
+
+## The mapping from the AAL procedure to the experiment apparatus 
+groups:
+  client_group: [h2]
+  server_group: [h1]
+
+streamstarts: [ serverstream, clientstream, cleanupstream ]
+
+eventstreams:
+  serverstream: 
+      - type: event
+        agent: server_agent 
+        method: startServer
+        trigger: serverStarted 
+        args: {}
+
+      - type: trigger
+        triggers: [ { event: clientStopped} ] 
+
+      - type: event
+        agent: server_agent 
+        method: stopServer 
+        trigger: serverStopped 
+        args: {} 
+
+  clientstream:      
+      - type: trigger
+        triggers: [ { event: serverStarted } ] 
+
+      - type: event
+        agent: client_agent 
+        method: startClient
+        args: {}
+
+      - type: trigger
+        triggers: [ { timeout: 60000 } ]
+
+
+      - type: event
+        agent: client_agent
+        method: stopClient
+        trigger: clientStopped 
+        args: {}
+      
+
+  cleanupstream:
+      - type: trigger
+        triggers: [ {event: serverStopped, target: exit} ] 
+
+################################################
+
