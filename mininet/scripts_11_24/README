@@ -1,0 +1,31 @@
+This is for REST API simulation of case study 1.
+
+It uses Bottle framework to listen to REST API calls.
+
+Generate mininet topology and create Rest API listener by running
+
+$ sudo ./resttest.py
+
+Once REST server is up, The folowing commads can be run.
+ 
+1. To start apache server,
+$ curl localhost:8080/cmd/h1/apache2%20-k%20start
+
+This brings up the HTTP/Apache server on node h1. 
+
+To run http client command
+$ curl localhost:8080/run_http_client/<value>
+
+Client queries HTTP server on h1 to get packet of specified size(value).
+Default is 1000
+
+To return to CLI/ mininet command prompt
+$ curl localhost:8080/goto_cli
+ 
+To stop the network
+$ curl localhost:8080/stop
+
+
+Assumptions
+1. As of now Packet counter agent is not running. So Magi graph tool will not work.
+2. MongoDB instances are not started. So there is no data stored for magi graph tool
