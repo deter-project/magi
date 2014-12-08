@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
+extern Logger* logger;
 /*TODO : #define for all length values + memory error checks*/
 
 /****************************************************
@@ -11,6 +11,7 @@
  * ***************************************************/
 uint32_t calculate_hlen(AgentRequest_t* msg)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	uint32_t len =0;
 	AgentRequestOptions_t* tmp = msg->options;
 	while(tmp)
@@ -20,6 +21,7 @@ uint32_t calculate_hlen(AgentRequest_t* msg)
 		len+=2; /*key and length fields*/		
 		tmp = tmp->next;
 	}
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	return len;
 
 }
@@ -43,11 +45,11 @@ void add_options(AgentRequestOptions_t** op, char* key, uint32_t len, char* valu
 	}
 	else
 	{
-		printf("Invalid AgentRequest type\n");
+		log_info(logger,"Invalid AgentRequest type\n");
 		return;
 	}	
 	if(strlen(value) > 4)
-		printf("Option value cannot be greater than 4 Bytes..Truncated\n");
+		log_info(logger,"Option value cannot be greater than 4 Bytes..Truncated\n");
 	AgentRequestOptions_t* tmp = (AgentRequestOptions_t*)malloc(sizeof(AgentRequestOptions_t));
 	tmp->options = type;
 	tmp->len = 0;
@@ -68,14 +70,13 @@ void add_options(AgentRequestOptions_t** op, char* key, uint32_t len, char* valu
 
 char * AgentEncode(AgentRequest_t* msg,uint32_t* bufLen)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	/*Encoding the AgentRequest Header*/
 	/*First find the length of all options and pack options*/
 	uint16_t headerlen =0;
 	uint32_t totalLen =0;
 	char * data = NULL;
-	printf("Entering AgentEncode\n");
 	uint32_t hlen = calculate_hlen(msg);
-	//printf("hlen:%d\n",hlen);
 	/*TotalLength-4, HeaderLen-2B, RequestType -1B,options*/
 	char * hbuf = (char*)malloc(8+hlen+4+2+1);/*total size of the request message header*/
 
@@ -119,29 +120,15 @@ char * AgentEncode(AgentRequest_t* msg,uint32_t* bufLen)
 		}
 		tmp = tmp->next;
 	}
-char* temp;
-
+	char* temp;
 	/*Copy the data*/
 	if(msg->reqType == 5)
 	{
 		/*Get the length of the Magi message structure*/
 		MAGIMessage_t* magiMsg = (MAGIMessage_t*)msg->data;
-		printf("\nAgentEncode: magiMsg->data : %s\n",magiMsg->data);
-	//	printf("length:%d\n,hlength:%d\n,id:%d\n,flags:%d\n,contentType:%d\n,datalen:%d\n",magiMsg->length,magiMsg->headerLength,magiMsg->id,magiMsg->flags,magiMsg->contentType,strlen(magiMsg->data));
-	//	totalLen = magiMsg->length+4+8; //total magi msg size
 		/*MAGI header and data is encoded*/
-		uint32_t bufLen;
-		printf("Calling MAGIEncode\n");
-			
-			MAGIMessageEncode(&data,magiMsg,&bufLen);
-			if(data == NULL)
-				printf("\ndata is NULL\n");
-		/*temp = malloc(bufLen);
-		memcpy(temp,data,bufLen);*/
-		//printf("MAGIEncode Complete:%d\n",bufLen);
-//		MAGIMessageDecode(data);
-//		printf("decode works!\n");
-//		printf("MAGIEncode ok!");
+		uint32_t bufLen;	
+		MAGIMessageEncode(&data,magiMsg,&bufLen);
 		totalLen+=bufLen;
 
 	}
@@ -154,7 +141,6 @@ char* temp;
 	}
 
 	/*Data and options have been copied to the buffer*/
-//printf("headerlen:%d\n",headerlen);
 	headerlen += 1;
 	totalLen = totalLen+headerlen+2;
 	totalLen = htonl(totalLen);
@@ -164,16 +150,12 @@ char* temp;
 	memcpy(hbuf+8+4,&headerlen,2);
 	totalLen = ntohl(totalLen);
         headerlen = ntohs(headerlen);
-//printf("lengths calculated %d \n", totalLen);	
 	/*Header Encode complete. Add (Magi header+Magi data encoded buffer)*/
 	char* buf = (char*)malloc(totalLen+4+8); /*Final buffer*/
 	memcpy(buf,hbuf,headerlen+6+8); /*Only the header+options part */
-//printf("AgentReq - totalLen:%d\n headerLen:%d\n",totalLen,headerlen);	
-
 	memcpy(buf+headerlen+6+8,data,totalLen - headerlen - 2); /*Just the data*/
 	*bufLen = totalLen+4+8;
-//	printf("returning enc msg\n");
-	printf("Exiting AgentEncode\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	return buf;	
 }
 
@@ -187,12 +169,12 @@ char* temp;
 
 AgentRequest_t*  AgentDecode(char* buf)
 {
-	printf("Entering AgentDecode\n");
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	char magi[8]; 
 	memcpy(magi,buf,8);
 	if(strncmp(magi,"MAGI\x88MSG",8))
 	{
-		printf("Invalid Agent msg\n");
+		log_info(logger,"Invalid Agent msg\n");
 		return NULL;
 	} //taken care in the transport module
 	
@@ -211,18 +193,11 @@ AgentRequest_t*  AgentDecode(char* buf)
 	memcpy(&typ,(char*)buf+6,1);
 	msg->reqType = (uint8_t)typ;
 	char* data = buf+2+4+headerLen;
-//printf("totalLen : %d\n headerLen: %d\n reqType: %d\n",totalLen,headerLen,msg->reqType);
 	/*Extract data*/
-//printf("data %s\n",data);
 	switch(msg->reqType)
 	{
 		case MESSAGE: {
-				printf("Agent Decode: Calling MAGI Decode...\n");
-				//char* d = (char*)malloc(totalLen - headerLen - 1);
-				//memcpy(d,data,totalLen - headerLen-1);
-				//int test =0;
-				//memcpy(&test,d,4); 
-				//printf("MAGI message sending to MAGIDecode %d\n ",test);
+				log_info(logger,"Agent Decode: Calling MAGI Decode...\n");
 				MAGIMessage_t* Magimsg = MAGIMessageDecode(data);
 				msg->data = (char*)Magimsg;
 				break;		
@@ -232,12 +207,10 @@ AgentRequest_t*  AgentDecode(char* buf)
 		case LEAVE_GROUP:
 		case LISTEN_DOCK:
 		case UNLISTEN_DOCK:
-				printf("data length %d\n",strlen(data));
 			      	msg->data = (char*)malloc(strlen(data));
 				strcpy(msg->data,data);
-				printf("DATA in the msg %s",(char*)(msg->data));	
 				break;
-		default: printf("Invalid reqType\n");
+		default: log_info(logger,"Invalid reqType\n");
 			 return NULL;
 
 	}
@@ -265,7 +238,7 @@ AgentRequest_t*  AgentDecode(char* buf)
 		if(header->len && header->options == TIME_STAMP)
 		{
 			if(header->len != 4)
-				printf("Invalid header length for TIME_STAMP\n");
+				log_info(logger,"Invalid header length for TIME_STAMP\n");
 			optionsLen -=header->len;
 			header->value = (char*)malloc(4);
 			memcpy(header->value,tmp,4);
@@ -283,40 +256,7 @@ AgentRequest_t*  AgentDecode(char* buf)
 		msg->options = header;
 	}
 	}
-//	printf("Agent Decode success\n");
-printf("Exiting AgentDecode\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	return msg;
 
 }
-
-/*int main()
-{
-
-MAGIMessage_t Mmsg;
-Mmsg.headers = NULL;
-Mmsg.length = 1234;
-Mmsg.headerLength = 29;
-Mmsg.id = 678;
-Mmsg.flags = 4;
-Mmsg.contentType = 5;
-
-insert_header(&Mmsg.headers, 52,8,"Counters");
-insert_header(&Mmsg.headers, 20,4,"GUIX");
-insert_header(&Mmsg.headers,51,5,"nodes");
-
-Mmsg.data = "some random YAML text";
-
-/ *Agent mesg* /
-AgentRequest_t Amsg;
-memset(&Amsg,0,sizeof(Amsg));
-Amsg.reqType = MESSAGE;
-add_options(&Amsg.options,TIME_STAMP,strlen("timestamp"),"timestamp");
-add_options(&Amsg.options,ACK,strlen("ackd"),"ackd");
-Amsg.data = (char*)&Mmsg;
-
-char* Abuf = AgentEncode(Amsg);
-AgentRequest_t* Fmsg = AgentDecode(Abuf);
-
-return 0;
-}
-*/

@@ -9,10 +9,6 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdarg.h>
-#include "logger.h"
-
-extern fargs_t funcArgs;
-char* nodeName;
 int add(int a, int b) 
 {
 	printf("Function add\n");
@@ -20,19 +16,25 @@ int add(int a, int b)
 	return a+b;	
 }
 
-float divide(char**args) 
+float add2(int a, int b,int c) 
 { 
-	int i=0;
-	printf("Function divide\n");
-	printf("res: %f\n",(float)atoi(args[0])/atoi(args[1]) );
-	return (atoi(args[1])/atoi(args[2]));	
+	printf("Function add2\n");
+	printf("a: %d\nb:%d\nc:%d\n", a,b,c);
+	return a+b+c;	
 	
-
 }
 
+int cpyfunc(char* a)
+{
+	printf("cpyFunc: %s\n",a);
+	return 1;
+
+}
 
 int main(int argc, char **argv)
 {
 	addFunc("add",&add,2,"int","int");
+	//addFunc("add2",&add2,3,"int","int");
+	//addFunc("cpyfunc",&cpyfunc,1,"char*");
 	agentStart(argc,argv);
 }

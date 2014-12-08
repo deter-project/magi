@@ -1,14 +1,14 @@
 #include "AgentTransport.h"
 #include "logger.h"
 #include <netdb.h>
-
+#include <pthread.h>
 
 int portno;
 char msg[4096];
 
 pthread_t sender,listener;
 
-
+static int listener_stop = 0,listener_clear =0; 
 static int fd;
 Transport_t* inTransport,*outTransport;
 struct sockaddr_in serv_addr;/*Holds Address info of server*/
@@ -31,7 +31,7 @@ Transport_t * enqueue(Transport_t *transport,AgentRequest_t *req)
 	pthread_mutex_lock(&transport->qlock);
     if (transport->rear == NULL)
     {
-	printf("Queue NULL, Enqueing\n");
+	log_debug(logger,"Queue NULL, Enqueing...\n");
         transport->rear = (Queue_t *)malloc(sizeof(Queue_t));
         transport->rear->next= NULL;
         transport->rear->req=req;
@@ -41,7 +41,7 @@ Transport_t * enqueue(Transport_t *transport,AgentRequest_t *req)
     }
     else
     {
-	printf("Queue not NULL; Enqueing at rear\n");
+	log_debug(logger,"Queue not NULL; Enqueing at rear\n");
         Queue_t* temp=(Queue_t *)malloc(sizeof(Queue_t));
 	temp->req = req;
 	temp->next = NULL;
@@ -67,7 +67,7 @@ AgentRequest_t* dequeue(Transport_t *transport)
     	}
    	else
    	{
-		printf("Dequeue: Got an element on the queue\n");
+		log_debug(logger,"Dequeue: Got an element on the queue\n");
 	    	AgentRequest_t* node;
     		node =	front->req;  
 	    	transport->front = front->next; 
@@ -93,9 +93,9 @@ int isEmpty(Transport_t* transport)
  ************************************* */
 void sendOut(AgentRequest_t* req)
 {
-	printf("Entering sendOut\n");
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	enqueue(outTransport,req);
-	printf("Exiting sendOut\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 /***************************************************************
@@ -103,6 +103,7 @@ Send Thread
 **************************************************************/
 void* sendThd()
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	AgentRequest_t* req = NULL;
 	while(1)
 	{
@@ -113,7 +114,6 @@ void* sendThd()
 			/*Msg in the queue to be sent out*/
 			int length =0;
 			char* msg;
-			printf("SndThd: Sending out req type:%d\n",req->reqType);
 			msg = AgentEncode(req,&length);
 			log_info(logger,"Sending out msg on socket...\n");
 			int err = send(fd, msg, length, 0);
@@ -126,6 +126,7 @@ void* sendThd()
        		}
 
 	}
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 
@@ -135,8 +136,12 @@ Listen Thread
 
 void* listenThd()
 {
-	while(1)
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
+	while(!listener_stop)
 	{
+		/*pthread_Cancel should exit from read blocking call. If a bug appears, then
+		read has to be timed*/
+
 		int len = read(fd,msg,sizeof(msg)); 
 		if(len < 8) continue;
 		char magi[8]; 
@@ -147,7 +152,7 @@ void* listenThd()
 			continue;
 		}
 		log_info(logger,"Received a AgentRequest message...\n");
-		printf("ListenThd: Received an AgentRequest message\n");
+		log_debug(logger,"ListenThd: Received an AgentRequest message\n");
 		char* ptr = msg;
 		ptr=ptr+8;
 		uint32_t totalLen;
@@ -162,14 +167,19 @@ void* listenThd()
 			memcpy(msg+len_t,tmp,len1);
 			len_t +=len1;
 		}
-		//printf("Got a message on listen queue\n");
+
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE,NULL);
+		listener_clear = 0;
 		AgentRequest_t* req = AgentDecode(msg);
-		printf("ListenThd: decode complete...enqueing\n"); 	
+	
 		inTransport = enqueue(inTransport,req);
-		
+		listener_clear = 1;
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE,NULL);
+		pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);		
 		/*Notify next() if non-blocking*/
 
 	}
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 
@@ -178,6 +188,7 @@ Parse helper
 **************************************************************/
 void parse_args(int argc, char**argv)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	agentName = (char*)malloc(strlen(argv[1]+1));
 	strcpy(agentName,argv[1]);
 	dockName = (char*)malloc(strlen(argv[2]+1));
@@ -190,7 +201,7 @@ void parse_args(int argc, char**argv)
 		temp = (char*)malloc(strlen(argv[count])+1);
 		if(temp ==NULL)
 		{
-			printf("Malloc failed: Parsing arguments\n");
+			log_error(logger,"Malloc failed: Parsing arguments\n");
 			exit(0);
 		}
 		strcpy(temp,argv[count]);
@@ -254,6 +265,7 @@ void parse_args(int argc, char**argv)
 
 	}
 
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 
 }
@@ -266,7 +278,7 @@ void parse_args(int argc, char**argv)
 **************************************************************/
 void init_connection(int argc,char** argv)
 {
-
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	parse_args(argc,argv);
 	/*Create logger and start logging*/
 	if(logFileName == NULL)
@@ -277,10 +289,10 @@ void init_connection(int argc,char** argv)
 	}
 	logFile = fopen(logFileName,"w");	
 	if(logFile == NULL)
-		printf("error creating log file\n");
+		log_error(logger,"error creating log file\n");
 	logger = Logger_create(logFile,log_level);
         if(logger==NULL)
-                printf("error creating logger\n");
+                log_error(logger,"error creating logger\n");
 	
 	/*Set default values for fields with no value*/
 	if(agentName == NULL)
@@ -329,6 +341,7 @@ void init_connection(int argc,char** argv)
     	bcopy((char *)server->h_addr,(char *)&serv_addr.sin_addr.s_addr,server->h_length);	
 	//serv_addr.sin_addr.s_addr=(inet_addr("127.0.0.1"));
 	serv_addr.sin_port = htons(portno);
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 
@@ -337,10 +350,11 @@ void init_connection(int argc,char** argv)
 ******************************************************************/
 void start_connection()
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	//Connect to the given socket
 	if (connect(fd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
 	{
-		perror("Connection to daemon failed: ");
+		log_error(logger,"Connection to daemon failed: ");
 		exit(0);
 	}
 	log_info(logger,"Agent connected to daemon\n");
@@ -349,32 +363,33 @@ void start_connection()
 	int err = pthread_create(&sender,NULL,&sendThd,NULL);
 	if(err < 0)
 	{
-		printf("Error in creating sender\n");
+		log_error(logger,"Error in creating sender\n");
 		exit(0);
 	}
 	/*Start Listen Thd*/
 	err = pthread_create(&listener,NULL,&listenThd,NULL);
 	if(err < 0)
 	{
-		printf("Error in creating listener\n");
+		log_error(logger,"Error in creating listener\n");
 		exit(0);
 	}
 	log_info(logger,"Agent Sender and Listener threads active\n");
 	
 	log_info(logger,"Sending a Listen Dock Msg\n");
 	listenDock(dockName);
-
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 
-/*************************************
- *
- ************************************* */
-
-void stop_connection()
+void closeTransport()
 {
-
-//close socket
-
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
+	pthread_cancel(listener);
+	listener_stop = 1;
+	while(!(outTransport->front ==NULL && listener_clear));
+	//ready to close send thd and close the socket
+	pthread_cancel(sender);
+	close(fd);
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }

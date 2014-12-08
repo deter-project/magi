@@ -4,6 +4,14 @@ extern Logger* logger;
 int stop_flag = 0;
 extern char *agentName,*dockName,*logFileName,*commGroup,*commHost,*hostName;
 extern int log_level,commPort;
+union Data
+{
+	int i;
+	char* s;
+};
+union Data data[10]; /*10 args max*/
+#define ARG(x) (sizeof(data[x])==sizeof(int)) ? data[x].i : data[x].s
+
 /*************************************
  *
  ************************************* */
@@ -40,12 +48,12 @@ MAGIMessage_t* next(int block)
  ************************************* */
 AgentRequest_t* createAgentRequest(AgentRequestType_t reqType,char* data)
 {
-	printf("Entering CreateAgentRequest\n");
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	AgentRequest_t* req = (AgentRequest_t*)malloc(sizeof(AgentRequest_t));
 	req->reqType = reqType;
 	req->options = NULL;
 	req->data = data;
-	printf("Exiting CreateAgentRequest\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);	
 	return req;
 }
 
@@ -54,9 +62,9 @@ AgentRequest_t* createAgentRequest(AgentRequestType_t reqType,char* data)
  ************************************* */
 void listenDock(char* dock)
 {
-	printf("Inside listenDock\n");
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	AgentRequest_t* req = createAgentRequest(LISTEN_DOCK,dock);
-	printf("Exiting listenDock\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	sendOut(req);
 }
 
@@ -65,24 +73,33 @@ void listenDock(char* dock)
  ************************************* */
 void unlistenDock(char* dock)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	AgentRequest_t* req = createAgentRequest(UNLISTEN_DOCK,dock);
 	sendOut(req);
+	log_debug(logger,"Exiting function: %s\n",__func__);
+
 }
 /*************************************
  *
  ************************************* */
 void joinGroup(char* group)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	AgentRequest_t* req = createAgentRequest(JOIN_GROUP,group);
 	sendOut(req);
+	log_debug(logger,"Exiting function: %s\n",__func__);
+
 }
 /*************************************
  *
  ************************************* */
 void leaveGroup(char* group)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	AgentRequest_t* req = createAgentRequest(LEAVE_GROUP,group);
 	sendOut(req);
+	log_debug(logger,"Exiting function: %s\n",__func__);
+
 }
 
 
@@ -98,7 +115,7 @@ void leaveGroup(char* group)
 	 */
 MAGIMessage_t* create_MAGIMessage(char* srcdock, char* node, char* group, char* dstdock, contentType_t contenttype, char* data)
 	{
-		printf("Entering create_MAGIMessage\n");
+		log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 		MAGIMessage_t* magiMsg = (MAGIMessage_t*)malloc(sizeof(MAGIMessage_t));
 		if(srcdock)
 			insert_header(magiMsg, SRCDOCK, strlen(srcdock)+1, srcdock);
@@ -115,7 +132,7 @@ MAGIMessage_t* create_MAGIMessage(char* srcdock, char* node, char* group, char* 
 		magiMsg->headerLength = calHlen(magiMsg->headers)+6;
 		magiMsg->id = 0; 
 		magiMsg->length= 2+magiMsg->headerLength+strlen(data);
-		printf("Exiting create_MAGIMessage\n");
+		log_debug(logger,"Exiting function: %s\n",__func__);
 
 		return magiMsg;
 	}
@@ -128,7 +145,7 @@ MAGIMessage_t* create_MAGIMessage(char* srcdock, char* node, char* group, char* 
 /*AgentRequest header options - end with NULL*/
 void MAGIMessageSend(MAGIMessage_t* magi,char* arg,...)
 {
-	printf("Entering MAGIMessageSend\n");
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	AgentRequest_t* req = createAgentRequest(MESSAGE,magi);
 	req->data = (char*)magi;
 	MAGIMessage_t* t = req->data;
@@ -172,42 +189,36 @@ void MAGIMessageSend(MAGIMessage_t* magi,char* arg,...)
 		}while((args = va_arg(kw, char*)) != NULL);
    	 	va_end(arg);
 	}
-//	printf("MAGI sendMsg calling sendOut\n");
-//	int len =0;
-//	char* buf =AgentEncode(req,&len);
-//	AgentDecode(buf);
-	//printf("MAGI msg encode chk success.. Calling sendOut()\n");
-	printf("Exiting MAGIMessageSend\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	sendOut(req);
 }
 
 void trigger(char* groups, char* docks, contentType_t contenttype, char* data)
 {
-	printf("Entering trigger\n");
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	MAGIMessage_t* msg = create_MAGIMessage(NULL, NULL, groups, docks, contenttype, data);
-	printf("trigger:Created MAGI msg for trigger %s\n",msg->data);
+	log_debug(logger,"trigger:Created MAGI msg for trigger %s\n",msg->data);
 	MAGIMessageSend(msg,NULL);
-	printf("Exiting trigger\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 
 void send_start_trigger()
 {
-	printf("Entering send_start_trigger\n");
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	char* data = (char*)malloc(100);
 	char temp[100]; 
 	sprintf(temp,"{nodes: %s, event: AgentLoadDone, agent: %s}",hostName,agentName);
 	strcpy(data,temp);
-	//printf("trigger msg -> %s\n",data);
 	trigger("control",NULL,MESSAGE,data);
-	printf("Exiting send_start_trigger\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 }
 
 typedef struct {
-  char *name;
-  int aCnt;
-  char* argList[10];
-  int (*func)();  
+	char *name;
+	int aCnt;
+  	char* argList[10];
+  	int (*func)();  
 }fMap;
 
 fMap* function_map;
@@ -226,7 +237,7 @@ static fList_t* funcList=NULL;
 
 fList_t* addFunc(char* name, void* fptr,int number,...)
 {
-
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	fList_t* tmp = (fList_t*)malloc(sizeof(funcList));
 	tmp->name = malloc(strlen(name)+1);
 
@@ -262,6 +273,7 @@ fList_t* addFunc(char* name, void* fptr,int number,...)
 
 fMap* create_functionMap()
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	count=0;
 	fList_t *temp = funcList;
 	while(temp)
@@ -305,6 +317,7 @@ void stopFunc()
 
 int agentStart(int argc, char** argv)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	addFunc("stop",&stopFunc,0,NULL);
 	fMap* t;
 	if((t= create_functionMap())==NULL)
@@ -314,33 +327,29 @@ int agentStart(int argc, char** argv)
 	send_start_trigger();
 	while(!stop_flag)
 		sleep(1);
-	printf("Agent closing connection...");
+	log_info(logger,"Agent closing connection...");
+	// close transport module
+	closeTransport();	
 	
 }
 
-union Data
-{
-	int i;
-	char* s;
-};
 
 
 int call_function(const char *name, char** args)
 {
-  printf("In calling function...searching for function : %s\n",name);
+  log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
   int i=0,argcnt = 0;
 	int retVal = 0;
   while(args[argcnt]!=NULL)
   {
 	argcnt++; /*Number of args*/		
   }
-union Data data[10]; /*10 args max*/
-
+ 
   for (i = 0; i < count; i++)
   {
     if (!strcmp(function_map[i].name, name) && function_map[i].func) 
 	{
-		printf("Found function :%s\n",name);
+		log_info(logger,"Found function :%s\n",name);
 		if(argcnt != function_map[i].aCnt)
 			return -1;
 		int j =0;
@@ -353,33 +362,45 @@ union Data data[10]; /*10 args max*/
 				data[j].s = malloc(strlen(args[j])+1);
 				strcpy(data[j].s,args[j]);	
 			}
+			else
+			{
+
+				//handling unknown data types
+
+			}	
 			j++;
 
 		}
-      		if(argcnt ==1)
+		if(argcnt == 0)
+			retVal = function_map[i].func();
+      		else if(argcnt ==1)
 			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s);
 		else if(argcnt == 2)
 			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s);
 		else if(argcnt == 3)
-			function_map[i].func(atoi(args[0]),atoi(args[1]),atoi(args[2]));
-		printf("Done\n");
+			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s,(sizeof(data[2])==sizeof(int)) ? data[2].i : data[2].s);
+		else if(argcnt == 4)
+			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3));
+		else if(argcnt == 5)
+			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4));
+		else if(argcnt == 6)
+			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5));
+		else if(argcnt == 7)
+			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6));
+		else if(argcnt == 8)
+			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7));
+		else if(argcnt == 9)
+			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7),ARG(8));
+
+		else 
+		{
+			log_info(logger,"Not able to handle these many number of arguments\n");
+			return -1;
+		}
+		log_debug("Exiting %s \n",__func__);
 		return retVal;
     	}
   }
 
   return -1;
 }
- 
-/*
-int main()
-{
-hostName = "testCServer";
-agentName = "c_agent";
-printf("Sending out Trigger message\n");
-					char ndata[250];
-					sprintf(ndata,"{event:%s,result:%d,nodes:%s}","testCase",60,hostName);
-					char* td = (char*)malloc(strlen(ndata)+1);
-					strcpy(td,ndata);
-					trigger("control", "control", YAML, td);
-					printf("Sent a trigger message\n");
-}*/
