@@ -1,0 +1,7 @@
+name: Iperf
+display: Iperf Agent
+description: An agent to push traffic 
+execute: thread
+mainfile: Iperf.py
+software:
+   - iperf

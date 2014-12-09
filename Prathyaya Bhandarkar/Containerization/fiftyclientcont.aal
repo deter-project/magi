@@ -1,0 +1,155 @@
+## The agent implementation and addressing information 
+groups:
+  client_group: [client-0, client-1, client-2, client-3, client-4, client-5, client-6, client-7, client-8, client-9, client-10, client-11, client-12, client-13, client-14, client-15, client-16, client-17, client-18, client-19, client-20, client-21, client-22, client-23, client-24, client-25, client-26, client-27, client-28, client-29, client-30, client-31, client-32, client-33, client-34, client-35, client-36, client-37, client-38, client-39, client-40, client-41, client-42, client-43, client-44, client-45, client-46, client-47, client-48, client-49 ]
+  attacker_group: [attacker-1, attacker-0 ]
+  server_group: &slist [ server]
+
+agents:
+  client_agent:
+    group: client_group
+    path: /share/magi/modules/http_client/http_client.tar.gz
+    execargs: {servers: *slist, interval: '5', sizes: 'minmax(1000,10000)'}
+
+  attacker_agent:
+    group: attacker_group
+    path: /share/magi/modules/flooder/flooder.tar.gz
+    execargs: []
+
+  server_agent:
+    group: server_group
+    path: /share/magi/modules/apache/apache.tar.gz 
+    execargs: []
+
+  tcpdump_agent:
+    group: server_group
+    path: /proj/montage/modules/tcpdump/tcpdump.tar.gz
+    execargs: {dest: 'attacker-0'}
+
+  pktcounter_agent:
+    group: server_group
+    path: /share/magi/modules/pktcounters/pktCountersAgent.tar.gz
+    execargs: []
+
+## The mapping from the AAL procedure to the experiment apparatus 
+
+streamstarts: [ Initstream, attackerstream, serverstream, clientstream, cleanupstream ]
+
+eventstreams:
+
+  Initstream:
+      - type: event
+        agent: tcpdump_agent
+        method: startCollection
+        args: {}
+
+      - type: event
+        agent: pktcounter_agent
+        method: setDefaults
+        args: {}
+
+      - type: event
+        agent: pktcounter_agent
+        method: setConfiguration
+        args:
+          interval: 1
+
+      - type: event
+        agent: pktcounter_agent
+        method: startCollection
+        trigger: initComplete
+        args: {}
+
+  serverstream: 
+      - type: trigger
+        triggers: [ {event: initComplete} ]
+
+      - type: event
+        agent: server_agent 
+        method: startServer
+        trigger: serverStarted 
+        args: {}
+
+      - type: trigger
+        triggers: [ { event: clientStopped} ] 
+
+      - type: event
+        agent: server_agent 
+        method: stopServer 
+        trigger: serverStopped 
+        args: {} 
+
+  clientstream:      
+      - type: trigger
+        triggers: [ { event: serverStarted } ] 
+
+      - type: event
+        agent: client_agent 
+        method: startClient
+        trigger: clientStarted
+        args: {}
+
+      - type: trigger
+        triggers: [ { event: attackerStopped } ]
+
+      - type: trigger
+        triggers: [ { timeout: 5000 } ]
+
+      - type: event
+        agent: client_agent
+        method: stopClient
+        trigger: clientStopped 
+        args: {}
+
+  attackerstream:
+      - type: trigger
+        triggers: [ { event: clientStarted } ]
+
+      - type: trigger
+        triggers: [ { timeout: 5000 } ]
+
+      - type: event
+        agent: attacker_agent
+        method: setConfiguration
+        args: 
+            dst: 'server1'
+            proto: 'tcp'
+            length: '1500'
+            ratetype: 'flat'
+            lowrate: '500'
+            sport: 'minmax(1024,4096)'
+            dport: 'minmax(1024,4096)'
+
+      - type: event
+        agent: attacker_agent
+        method: startFlood
+        args: {}
+
+      - type: trigger
+        triggers: [ { timeout: 60000 } ]
+
+      - type: event
+        agent: attacker_agent
+        method: stopFlood
+        trigger: attackerStopped
+        args: {}
+
+  cleanupstream:
+      - type: trigger
+        triggers: [ {event: serverStopped} ] 
+
+      - type: event
+        agent: tcpdump_agent
+        method: stopCollection
+        args: {}
+
+      - type: event
+        agent: pktcounter_agent
+        method: stopCollection
+        args: {}
+
+      - type: trigger
+        triggers: [ {target: exit} ]
+
+
+################################################
+

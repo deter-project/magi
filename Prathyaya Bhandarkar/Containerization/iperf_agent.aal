@@ -1,0 +1,56 @@
+groups:
+  client_group: [client0, client1, client2, client3, client4, client5, client6, client7, client8, client9]
+  server_group: &slist [ server]
+
+agents:
+  iperf_client:
+    group: client_group
+    path: /proj/montage/modules/iperf/
+    execargs: {}
+
+  iperf_server:
+    group: server_group
+    path: /proj/montage/modules/iperf/
+    execargs: {}
+
+streamstarts: [ serverstream,clientstream, cleanupstream ]
+
+eventstreams:
+
+  serverstream:
+      - type: event
+        agent: iperf_server
+        method: startServer
+        trigger: iperfServerStarted
+        args:
+            port: '26501'
+
+      - type: trigger
+        triggers: [ { event: iperfClientRun } ]
+
+      - type: event
+        agent: iperf_server
+        method: stopServer
+        trigger: iperfServerStopped
+        args: {}
+
+  clientstream:
+      - type: trigger
+        triggers: [ { event: iperfServerStarted } ]
+
+      - type: event
+        agent: iperf_client
+        method: startClient
+        trigger: iperfClientRun
+        args:
+            server: 'server'
+            port: '26501'
+            time: '10'
+            bw: '100M'
+
+  cleanupstream:
+      - type: trigger
+        triggers: [ { event: iperfServerStopped } ]
+
+      - type: trigger
+        triggers: [ {target: exit , timeout: 0} ]

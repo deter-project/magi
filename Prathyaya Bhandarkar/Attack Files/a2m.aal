@@ -1,0 +1,110 @@
+## The agent implementation and addressing information 
+agents:
+  client_agent:
+    group: client_group
+    path: /proj/montage/modules/http_client/http_client.tar.gz
+    execargs: {servers: [server], interval: '5', sizes: 'minmax(1000,10000)'}
+
+  server_agent:
+    group: server_group
+    path: /proj/montage/modules/apache/apache.tar.gz 
+    execargs: []
+
+  attacker_agent:
+    group: client_group
+    path: /share/magi/modules/flooder/flooder.tar.gz
+    execargs: []
+
+## The mapping from the AAL procedure to the experiment apparatus 
+groups:
+  client_group: [client0, client1, client2, client3, client4, client5, client6, client7, client8, client9, client10, client11, client12, client13, client14, client15, client16, client17, client18, client19, client20, client21, client22, client23, client24, client25, client26, client27, client28, client29, client30, client31, client32, client33, client34, client35, client36, client37, client38, client39, client40, client41, client42, client43, client44, client45, client46, client47, client48, client49]
+  server_group: [server]
+
+streamstarts: [ serverstream, clientstream, attackstream, cleanupstream ]
+
+eventstreams:
+  serverstream: 
+      - type: event
+        agent: server_agent 
+        method: startServer
+        trigger: serverStarted 
+        args: {}
+
+      - type: trigger
+        triggers: [ { event: clientStopped} ] 
+
+      - type: event
+        agent: server_agent 
+        method: stopServer 
+        trigger: serverStopped 
+        args: {} 
+
+  clientstream:      
+      - type: trigger
+        triggers: [ { event: serverStarted } ] 
+
+      - type: event
+        agent: client_agent 
+        method: startClient
+        trigger: clientStarted
+        args: {}
+
+      - type: trigger
+        triggers: [ { event: attackStopped } ]
+
+      - type: trigger
+        triggers: [ { timeout: 3000 } ]
+
+      - type: event
+        agent: client_agent
+        method: stopClient
+        trigger: clientStopped 
+        args: {}
+
+  attackstream:
+      - type: trigger
+        triggers: [ { event: clientStarted } ]
+
+      - type: trigger
+        triggers: [ { timeout: 3000 } ]
+
+      - type: event
+        agent: attacker_agent 
+        method: setConfiguration 
+        args:
+            src: '1.1.1.1'
+            srcmask: '0.0.0.0'			
+            dst: 'server' 
+            proto: 'udp'
+            length: 'minmax(512,1024)'
+            ratetype: 'flat'
+            highrate: '4096'
+            sport: 'minmax(1204,65535)'
+            dport: 'minmax(1024,65535)'
+
+
+      - type: event
+        agent: attacker_agent
+        method: startFlood
+        trigger: attackStarted 
+        args: {} 
+
+      - type: trigger
+        triggers: [ { event: attackStarted } ] 
+
+      - type: trigger
+        triggers: [ { timeout: 6000 } ]
+
+      - type: event
+        agent: attacker_agent 
+        method: stopFlood
+        trigger: attackStopped
+        args: {}
+      
+
+  cleanupstream:
+      - type: trigger
+        triggers: [ {event: serverStopped, target: exit} ] 
+
+################################################
+
