@@ -65,9 +65,10 @@ class ExternalAgentsThread(threading.Thread):
 
 		if transport in self.invDockMap:
 			del self.invDockMap[transport] 
-		for transportList in self.dockMap.values():
-			transportList.discard(transport)
-
+		for dock in self.dockMap.keys():
+			self.dockMap[dock].discard(transport)
+			if len(self.dockMap[dock]) == 0:
+				del self.dockMap[dock]
 
 	def loop(self):
 		if len(self.pollMap) <= 0:
@@ -184,7 +185,7 @@ class ExternalAgentsThread(threading.Thread):
 				transport.outmessages.append(request)
 
 	def wantsDock(self, dock):
-		return dock in self.dockMap
+		return dock in self.dockMap and len(self.dockMap[dock]) != 0
 
 	def unloadAll(self):
 		""" Unload all the process agents 
