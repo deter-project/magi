@@ -8,13 +8,14 @@ from socket import gethostname
 import threading
 import time
 
+from magi.db import Collection
+from magi.db.Collection import DATABASE_SERVER_PORT
 from magi.orchestrator.OrchestratorDisplay import OrchestratorDisplayState
 from magi.orchestrator.dagdisplay import DagDisplay
 from magi.util import helpers
 import yaml
 
-from magi.db import Collection
-from parse import EventObject, TriggerList, createTrigger
+from parse import EventObject, TriggerList, createEvent, createTrigger, Stream
 
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,8 @@ class StreamIterator(object):
             if self.isNextTrigger():
                 self.next().activate()
                 log.debug('First item is a trigger. Activated it.')
+                
+        self.dbIndex = 0
 
     def getName(self):
         return self.name
@@ -43,7 +46,7 @@ class StreamIterator(object):
 
     def isDone(self):
         """ true if we are done with this stream """
-        log.debug('stream name: %s, check if done, current index: %s', self.getName(), str(self.index) )
+        #log.debug('stream name: %s, check if done, current index: %s', self.getName(), str(self.index) )
         return self.index >= len(self.wrapped)
 
     def advance(self):
@@ -54,6 +57,28 @@ class StreamIterator(object):
             if self.isNextTrigger():
                 self.next().activate()
                 log.debug('Next item is a trigger. Activated it.')
+                
+    def recordNext(self, collection):
+        if self.isDone():
+            return
+        if self.isNextEvent():
+            eventType = "event"
+            event = self.next()
+            eventLabel = "Send\nAgent:%s\nMethod:%s" %(event.agent, event.method)
+        elif self.isNextTrigger():
+            eventType = "trigger"
+            eventLabel = "Wait for \n"
+            triggers = self.next();
+            for trigger in triggers:
+                eventLabel += "%s\n" %(trigger.toString())
+        else:
+            eventType = "Unknown"
+            eventLabel = "N/A"
+        collection.insert({'streamName' : self.getName(), 
+                                'eventItr' : self.dbIndex, 
+                                'eventType' : eventType,
+                                'eventLabel' : eventLabel})
+        self.dbIndex+=1
 
     def isEvent(self, i):
         """ If item at a given position is an event """
@@ -97,11 +122,11 @@ class Orchestrator(object):
     show_state = False
     
     def __init__(self, messenger, aal, verbose=False, exitOnFailure=True, 
-            useColor=True, dagdisplay=False):
+            useColor=True, dagdisplay=False, dbHost="localhost", dbPort=DATABASE_SERVER_PORT):
         """
             Create a new Orchestrator that pushes the data from events into
             the system via messenger and collects incoming data.
-             messenger - a Messenger object that is connected and ready
+            messenger - a Messenger object that is connected and ready
             events - the list of group, agents and events to send
         """
         # If true, stop the current streams
@@ -125,9 +150,17 @@ class Orchestrator(object):
 
         self.collection = None
         try:
-            self.collection = Collection.getCollection('orchestrator', gethostname())
+            self.collection = Collection.getCollection('orchestrator', 
+                                                       gethostname(),
+                                                       dbHost,
+                                                       dbPort)
+            self.collection.remove({})
+            self.collection.insert({'aalSvg' : self.aal.cgraph.createSvg()})
+            
         except:
             log.error('Cannot initialize database')
+            
+        self.record = False
 
     def runInThread(self):
 
@@ -151,22 +184,24 @@ class Orchestrator(object):
         time.sleep(0.1)  # poor man's thread.yield
 
         log.info("Running Initialization Stream")
-        self.streams = {'initialization' : 
+        self.activeStreams = {'initialization' : 
                         StreamIterator('initialization', 
                                        self.aal.getSetupStream())}
         self.runStreams()
 
         log.info("Running Event Stream")
-        self.streams = { k : StreamIterator(k, self.aal.getStream(k))
+        self.activeStreams = { k : StreamIterator(k, self.aal.getStream(k))
                         for k in self.aal.getStartKeys()}
         if self.aal.getTotalStreams() > 1:
             log.debug("TotalStreams: %d", self.aal.getTotalStreams())
 
+        self.record = True
         self.runStreams()
+        self.record = False
 
         if self.doTearDown:
             log.info("Running Exit Stream")
-            self.streams = {'exit' : 
+            self.activeStreams = {'exit' : 
                             StreamIterator('exit', 
                                            self.aal.getTeardownStream())}
             self.stopStreams = False
@@ -179,7 +214,58 @@ class Orchestrator(object):
     def stop(self, doTearDown=False):
         self.stopStreams = True
         self.doTearDown = doTearDown
+    
+    def deleteEvent(self, streamName, event):
+        try:
+            eventStream = self.aal.getStream(streamName)
+        except KeyError:
+            log.exception("Stream %s does not exist" %(streamName))
+            raise KeyError("Stream %s does not exist" %(streamName))
+        
+        log.info("Current event stream %s" %(eventStream))
+        
+        eventObject = createEvent(event, self.aal.rawAAL)
+        
+        try:
+            objectIndex = eventStream.index(eventObject)
+            eventStream.remove(eventObject)
+        except:
+            log.exception("Event %s does not exist" %(event))
+            raise KeyError("Event %s does not exist" %(event))
+            
+        if streamName in self.activeStreams:
+            currentIndex = self.activeStreams[streamName].index
+            if objectIndex < currentIndex:
+                self.activeStreams[streamName].index -= 1
+        
+        log.info("Modified event stream %s" %(eventStream))
+        
+    def addEvent(self, streamName, event, index=None):
+        functionName = self.addEvent
+        helpers.entrylog(log, functionName, locals())
 
+        if not self.aal.hasStream(streamName):
+            log.info("Stream %s does not exist" %(streamName))
+            log.info("Creating a new stream")
+            self.aal[streamName] = Stream()
+        
+        eventStream = self.aal.getStream(streamName)
+        log.info("Current event stream %s" %(eventStream))
+            
+        eventObject = createEvent(event, self.aal.rawAAL)
+        
+        if index is not None:
+            eventStream.insert(index, eventObject)
+            if streamName in self.activeStreams:
+                currentIndex = self.activeStreams[streamName].index
+                if index < currentIndex:
+                    self.activeStreams[streamName].index += 1
+        else:
+            eventStream.append(eventObject)
+                
+        log.info("Modified event stream %s" %(eventStream))
+        
+        
     def _triggerCausesExitCondition(self, trigger):
         ''' 
             Check the trigger for an exit condition. Return True if it does,
@@ -205,9 +291,24 @@ class Orchestrator(object):
         return False    
 
     def runStreams(self):
-
-        log.debug('running stream: \n%s', self.streams)
-        while len(self.streams) > 0 and not self.stopStreams:
+        
+        log.debug('running stream: \n%s', self.activeStreams)
+        
+        for streamIter in self.activeStreams.values():
+            if self.record and self.collection:
+                self.collection.insert({'streamName' : streamIter.getName(), 
+                                        'eventItr' : streamIter.dbIndex, 
+                                        'eventType' : "streamInit",
+                                        'eventLabel' : streamIter.getName()})
+                streamIter.dbIndex += 1
+                streamIter.recordNext(self.collection)
+        
+        while len(self.activeStreams) > 0 and not self.stopStreams:
+            
+            if Orchestrator.show_state:
+                self.display.waitingOnTriggers(self.triggerCache, self.activeStreams.values())
+                Orchestrator.show_state = False
+                
             try:
                 
                 msg = None
@@ -215,7 +316,7 @@ class Orchestrator(object):
                 # staged event/triggers. This is usually zero unless
                 # we're waiting on a trigger.
                 minimumTimeout = min([s.getFirstTimeout()
-                               for s in self.streams.values()]) - time.time()
+                               for s in self.activeStreams.values()]) - time.time()
 
                 if minimumTimeout > 0:
                     # don't wait for longer than 3 seconds as we need to be 
@@ -234,26 +335,35 @@ class Orchestrator(object):
                     # block for short time so we don't busy loop.
                     msg = self.messaging.nextMessage(True, 0.1)
                
-                # if self.verbose:
-                #     self.display.gotMessage(msg)
+                log.debug(msg)
 
                 # we only act on messages to the 'control' group 
                 # (of which we're a part.)
                 if msg is not None and 'control' in msg.dstgroups:
-                        # The only messages we react to are triggers.
-                        # there is no real reason for this though,
-                        # if want to introduce new message types.
+                    
+                    if self.verbose:
+                        self.display.gotMessage(msg)
+                    
+                    msgData = yaml.load(msg.data)
+                    
+                    
+                    if 'method' in msgData:
+                        # A method call
+                        log.debug("Method Call")
+                        self.doMessageAction(msgData)
+                    else:
+                        # Otherwise, trigger
+                        log.debug("Incoming Trigger")
                         try:
-                            newTriggerData = yaml.load(msg.data)
+                            newTriggerData = msgData
                             newTriggerData.setdefault('nodes', msg.src)
                             #newTriggerData['timestamp'] = time.time()
                             newTrigger = createTrigger(newTriggerData)
                             
-                            # cacheTrigger adds the new trigger to the cache, and
-                            # returns the list of triggers corresponding to the 
-                            # incoming trigger event.
+                            # add the received trigger to the cache
                             self.cacheTrigger(newTrigger)
                             
+                            # check if any exception
                             if self._triggerCausesExitCondition(newTrigger):
                                 self.stop(doTearDown=True)
                                 continue
@@ -262,28 +372,24 @@ class Orchestrator(object):
                                 self.display.gotTrigger(newTrigger)
                         except:
                             # Not a valid trigger
-                            log.exception('Not a valid trigger message')
+                            log.exception('Not a valid message')
                             pass
                         
             except Queue.Empty:
                 pass
 
-            if Orchestrator.show_state:
-                self.display.waitingOnTriggers(self.triggerCache, self.streams.values())
-                Orchestrator.show_state = False
-                    
             # continue until nothing can move forward anymore
             progress = True
             while progress:
                 progress = False
 
-                for streamIter in self.streams.values():
+                for streamIter in self.activeStreams.values():
                     # work on the current event in each stream 
                     if streamIter.isDone():
                         # Nothing left in stream, remove the stream
                         self.display.streamEnded(streamIter)
-                        # self.dagdisplay.startToIndex(self.streams)
-                        del self.streams[streamIter.getName()]
+                        # self.dagdisplay.startToIndex(self.activeStreams)
+                        del self.activeStreams[streamIter.getName()]
                         
                     elif streamIter.isNextEvent():
                         event = streamIter.next()
@@ -304,17 +410,19 @@ class Orchestrator(object):
                             self.invalidateTriggers(event.trigger, None)
                             
                         #Collecting outgoing event data into the database    
-                        if self.collection:
-                            self.collection.insert({'type' : 'event', 
-                                                    'streamName' : streamIter.getName(), 
-                                                    'method' : event.method,
-                                                    'args' : event.args,
-                                                    'trigger' : event.trigger, 
-                                                    'groups' : event.groups, 
-                                                    'nodes' : event.nodes,
-                                                    'docks' : event.docks})
+#                         if self.collection:
+#                             self.collection.insert({'type' : 'event', 
+#                                                     'streamName' : streamIter.getName(), 
+#                                                     'method' : event.method,
+#                                                     'args' : event.args,
+#                                                     'trigger' : event.trigger, 
+#                                                     'groups' : event.groups, 
+#                                                     'nodes' : event.nodes,
+#                                                     'docks' : event.docks})
             
                         streamIter.advance()
+                        if self.record and self.collection:
+                            streamIter.recordNext(self.collection)
                         progress = True
                         
                     elif streamIter.isNextTrigger():
@@ -322,6 +430,12 @@ class Orchestrator(object):
                         for trigger in triggerList:
                             if trigger.isComplete(self.triggerCache):
                                 self.display.triggerCompleted(streamIter, trigger)
+                                if self.record and self.collection:
+                                    self.collection.insert({'streamName' : streamIter.getName(), 
+                                                            'eventItr' : streamIter.dbIndex, 
+                                                            'eventType' : "triggerComplete",
+                                                            'eventLabel' : "Trigger Complete\n%s" %(trigger.toString())})
+                                    streamIter.dbIndex += 1
                                 self.jumpToTarget(streamIter, trigger)
                                 progress = True
                                 
@@ -330,6 +444,8 @@ class Orchestrator(object):
                                     'Moving ahead.' %(streamIter.getName()))
                         log.error(streamIter.next())
                         streamIter.advance()
+                        if self.record and self.collection:
+                            streamIter.recordNext(self.collection)
                         progress = True
 
 
@@ -337,18 +453,24 @@ class Orchestrator(object):
         """ Advance stream based on the target """
         log.debug("Jumping to new target: trigger firing %s, target is %s" %
                      (trigger, trigger.target))
-
         if trigger.target is None:
             streamIter.advance()
+            if self.record and self.collection:
+                streamIter.recordNext(self.collection)
         else:
-            del self.streams[streamIter.getName()]
+            del self.activeStreams[streamIter.getName()]
             if trigger.target == 'exit':
                 self.display.streamJump(streamIter, trigger.target)
                 self.stopStreams = True  # stop current streams
                 self.doTearDown = True   # attempt a clean teardown before exit
+                if self.record and self.collection:
+                    self.collection.insert({'streamName' : streamIter.getName(), 
+                                    'eventItr' : streamIter.dbIndex, 
+                                    'eventType' : "exit",
+                                    'eventLabel' : "Exit"})
             elif self.aal.hasStream(trigger.target):
                 self.display.streamJump(streamIter, trigger.target)
-                self.streams[trigger.target] = StreamIterator(trigger.target, self.aal.getStream(trigger.target))
+                self.activeStreams[trigger.target] = StreamIterator(trigger.target, self.aal.getStream(trigger.target))
             else:
                 log.error("Couldn't find target stream %s, stopping here",
                           trigger.target)
@@ -363,11 +485,11 @@ class Orchestrator(object):
         log.debug('trigger cache: %s' % self.triggerCache) 
         
         #Collecting incoming trigger data into the database
-        if self.collection:
-            self.collection.insert({'type' : 'trigger',
-                                    'event' : incoming.event,
-                                    'nodes' : list(incoming.nodes), 
-                                    'args' : incoming.args})
+#         if self.collection:
+#             self.collection.insert({'type' : 'trigger',
+#                                     'event' : incoming.event,
+#                                     'nodes' : list(incoming.nodes), 
+#                                     'args' : incoming.args})
         
         # Invalidate existing triggers that the new trigger overrides
         self.invalidateTriggers(incoming.event, incoming.nodes)
@@ -391,3 +513,34 @@ class Orchestrator(object):
                 trigger.deActivate()
                 activeTriggers.remove(trigger)
             
+    def doMessageAction(self, msgData):
+        """
+            The function takes a message, and demuxxes it. Based on the content of the message it 
+            may take a number of actions. That number is currently one: invoke dispatchCall
+            which calls a function on "this" object whatever it is. 
+        """
+        
+        log.info("In doMessageAction %s", str(msgData))
+            
+        try: 
+            method = msgData['method']
+            args = msgData['args']
+            meth = getattr(self, method)
+            retVal = meth(**args)
+        except Exception, e:
+                log.error("Exception while trying to execute method")
+                log.error("Sending back a RunTimeException event. This may cause the receiver to exit.")
+                self.messaging.trigger(event='RuntimeException', func_name=method, agent='orchestrator', 
+                                       nodes=[self.messaging.name], error=str(e))
+                return
+            
+        if 'trigger' in msgData:
+            if not isinstance(retVal, dict):
+                if retVal is None:
+                    retVal = True
+                retVal = {'result' : retVal}
+            args = retVal
+            args['nodes'] = self.messaging.name
+            self.messaging.trigger(event=msgData['trigger'], **args)
+                    
+    
