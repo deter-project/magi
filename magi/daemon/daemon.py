@@ -344,6 +344,9 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def getStatus(self, msg, groupMembership=False, agentInfo=False):
+                """
+                    gives the group membership and agent information: pid, agentname, threadId
+                """ 
 		functionName = self.getStatus.__name__
 		helpers.entrylog(log, functionName, locals())
 		result = dict()
@@ -367,6 +370,9 @@ class Daemon(threading.Thread):
 		
 	@agentmethod()
 	def archive(self, msg):
+                """ 
+                    Tars the log directory and sends it to the requester as a message" 
+                """ 
 		functionName = self.archive.__name__
 		helpers.entrylog(log, functionName, locals())
 		logDir = config.getLogDir()
@@ -380,6 +386,10 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def reboot(self, msg, distributionDir=None, noUpdate=False, noInstall=False, expConf=None, nodeConf=None):
+                """
+                    reinvokes magi_bootstrap, the boostrap script invokes stop() and does a clean shutdown and then 
+                    restarts 
+                """
 		functionName = self.reboot.__name__
 		helpers.entrylog(log, functionName, locals())
 		
