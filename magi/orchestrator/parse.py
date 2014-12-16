@@ -1,13 +1,16 @@
-import logging
-import yaml
-import sys
 import cStringIO
-import optparse
-from controlflow import ControlGraph  
 from collections import defaultdict
+import logging
+import optparse
+import sys
+import time
+
 from magi.messaging.api import MAGIMessage
 from magi.util import helpers
-import time
+import yaml
+
+from controlflow import ControlGraph  
+
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +74,12 @@ class Trigger():
         return "{ \n\tTrigger type: %s \n\tTrigger data: %s \n}" % (
                 self.__class__.__name__, self.__dict__)
 
+    def __eq__(self, other): 
+        return self.__dict__ == other.__dict__
+    
+    def __hash__(self):
+        return hash(self.__dict__)
+
     def toString(self):
         return self.__repr__()
     
@@ -97,6 +106,13 @@ class TimeoutTrigger(Trigger):
             return (self.timeActivated + self.timeout)
         return sys.maxint
     
+    def __eq__(self, other): 
+        return (self.timeout == other.timeout) and \
+                (self.target == other.target)
+    
+    def __hash__(self):
+        return hash((self.timeout, self.target))
+    
     def toString(self):
         return "%d seconds" %(self.timeout)
     
@@ -112,7 +128,7 @@ class EventTrigger(Trigger):
         self.count = triggerData.pop('count', max(len(self.nodes), 1))
         self.args = triggerData
         if not self.args:
-            self.args = {'result' : True}
+            self.args = {'retVal' : True}
         
     def isComplete(self, triggerCache):
         if not triggerCache:
@@ -149,7 +165,15 @@ class EventTrigger(Trigger):
     def merge(self, trigger):
         self.nodes.update(trigger.nodes)
         self.count = max(len(self.nodes), 1)
-        
+    
+    def __eq__(self, other): 
+        return (self.event == other.event) and \
+                (self.args == other.args) and \
+                (self.target == other.target)
+                 
+    def __hash__(self):
+        return hash((self.event, yaml.dump(self.args), self.target))
+    
     def toString(self):
         return "%s" %(self.event)
     
@@ -268,7 +292,9 @@ class EventObject(object):
         """ Get the MAGIMessage's that can be sent on the wire """
         return None
 
-
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
+    
 class BaseMethodCall(EventObject):
     """ Base class for any thing that sends an encoded MethodCall """
 
@@ -292,6 +318,8 @@ class BaseMethodCall(EventObject):
         self.args = args
 
         self.trigger = trigger
+        
+        self.agent = 'daemon'
 
     def getMessages(self):
         call = {'version': 1.0, 'method': self.method, 'args': self.args}
@@ -306,6 +334,7 @@ class BaseMethodCall(EventObject):
                                                     self.args, 
                                                     self.trigger)
 
+    
 class EventMethodCall(BaseMethodCall):
     """ 
         MethodCall class for sending regular method calls from AAL events 
@@ -319,6 +348,13 @@ class EventMethodCall(BaseMethodCall):
                                 trigger=aalevent.get('trigger'))
         self.agent = aalevent['agent']
 
+def createEvent(eventData, aal):
+    if eventData['type'] == 'event':
+        agent = aal['agents'][eventData['agent']]
+        return EventMethodCall(agent, eventData)
+    elif eventData['type'] == 'trigger':
+        return TriggerList(eventData['triggers'])
+    raise Exception("Invalid event data")
 
 class LoadUnloadAgentCall(BaseMethodCall):
     """ 
@@ -438,7 +474,8 @@ class AAL(object):
             log.critical('Yaml Parse Error: reading event AAL files.')
             sys.exit(1)
 
-        self.aal = yaml.load(yaml_file.getvalue())
+        self.rawAAL = yaml.load(yaml_file.getvalue())
+        
         self.setupStream = Stream()
         self.teardownStream = Stream()
         #Event Streams
@@ -451,17 +488,17 @@ class AAL(object):
         # Sanity Check: does the AAL have the following directives. 
         # if not, log that they are missing but continue 
         for k in ['streamstarts', 'agents', 'groups', 'eventstreams']:
-            if not k in self.aal.keys():
+            if not k in self.rawAAL.keys():
                 log.critical('missing required key in AAL: %s', k)
 
         # Add default group to address ALL nodes
         allNodes = set()
-        for nodes in self.aal['groups'].values():
+        for nodes in self.rawAAL['groups'].values():
             allNodes |= helpers.toSet(nodes)
-        self.aal['groups']['__ALL__'] = list(allNodes)
+        self.rawAAL['groups']['__ALL__'] = list(allNodes)
         
         # Add MAGI Daemon on all nodes as a default agent
-        self.aal['agents'].setdefault('__DAEMON__', {'group' : '__ALL__',
+        self.rawAAL['agents'].setdefault('__DAEMON__', {'group' : '__ALL__',
                                                      'dock' : 'daemon'})
         
         # The AAL extra-YAML references
@@ -473,11 +510,11 @@ class AAL(object):
         # By default we add a startup stream 
         if self.startup: 
         # Stand up the experiemnt, load agents, build groups.
-            for name, nodes in self.aal['groups'].iteritems():
+            for name, nodes in self.rawAAL['groups'].iteritems():
                 self.setupStream.append(BuildGroupCall(name, nodes))
 
             # Add triggers for the BuildGroup calls 
-            for name, nodes in self.aal['groups'].iteritems():
+            for name, nodes in self.rawAAL['groups'].iteritems():
                 self.setupStream.append(
                     TriggerList([
                         {'event': 'GroupBuildDone', 'group': name, 
@@ -487,7 +524,7 @@ class AAL(object):
 
             loadAgentStream = Stream()
             
-            for name, agent in self.aal['agents'].iteritems():
+            for name, agent in self.rawAAL['agents'].iteritems():
                 # for agents that need to be installed
                 if 'path' in agent:
                     # create an internal agent dock using unique name of agent. 
@@ -506,7 +543,7 @@ class AAL(object):
                     loadAgentStream.append(
                         TriggerList([
                             {'event': 'AgentLoadDone', 'agent': name, 
-                             'nodes': self.aal['groups'][agent['group']]},
+                             'nodes': self.rawAAL['groups'][agent['group']]},
                             {'timeout': int(timeout), 'target': 'exit'} 
                              ]))
 
@@ -525,7 +562,7 @@ class AAL(object):
         # tear down the experiment, unload agents, leave groups.
         unloadAgentStream = Stream()
 
-        for name, agent in self.aal['agents'].iteritems():
+        for name, agent in self.rawAAL['agents'].iteritems():
             if 'path' in agent:
                 self.teardownStream.append(UnloadAgentCall(name, **agent))
             
@@ -537,16 +574,16 @@ class AAL(object):
                     TriggerList([
                             {'event': 'AgentUnloadDone',
                             'agent': name,
-                            'nodes': self.aal['groups'][agent['group']]},
+                            'nodes': self.rawAAL['groups'][agent['group']]},
                             {'timeout': int(timeout), 'target': 'exit'} 
                              ]))
 
         # Now, add the unload agent triggers
         self.teardownStream.extend(unloadAgentStream)
             
-        for name, nodes in self.aal['groups'].iteritems():
+        for name, nodes in self.rawAAL['groups'].iteritems():
             self.teardownStream.append(LeaveGroupCall(name, nodes))
-        for name, nodes in self.aal['groups'].iteritems():
+        for name, nodes in self.rawAAL['groups'].iteritems():
             self.teardownStream.append(
                 TriggerList([
                     {'event': 'GroupTeardownDone', 'group': name, 
@@ -556,7 +593,7 @@ class AAL(object):
 
         ##### EVENT STREAMS #####
 
-        for streamName, estream in self.aal['eventstreams'].iteritems():
+        for streamName, estream in self.rawAAL['eventstreams'].iteritems():
             newstream = Stream()
             self.streams[streamName] = newstream
             for event in estream:
@@ -564,7 +601,7 @@ class AAL(object):
                 # First we process the type trigger, then event. 
                 # we log errors if it is not an event or trigger.
                 if event['type'] == 'event':
-                    agent = self.aal['agents'][event['agent']]
+                    agent = self.rawAAL['agents'][event['agent']]
                     newstream.append(EventMethodCall(agent, event))
                     if 'trigger' in event:
                         self.oeventtriggers[streamName].add(event['trigger'])
@@ -595,22 +632,26 @@ class AAL(object):
             log.error('Incoming event triggers are not a subset of outgoing event triggers')
             raise AALParseError('Incoming event triggers are not a subset of outgoing event triggers')
         
+        self.cgraph = ControlGraph() 
+        for streamName, eventStream in self.streams.iteritems():
+            cluster = self.cgraph.createCluster(streamName)
+            cluster.nodes.append({'type' : 'node',
+                                  'id' : streamName,
+                                  'label' : streamName,
+                                  'edgeto' : set()})
+            for event in eventStream:
+                if isinstance(event, EventObject):
+                    self.cgraph.addEvent(streamName, event)
+                elif isinstance(event, TriggerList):
+                    self.cgraph.addTrigger(streamName, event)
+            self.cgraph.finishCluster(streamName)
+        # the setup and tear-down event streams are presented as singleton events
+        self.cgraph.finishControlgraph()
+
         if dagdisplay:
             print "dagdisplay True, creating graph" 
-            self.cgraph = ControlGraph() 
-            for streamName, eventStream in self.streams.iteritems():
-                self.cgraph.createCluster(streamName)
-                for event in eventStream:
-                    if isinstance(event, EventObject):
-                        self.cgraph.addEvent(streamName, event)
-                    elif isinstance(event, TriggerList):
-                        self.cgraph.addTrigger(streamName, event)
-                self.cgraph.finishCluster(streamName)
-            # the setup and tear-down event streams are presented as singleton events
-            self.cgraph.finishControlgraph()
-            self.cgraph.writepng()    
-            print self.cgraph 
-             
+            self.cgraph.writePng()    
+            #print self.cgraph 
             
     def getSetupStream(self):
         return self.setupStream
@@ -628,13 +669,13 @@ class AAL(object):
 
     def getStartKeys(self):
         """ Get the stream keys that should be started in parallel """
-        return self.aal['streamstarts']
+        return self.rawAAL['streamstarts']
 
     def getTotalStartStreams(self):
-        return len(self.aal['streamstarts']) 
+        return len(self.rawAAL['streamstarts']) 
 
     def getTotalStreams(self):
-        return len(self.aal['eventstreams'])
+        return len(self.rawAAL['eventstreams'])
 
     def _resolveReferences(self):
         '''
@@ -651,15 +692,15 @@ class AAL(object):
         # aal['eventstreams']['triggers]['agent'] --> aal['groups']['nodes']
 
         # Sanity check
-        if ('agents' not in self.aal or 'groups' not in self.aal or
-                'eventstreams' not in self.aal):
+        if ('agents' not in self.rawAAL or 'groups' not in self.rawAAL or
+                'eventstreams' not in self.rawAAL):
             raise AALParseError('agents or groups or eventstreams not found in'
                                 'AAL file. Unable to continue.')
             
         # Map outgoing triggers to respective agents
         triggerToAgentMap = {}
-        for stream in self.aal['eventstreams']:
-            for event in self.aal['eventstreams'][stream]:
+        for stream in self.rawAAL['eventstreams']:
+            for event in self.rawAAL['eventstreams'][stream]:
                 if event['type'] == 'event':
                     if 'trigger' in event:
                         trigger = event['trigger']
@@ -669,19 +710,19 @@ class AAL(object):
                     
         # Map agents to corresponding nodes
         agentToNodesMap = {}
-        for agent in self.aal['agents']:
+        for agent in self.rawAAL['agents']:
             # For the agent, find the group
-            if 'group' not in self.aal['agents'][agent]:
+            if 'group' not in self.rawAAL['agents'][agent]:
                 raise AALParseError('No "group" found in agent'
                                     ' %s' % agent)
 
-            group = self.aal['agents'][agent]['group']
-            if group not in self.aal['groups']:
+            group = self.rawAAL['agents'][agent]['group']
+            if group not in self.rawAAL['groups']:
                 raise AALParseError('Unable to find group %s '
                                     'in groups.' % group)
 
             # Got the group, find the nodes.
-            nodes = set(self.aal['groups'][group])
+            nodes = set(self.rawAAL['groups'][group])
             
             # Store trigger to nodes mapping
             agentToNodesMap[agent] = nodes
@@ -710,8 +751,8 @@ class AAL(object):
                     updateTrigger(trigger)
 
         # Update incoming triggers with agents and nodes
-        for stream in self.aal['eventstreams']:
-            for event in self.aal['eventstreams'][stream]:
+        for stream in self.rawAAL['eventstreams']:
+            for event in self.rawAAL['eventstreams'][stream]:
                 if event['type'] == 'trigger':
                     for trigger in event['triggers']:
                         updateTrigger(trigger)                
@@ -742,6 +783,7 @@ if __name__ == "__main__":
     optparser = optparse.OptionParser()
     optparser.add_option("-f", "--file", dest="file", help="AAL Events file", default=[], action="append")
     (options, args) = optparser.parse_args()
+    print options.file
 
     x = AAL(files=options.file, dagdisplay=True)
     print x.__repr__()

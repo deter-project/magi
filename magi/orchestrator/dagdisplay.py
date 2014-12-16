@@ -8,26 +8,20 @@ log = logging.getLogger(__name__)
 
 
 class DagDisplay(object):
-    '''A class that displays DAG transistion and orchstrator states as a transition 
+    '''A class that displays DAG transition and orchestrator states as a transition 
     graph to create a image file.
     The Orchestrator instance calls methods in this class at the appropriate times
     and state transitions.'''
     def __init__(self):
         try:
-            global pydot 
+            global pydot
             import pydot
-        except ImportError, e:
-            print "Could not import %s (%s)" %( modname, e )
-            print "Display Failed:"
-            print "Please install the recommended libraries\
-                    listed  in the MAGI\
-                    documentation located at\
-                    http://montage.deterlab.net/magi"
+        except ImportError:
+            print "Could not import pydot. Display Failed"
         self.maxListDisplay = 3
         self.waitingOn = defaultdict() 
         self.count = 0
-        self.keydict = dict()
-        self.callgraph = pydot.Dot(graph_type ='digraph', fontname="verdana")
+        self.createcallgraph()
 
     def createcallgraph(self):
         self.callgraph = pydot.Dot(graph_type ='digraph', fontname="verdana")
