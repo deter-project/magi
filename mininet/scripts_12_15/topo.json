@@ -1,0 +1,10 @@
+links:
+- {source: 0, target: 2}
+- {source: 0, target: 3}
+- {source: 1, target: 2}
+- {source: 2, target: 3}
+nodes:
+- {id: h2}
+- {id: h3}
+- {id: h1}
+- {id: h4}
