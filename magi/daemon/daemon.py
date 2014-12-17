@@ -4,29 +4,32 @@
 # This software is licensed under the GPLv3 license, included in
 # ./GPLv3-LICENSE.txt in the source distribution
 
-from magi.daemon.externalAgentsThread import ExternalAgentsThread, PipeTuple
-from magi.messaging.api import *
-from magi.util import config, helpers, database
-from magi.util.agent import agentmethod
-from magi.util.calls import doMessageAction
-from magi.util.software import requireSoftware
-from os.path import basename
-from subprocess import Popen, PIPE
 import base64
 import cStringIO
 import errno
 import glob
+import json
 import logging
-import magi.modules
-import magi.modules.dataman
+from os.path import basename
 import shutil
 import signal
+from subprocess import Popen, PIPE
 import sys
 import tarfile
 import tempfile
 import threading
 import time
 import traceback
+
+from magi.daemon.externalAgentsThread import ExternalAgentsThread, PipeTuple
+from magi.messaging.api import *
+import magi.modules
+import magi.modules.dataman
+from magi.util import config, helpers, database
+from magi.util.agent import agentmethod
+from magi.util.calls import doMessageAction
+from magi.util.software import requireSoftware
+
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +62,11 @@ class Daemon(threading.Thread):
 			except Exception, e:
 				log.exception("Exception while trying to run the data manager agent.")
 				raise e
+			
+			topo_collection = database.getCollection(agentName="topo_agent")
+			topoGraph = config.getTopoGraph()
+			topo_collection.insert({'nodes' : json.dumps(topoGraph.nodes()),
+									'edges' : json.dumps(topoGraph.edges())})
 				
 		self.configureMessaging(self.messaging, transports)
 		
@@ -344,6 +352,9 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def getStatus(self, msg, groupMembership=False, agentInfo=False):
+                """
+                    gives the group membership and agent information: pid, agentname, threadId
+                """ 
 		functionName = self.getStatus.__name__
 		helpers.entrylog(log, functionName, locals())
 		result = dict()
@@ -367,6 +378,9 @@ class Daemon(threading.Thread):
 		
 	@agentmethod()
 	def archive(self, msg):
+                """ 
+                    Tars the log directory and sends it to the requester as a message" 
+                """ 
 		functionName = self.archive.__name__
 		helpers.entrylog(log, functionName, locals())
 		logDir = config.getLogDir()
@@ -380,6 +394,10 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def reboot(self, msg, distributionDir=None, noUpdate=False, noInstall=False, expConf=None, nodeConf=None):
+                """
+                    reinvokes magi_bootstrap, the boostrap script invokes stop() and does a clean shutdown and then 
+                    restarts 
+                """
 		functionName = self.reboot.__name__
 		helpers.entrylog(log, functionName, locals())
 		
@@ -441,6 +459,13 @@ class Daemon(threading.Thread):
 			for package in interface['software']:
 				log.info('Loading required package %s for agent %s.', package, name)
 				requireSoftware(package)
+				
+		compileCmd = interface.get('compilecmd')
+		if compileCmd:
+			log.info("Running specified compilation command: '%s' under directory '%s'" %(compileCmd, dirname))
+			p = Popen(compileCmd.split(), cwd=dirname, stdout=PIPE, stderr=PIPE)
+			if p.wait():
+				raise OSError("Exception while running the specified compilation command. %s", p.communicate())
 
 		# Based on the interface execution method, execute the agent
 		execstyle = interface['execute']

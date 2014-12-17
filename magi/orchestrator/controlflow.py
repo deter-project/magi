@@ -1,7 +1,6 @@
 import logging
 import string
 from collections import defaultdict
-import parse
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
@@ -39,6 +38,7 @@ class ControlGraph(object):
         '''
         self.keys.append(key)
         self.controlgraph[key] = ControlGraphCluster(key) 
+        return self.controlgraph[key]
 
     def addCompositeCluster(self, key):
         '''
@@ -92,19 +92,19 @@ class ControlGraph(object):
             for event, nodes in self.controlgraph[k].outgoing.iteritems():
                 self.graphOutgoing[event].update(nodes)
             
-        log.info("Outgoing events: %s" %(self.graphOutgoing))
-        log.info("Incoming events: %s" %(self.graphIncoming))
+        log.debug("Outgoing events: %s" %(self.graphOutgoing))
+        log.debug("Incoming events: %s" %(self.graphIncoming))
         
         # If an edge to exit exists, activate exit cluster
         if 'exit' in self.graphOutgoing:
             self.activeDefaultClusters.append('exit')
         
         # Add edges
-        log.info("Adding global edges")
+        log.debug("Adding global edges")
         for event in self.graphOutgoing:
-            log.info("Outgoing Event: %s" %(event))
+            log.debug("Outgoing Event: %s" %(event))
             if event in self.graphIncoming:
-                log.info("Corresponding incoming event exists")
+                log.debug("Corresponding incoming event exists")
                 # Found a set of nodes that are waiting for this event 
                 # Now create an edge for each pair of outgoing and incoming node
                 # corresponding to the event
@@ -120,11 +120,11 @@ class ControlGraph(object):
 
             else:
                 # check is there is a stream by that name 
-                log.info("Corresponding incoming event does not exist")
-                log.info("Checking if the event is a cluster key")
+                log.debug("Corresponding incoming event does not exist")
+                log.debug("Checking if the event is a cluster key")
                 if event in self.keys:
-                    log.info("Event is a valid cluster key")
-                    log.info("Adding edges to the cluster")
+                    log.debug("Event is a valid cluster key")
+                    log.debug("Adding edges to the cluster")
                     # From each node corresponding to the outgoing event
                     # add an edge to the start of the cluster
                     for fromNode in self.graphOutgoing[event]:
@@ -133,7 +133,7 @@ class ControlGraph(object):
                                      self.getEdgeIndex(),
                                      "Jump")
                 else:
-                    log.info("Event is not a valid cluster key")
+                    log.debug("Event is not a valid cluster key")
                     for fromNode in self.graphOutgoing[event]:
                         if "Trigger" in fromNode:
                             # No target by that name. jumping to some place in the environment
@@ -153,6 +153,7 @@ class ControlGraph(object):
             # These are events coming in from the environment
             # Activate the environment cluster
             self.activeDefaultClusters.append('env')
+            edgeId = 0
             for event in self.graphIncoming:
                 for toNode in self.graphIncoming[event]:
                     self.addEdge(self.controlgraph['env'].nodes[0]['id'],
@@ -173,41 +174,64 @@ class ControlGraph(object):
     def getEdgeIndex(self):
         return len(self.graphEdges)
     
-    def writepng(self):
+    
+    def createDot(self):
         import pydot 
         # Walk through all the control graph clusters.
         # For the default clusters, add only the active clusters
         # For all the other clusters, add them
         # Create all the required edges
-        cpng = pydot.Dot(graph_type = 'digraph', fontname="Verdana")
+        dotObj = pydot.Dot(graph_type='digraph', fontname="Verdana")
         for k in self.keys:
             if k in self.defaultClusters:
                 if k in self.activeDefaultClusters:
-                    cpng.add_node(pydot.Node(self.controlgraph[k].nodes[0]['id'], 
-                                             label = self.controlgraph[k].nodes[0]['label']))
+                    label = self.controlgraph[k].nodes[0]['label']
+                    fillcolor = 'steelblue'
+                    if label == 'EXIT':
+                        fillcolor = 'red'
+                    dotObj.add_node(pydot.Node(self.controlgraph[k].nodes[0]['id'], 
+                                               label = self.controlgraph[k].nodes[0]['label'], 
+                                               shape='box', style='filled, rounded', 
+                                               fillcolor=fillcolor))
             else:
-                c = pydot.Cluster(k, label=k)
+                c = pydot.Cluster(k, label=' ')
 
                 allnodes = self.controlgraph[k].getAllNodes()
                 for n in allnodes:
                     if n['type'] != 'syncnode':
-                        c.add_node(pydot.Node(n['id'], label=n['label']))
+                        if n['type'] == 'event':
+                            fillcolor = 'lightblue'
+                        elif n['type'] == 'trigger':
+                            fillcolor = 'orange'
+                        else:
+                            fillcolor = 'steelblue'
+                            
+                        c.add_node(pydot.Node(n['id'], label=n['label'], shape='box', style='filled, rounded', fillcolor=fillcolor))
 
-                cpng.add_subgraph(c)
+                dotObj.add_subgraph(c)
 
                 clusterEdges = self.controlgraph[k].getAllEdges()
                 for edge in clusterEdges:
-                    cpng.add_edge(pydot.Edge(edge['from'], 
+                    dotObj.add_edge(pydot.Edge(edge['from'], 
                                              edge['to'], 
                                              label=edge['label']))
                     
         for edge in self.graphEdges:
-            cpng.add_edge(pydot.Edge(edge['from'], 
+            dotObj.add_edge(pydot.Edge(edge['from'], 
                                      edge['to'], 
                                      label=edge['label']))
 
-        cpng.write_raw('test.dot')
-        cpng.write_png('test.png')
+        return dotObj
+    
+    def writeRaw(self, fileName='test.dot'):
+        self.createDot().write_raw(fileName)
+            
+    def writePng(self, fileName='test.png'):
+        self.createDot().write_png(fileName)
+        
+    def createSvg(self):
+        return self.createDot().create_svg()
+        
         
     def __repr__(self):
         rstr = "Control Graph\n" 
@@ -232,9 +256,9 @@ class ControlGraphCluster(dict):
         self.incoming = defaultdict(set)
         
     def addEvent(self, event):
-        log.info("Adding Event : %s" %(event)) 
+        log.debug("Adding Event : %s" %(event)) 
         newNode = dict()
-        newNode['type'] = 'node'
+        newNode['type'] = 'event'
         newNode['id']= "%s%dEvent" %(str(self.key), self.getNodeIndex())
         newNode['edgeto']= set()
         label = "Send" 
@@ -242,13 +266,15 @@ class ControlGraphCluster(dict):
             newNode['edgeto'].add(event.trigger)
             # outgoing trigger from this node
             self.outgoing[event.trigger].add(newNode['id'])
-        label += "\nAgent: %s" %(event.agent)
-        label += "\nMethod: %s" %(event.method)
+        #label += "\nAgent: %s" %(event.agent)
+        #label += "\nMethod: %s" %(event.method)
+        label += " %s -> %s" %(event.agent, event.method)
         newNode['label'] = label 
         self.nodes.append(newNode)
 
     def addTrigger(self, triggerList):
-        log.info("Adding Trigger List : %s" %(triggerList)) 
+        import parse
+        log.debug("Adding Trigger List : %s" %(triggerList)) 
         # A trigger list is a list of triggers
         # We parse each trigger and the first trigger to complete
         # decides the control path 
@@ -259,7 +285,7 @@ class ControlGraphCluster(dict):
         
         for trigger in triggerList:
             newNode = dict()
-            newNode['type'] = 'node' 
+            newNode['type'] = 'trigger' 
             newNode['id'] = "%s%dTrigger" %(str(self.key), self.getNodeIndex())
             newNode['edgefrom']=set()
             newNode['edgeto']=set()
@@ -278,19 +304,18 @@ class ControlGraphCluster(dict):
                 # outgoing to target from this node
                 self.outgoing[trigger.target].add(newNode['id'])
             
-            label = "Wait for \n %s" %(trigger.toString())
+            label = "Wait for %s" %(trigger.toString())
             if parse.getTriggerType(trigger) == parse.Trigger.EVENT:
                 if trigger.count != 1:
                     label = label + "\n" + "Count: " + str(trigger.count) 
             
             newNode['label'] = label 
-            print newNode 
             self.nodes.append(newNode)
 
         self.nodes.append({'type' : 'syncnode', 'id' : 'EndTriggerList'})
                 
     def addLabel(self, label):
-        log.info("Adding Label : %s" %(label)) 
+        log.debug("Adding Label : %s" %(label)) 
         newNode = dict()
         newNode['type'] = 'node'
         newNode['id']= "%s%dLabel" %(str(self.key), self.getNodeIndex())
@@ -311,34 +336,34 @@ class ControlGraphCluster(dict):
 
             while True:
                 node = next(nodesItr)
-                log.info("Node Type: %s" %(node['type']))
-                log.info("Node ID: %s" %(node['id']))
+                log.debug("Node Type: %s" %(node['type']))
+                log.debug("Node ID: %s" %(node['id']))
                 
                 hasTarget = list()
                 
-                if node['type'] == 'node':
+                if node['type'] in ['event', 'trigger', 'node']:
                     # It has to be an event, as it is outside the trigger list markers
                     currentNodes.append(node['id'])
                 
                 elif node['type'] == 'syncnode':
                     node = next(nodesItr)
-                    log.info("Node Type: %s" %(node['type']))
-                    log.info("Node ID: %s" %(node['id']))
+                    log.debug("Node Type: %s" %(node['type']))
+                    log.debug("Node ID: %s" %(node['id']))
                     
                     while node['type'] != 'syncnode':
                         currentNodes.append(node['id'])
                         if len(node['edgeto']) != 0:
                             hasTarget.append(node['id'])
                         node = next(nodesItr)
-                        log.info("Node Type: %s" %(node['type']))
-                        log.info("Node ID: %s" %(node['id']))
+                        log.debug("Node Type: %s" %(node['type']))
+                        log.debug("Node ID: %s" %(node['id']))
                 else:
                     log.exception('Invalid Node Type')
                     raise TypeError('Invalid Node Type')
                         
-                print "Previous Nodes:", prevNodes
-                print "Current Nodes:", currentNodes
-                print "Trigger Nodes with target: ", hasTarget
+                log.debug("Previous Nodes: ", prevNodes)
+                log.debug("Current Nodes: ", currentNodes)
+                log.debug("Trigger Nodes with target: ", hasTarget)
             
                 # This code does not have the data you need 
                 for pnode in prevNodes:
@@ -355,7 +380,7 @@ class ControlGraphCluster(dict):
                 currentNodes = list() 
                 
         except StopIteration:
-            log.info("Done with all edges")
+            log.debug("Done with all edges")
 
     def addEdge(self, fromNode, toNode, label=" "):
         '''

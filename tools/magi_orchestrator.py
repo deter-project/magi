@@ -133,40 +133,31 @@ if __name__ == '__main__':
         optparser.print_help()
         optparser.error("Missing events file")
 
-    logLevels = {
-        'none': 100,
-        'all': 0,
-        'debug': logging.DEBUG,
-        'info': logging.INFO,
-        'warning': logging.WARNING,
-        'error': logging.ERROR,
-        'critical': logging.CRITICAL
-    }
-    log_format = '%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s'
-    log_datefmt = '%m-%d %H:%M:%S'
+    log = logging.getLogger()
+    log.handlers = []
     
     if options.logfile:
         # Roll over the old log and create a new one
-        # Note here that we will have at most 5 logs
+        # Note here that we will have at most 5 logs 
+        # Need to check existence of file before creating the handler instance
+        # This is because handler creation creates the file if not existent 
         if os.path.isfile(options.logfile):
             needroll = True
         else:
             needroll = False
         handler = logging.handlers.RotatingFileHandler(options.logfile, backupCount=5)
         if needroll:
-            handler.doRollover() 
-        handler.setFormatter(logging.Formatter(log_format, log_datefmt))
-        root = logging.getLogger()
-        root.setLevel(logLevels[options.loglevel])
-        root.handlers = []
-        root.addHandler(handler)
+            handler.doRollover()
+    
     else:
-        logging.basicConfig(format=log_format,
-                            datefmt=log_datefmt,
-                            level=logLevels[options.loglevel])
+        handler = logging.StreamHandler()
+        
+    handler.setFormatter(logging.Formatter(helpers.LOG_FORMAT_MSECS, helpers.LOG_DATEFMT))
+    log.setLevel(helpers.logLevels.get(options.loglevel.upper(), logging.INFO))
+    log.addHandler(handler)
 
-    logging.info('set log level to %s (%d)' % (options.loglevel,
-                                               logLevels[options.loglevel]))
+    log = logging.getLogger(__name__)
+    log.info('set log level to %s (%d)' % (options.loglevel, log.getEffectiveLevel()))
 
     for f in options.events:
         if not os.path.exists(f):
@@ -213,7 +204,7 @@ if __name__ == '__main__':
     
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
-                            useColor=(not options.nocolor))
+                            useColor=(not options.nocolor), dbHost=bridgeNode, dbPort=27017)
         orch.run()
         
     finally:

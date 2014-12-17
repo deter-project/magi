@@ -229,9 +229,8 @@ if __name__ == '__main__':
                     magidist = 'MAGI-1.6.0'
                     installPython(magidist, 'alwaysinstall', 'install')
                     
-                    if not options.nodataman:
-                            installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
-                            installPython('pymongo', 'pymongo', 'install')
+                    installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
+                    installPython('pymongo', 'pymongo', 'install')
                     
                     #updating sys.path with the installed packages
                     import site

@@ -131,9 +131,12 @@ def doMessageAction(obj, msg, messaging=None):
 			if not isinstance(retVal, dict):
 				if retVal is None:
 					retVal = True
-				retVal = {'result' : retVal}
+				retVal = {'retVal' : retVal}
 			args = retVal
 			args['nodes'] = config.getNodeName()
+			agentName = getattr(obj, 'name')
+			if agentName:
+				args['agent'] = agentName
 			messaging.trigger(event=data['trigger'], **args)
 				
 	else:
