@@ -59,19 +59,20 @@ class Daemon(threading.Thread):
 			try:
 				log.info("Starting Data Manager Agent")
 				self.startAgent(code=magi.modules.dataman.__path__[0], name="dataman", dock="dataman", static=True)
+				
+				#Inserting the topology information in the database
+				topo_collection = database.getCollection(agentName="topo_agent")
+				topoGraph = config.getTopoGraph()
+				topo_collection.insert({'nodes' : json.dumps(topoGraph.nodes()),
+										'edges' : json.dumps(topoGraph.edges())})
+				
 			except Exception, e:
 				log.exception("Exception while trying to run the data manager agent.")
 				raise e
 			
-			topo_collection = database.getCollection(agentName="topo_agent")
-			topoGraph = config.getTopoGraph()
-			topo_collection.insert({'nodes' : json.dumps(topoGraph.nodes()),
-									'edges' : json.dumps(topoGraph.edges())})
-				
 		self.configureMessaging(self.messaging, transports)
 		
 		self.done = False
-
 
 	def configureMessaging(self, messaging, transports, **kwargs):
 		"""
@@ -352,9 +353,9 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def getStatus(self, msg, groupMembership=False, agentInfo=False):
-                """
-                    gives the group membership and agent information: pid, agentname, threadId
-                """ 
+		"""
+			gives the group membership and agent information: pid, agentname, threadId
+        """ 
 		functionName = self.getStatus.__name__
 		helpers.entrylog(log, functionName, locals())
 		result = dict()
@@ -378,9 +379,9 @@ class Daemon(threading.Thread):
 		
 	@agentmethod()
 	def archive(self, msg):
-                """ 
-                    Tars the log directory and sends it to the requester as a message" 
-                """ 
+		""" 
+            Tars the log directory and sends it to the requester as a message" 
+        """ 
 		functionName = self.archive.__name__
 		helpers.entrylog(log, functionName, locals())
 		logDir = config.getLogDir()
@@ -394,10 +395,10 @@ class Daemon(threading.Thread):
 	
 	@agentmethod()
 	def reboot(self, msg, distributionDir=None, noUpdate=False, noInstall=False, expConf=None, nodeConf=None):
-                """
-                    reinvokes magi_bootstrap, the boostrap script invokes stop() and does a clean shutdown and then 
-                    restarts 
-                """
+		"""
+		    reinvokes magi_bootstrap, the boostrap script invokes stop() and does a clean shutdown and then 
+		    restarts 
+		"""
 		functionName = self.reboot.__name__
 		helpers.entrylog(log, functionName, locals())
 		
@@ -460,7 +461,7 @@ class Daemon(threading.Thread):
 				log.info('Loading required package %s for agent %s.', package, name)
 				requireSoftware(package)
 				
-		compileCmd = interface.get('compilecmd')
+		compileCmd = interface.get('compileCmd')
 		if compileCmd:
 			log.info("Running specified compilation command: '%s' under directory '%s'" %(compileCmd, dirname))
 			p = Popen(compileCmd.split(), cwd=dirname, stdout=PIPE, stderr=PIPE)

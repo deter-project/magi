@@ -232,7 +232,6 @@ class ControlGraph(object):
     def createSvg(self):
         return self.createDot().create_svg()
         
-        
     def __repr__(self):
         rstr = "Control Graph\n" 
         for k, v in self.controlgraph.items():

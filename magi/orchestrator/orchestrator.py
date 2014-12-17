@@ -216,6 +216,11 @@ class Orchestrator(object):
         self.doTearDown = doTearDown
     
     def deleteEvent(self, streamName, event):
+        '''
+        '''
+        functionName = self.deleteEvent
+        helpers.entrylog(log, functionName, locals())
+        
         try:
             eventStream = self.aal.getStream(streamName)
         except KeyError:
@@ -240,7 +245,11 @@ class Orchestrator(object):
         
         log.info("Modified event stream %s" %(eventStream))
         
+        helpers.exitlog(log, functionName)
+        
     def addEvent(self, streamName, event, index=None):
+        '''
+        '''
         functionName = self.addEvent
         helpers.entrylog(log, functionName, locals())
 
@@ -264,6 +273,8 @@ class Orchestrator(object):
             eventStream.append(eventObject)
                 
         log.info("Modified event stream %s" %(eventStream))
+        
+        helpers.exitlog(log, functionName)
         
         
     def _triggerCausesExitCondition(self, trigger):
