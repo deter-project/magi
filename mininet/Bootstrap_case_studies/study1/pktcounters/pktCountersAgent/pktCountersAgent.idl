@@ -1,0 +1,79 @@
+name: pktcounters
+display: System Packet Counters
+description: uses system local features (packet filters, winpcap) to count packets passing through the node
+execute: thread 
+mainfile: pktCountersAgent.py
+variables:
+    - name: filters
+      help: the list of counters we should be keeping, only effective after startCollection
+      type: countermap
+
+    - name: interval
+      help: how many seconds between samples, integer seconds only, minimum of 1
+      type: int
+
+methods:
+    - name: setDefaults
+      help: Request to configure variables for defaults of in/out on each experiment interface, 1 second recording, storing pkts and bytes
+      args: []
+
+    - name: startCollection
+      help: actually start the recording process
+      args: []
+
+    - name: stopCollection
+      help: stop the recording process
+      args: []
+
+datatables:
+
+    - name: CounterEntry
+      cols:
+        - name: name
+          type: string
+        - name: pkts
+          type: int
+        - name: bytes
+          type: int
+
+types:
+    countermap:
+        type:    dict
+        keytype: str
+        keydesc: the filter name
+        value:   filtermap
+    filtermap:
+        type:    dict
+        keytype: str
+        keydesc: the filter option (src, dst, sport, dport, input, output, proto)
+        value:   str
+
+datatypes:
+    countermap:
+        type:    dict
+        keytype: str
+        keydesc: the name of the filter as specified in the original request
+        value:   counterlist
+    counterlist:
+        type:   list
+        values: recordtuple
+    recordtuple:
+        type:   tuple
+        values: [time, pkts, bytes]
+    time:
+        type: float
+        desc: time associated with a sample
+    pkts:
+        type: int
+        desc: a count of packets
+    bytes:
+        type: int
+        desc: a count of bytes
+    pktrate:
+        type: float
+        desc: a packet rate over the last second
+    byterate:
+        type: float
+        desc: a byte rate over the last second
+    
+

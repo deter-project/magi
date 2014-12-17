@@ -1,0 +1,28 @@
+---10 client 1 server case study ---
+
+Use agents stored in directory. They are modified.
+
+-----change paths accordingly ------
+
+To start
+
+$ sudo python networkx_parsing.py -f topo.json
+
+This creates 10 clients ad a server connected to router node. Router is not running any daemon.
+server is bridge node.
+
+To start oechestrator
+mininet>server xterm &
+
+check IP address of server and use it as bridge in xterm terminal.
+
+To start orchestrator,
+
+# ./magi/tools/magi_orchestrator.py --events cs_procedure10.aal -b <serverIP>
+
+After orchestratation is complete
+To start magi graph tool
+
+# ./magi/tools/magi_graph.py -c graph.conf -d <serverIP> -r 27018 -o graph.png
+
+

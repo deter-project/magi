@@ -1,0 +1,26 @@
+links:
+- {source: 10, target: 11}
+- {source: 0, target: 11}
+- {source: 1, target: 11}
+- {source: 2, target: 11}
+- {source: 3, target: 11}
+- {source: 4, target: 11}
+- {source: 5, target: 11}
+- {source: 6, target: 11}
+- {source: 7, target: 11}
+- {source: 8, target: 11}
+- {source: 9, target: 11}
+nodes:
+- {id: client1}
+- {id: client2}
+- {id: client3}
+- {id: client4}
+- {id: client5}
+- {id: client6}
+- {id: client7}
+- {id: client8}
+- {id: client9}
+- {id: client10}
+- {id: server}
+- {id: router}
+

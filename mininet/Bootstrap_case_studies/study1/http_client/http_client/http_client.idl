@@ -1,0 +1,22 @@
+name: httpclient
+display: HTTP Client
+description: A web client agent that uses the system curl software to perform http requests
+execute: thread 
+mainfile: http_client.py
+inherits:
+   - TrafficClientAgent
+variables:
+   - name: sizes
+     type: distribution 
+     help: The distribution of the data request. The default is a constant request of 1000 bytes.             
+   - name: servers 
+     type: list 
+     help: A list of available HTTP servers. A server is chosen randomly from the list (inherits from TrafficClientAgent)                    
+   - name: interval 
+     type: distribution 
+     help: The distribution of the time lapse between two requests. Default is one second. (inherits from TrafficClientAgent)
+   - name: useSocks
+     type: boolean
+     help: If true use tsocks to send the request. Note that this agent assumes tsocks is installed and configured on the machine.
+software:
+   - curl 

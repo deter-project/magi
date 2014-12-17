@@ -1,0 +1,86 @@
+## The agent implementation and addressing information 
+groups:
+  client_group: [client1, client2, client3, client4, client5, client6, client7, client8, client9, client10, ]
+  server_group: &slist [ server ]
+  monitor_group: [ server ]
+agents:
+  client_agent:
+    group: client_group
+    path: /home/seth/http_client/http_client.tar.gz
+    execargs: {servers: *slist, interval: '3', sizes: 'minmax(1000,10000)'}
+
+  server_agent:
+    group: server_group
+    path: /home/seth/apache/apache.tar.gz 
+    execargs: []
+    
+  monitor_agent:
+    group: monitor_group
+    path: /home/seth/pktcounters/pktCountersAgent.tar.gz
+    execargs: {}
+
+## The mapping from the AAL procedure to the experiment apparatus 
+
+streamstarts: [ serverstream, clientstream, monitorstream, cleanupstream ]
+
+eventstreams:
+  serverstream: 
+      - type: event
+        agent: server_agent 
+        method: startServer
+        trigger: serverStarted 
+        args: {}
+
+      - type: trigger
+        triggers: [ { event: clientStopped} ] 
+
+      - type: event
+        agent: server_agent 
+        method: stopServer 
+        trigger: serverStopped 
+        args: {} 
+
+  clientstream:      
+      - type: trigger
+        triggers: [ { event: serverStarted } ] 
+
+      - type: event
+        agent: client_agent 
+        method: startClient
+        args: {}
+
+      - type: trigger
+        triggers: [ { timeout: 60000 } ]
+
+
+      - type: event
+        agent: client_agent
+        method: stopClient
+        trigger: clientStopped 
+        args: {}
+  
+  monitorstream:
+      - type: trigger
+        triggers: [ { event: serverStarted } ]
+
+      - type: event
+        agent: monitor_agent 
+        method: startCollection
+        trigger: collectionServer
+        args: {}
+
+      - type: trigger
+        triggers: [ { event: clientStopped } ]
+ 
+      - type: event
+        agent: monitor_agent
+        method: stopCollection
+        args: {}      
+
+  cleanupstream:
+      - type: trigger
+        triggers: [ {event: serverStopped, target: exit} ] 
+
+################################################
+
+

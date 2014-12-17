@@ -1,0 +1,13 @@
+name: apacheserver
+display: Apache Server
+description: An agent to start, stop and config of the apache HTTP server
+execute: thread
+mainfile: apache.py
+inherits:
+   - sharedserver
+software:
+   - apache2
+   - httpd
+   - libapache2-mod-fastcgi
+   - libapache2-mod-gnutls
+   - jonpy07
