@@ -4,22 +4,26 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include "AgentMessenger.h"
+#include "logger.h"
 extern char* hostName;
+extern Logger* logger;
 
 void addList(list_t** list, char* name)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	list_t* temp = (list_t*)malloc(sizeof(list_t));
 	temp->name = malloc(strlen(name)+1);
 	strcpy(temp->name,name);
 	temp->next = *list;
 	*list = temp;
- //	return list; 
+	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 
 
 int calHlen(headerOpt_t* headers)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	int len =0;
 	while(headers)
 	{
@@ -27,8 +31,8 @@ int calHlen(headerOpt_t* headers)
 		len+=2;
 		headers= headers->next;
 	}
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	return len;
-
 }
 
 /****************************************************
@@ -36,14 +40,15 @@ int calHlen(headerOpt_t* headers)
  * ***************************************************/
 void insert_header( MAGIMessage_t* msg, uint8_t type, uint8_t len, char * value)
 {
-	
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);	
 	headerOpt_t * list = msg->headers;
 	headerOpt_t * opt_header = (headerOpt_t *) malloc(sizeof(headerOpt_t));
 	opt_header->type = type;
 	opt_header->len = strlen(value);
 	if(len == 0 || value == NULL)
 		{
-			printf("illegal header\n");
+
+			log_error(logger,"illegal header in function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 		}
 	opt_header->value = malloc(opt_header->len+1);
 	memcpy(opt_header->value,value,strlen(value));
@@ -67,10 +72,12 @@ void insert_header( MAGIMessage_t* msg, uint8_t type, uint8_t len, char * value)
 	else if(type == DSTNODES)
 		addList(&msg->dstNodes,value);
 	msg->headers = list;
+	log_debug(logger,"Exiting function: %s\n",__func__);
 }
 
 char *trimwhitespace(char *str)
 {
+
   char *end;
 
   // Trim leading space
@@ -85,7 +92,6 @@ char *trimwhitespace(char *str)
 
   // Write new null terminator
   *(end+1) = 0;
-
   return str;
 }
 
@@ -93,9 +99,11 @@ char *trimwhitespace(char *str)
 
 void decodeYAML(char* msg, char** func, char**args,char** event)
 {
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	char* buf = (char*)malloc(strlen(msg));
         strncpy(buf,msg,strlen(msg));
-
+	log_info(logger,"YAML msg : %s\n",buf);
+	args[0] =NULL;
         char*tkn,*temp;
         char* bufp =buf;
         int j =0,cnt =0,i=0;
@@ -105,17 +113,17 @@ void decodeYAML(char* msg, char** func, char**args,char** event)
                 if(buf[j] == '\'' || buf[j] == '\"')
                         buf[j] = ' ';
         }
-
-nxt:    while(buf)
+nxt:
+    	while(buf)
      	{
-		printf("parsing line\n");
+		log_debug(logger,"parsing line\n");
 		cnt =0;
         	j=0;
         	while(buf[j] != '\n')
         	{        
 			cnt++; j++;
 			if(j == max){
-				printf("something wrong in YAML parsing of string:\n %s\n",msg);
+				log_warn(logger,"something wrong in YAML parsing of string:\n %s\n",msg);
 				return;	}
 		}
 	 	//read 1 line
@@ -123,28 +131,31 @@ nxt:    while(buf)
 		line =NULL;
         	line = malloc(cnt);
         	strncpy(line,buf,cnt);
-		printf("line parsed: %s\n",line);
+		log_debug(logger,"line parsed: %s\n",line);
        	 	line[cnt]='\0';
         	char * ck;
         	if((ck = strstr(line, "method"))!=NULL)
         	{
-			printf("YAML: Method\n");
+			log_debug(logger,"YAML: Method\n");
                 	//This line has method
                 	tkn = strtok(line,":");
                 	tkn = strtok(NULL,":,");
                 	//func name
-                	printf("Function name : %s\n",tkn);
+                	log_debug(logger,"Function name : %s\n",tkn);
                 	tkn = trimwhitespace(tkn);
-			printf("Copying data\n");
                 	*func = (char*)malloc(strlen(tkn)+1);
-                	strncpy(*func,tkn,strlen(tkn));
-			
-                //	*func[strlen(tkn)] = '\0';
-	     //		printf("Finished parsing method\n");
+                	strncpy(*func,tkn,strlen(tkn));	
+
         	}
         	else if((ck = strstr(line, "args"))!=NULL)
         	{
-			printf("YAML: Args\n");
+			log_debug(logger,"YAML: Args\n");
+			/*if((ck = strstr(line,"key"))==NULL)
+			{
+				free(line);
+				buf = buf+cnt+1;
+				goto nxt;
+			}*/
 			//args: {key1: '1', key2: '2'} 
                 	tkn = strtok(line,":");//key - args     
                 	if(tkn ==NULL)
@@ -161,7 +172,12 @@ nxt:    while(buf)
                         	t1++;
                        	 	tstr = t1;
                 	}
-
+			else
+			{
+				free(line);
+				buf = buf+cnt+1;
+				goto nxt;
+			}
                 // tstr = " key1: 1,key2:2 " or " key1:1 "
                 	char * t;
                 	t= strtok(tstr,",:");//key
@@ -169,10 +185,12 @@ nxt:    while(buf)
                 	{
                                 //1 key value pair
                         	t = strtok(NULL,":,%"); //value
-                        	if(t ==NULL)
-                                	return;
+                        	if(t ==NULL){
+					buf = buf+cnt+1;
+                                	goto nxt;
+				}
 				t = trimwhitespace(t);
-                        	printf("arg value[%d]: %d\n",i, atoi(t));
+                        	log_debug(logger,"arg value[%d]: %d\n",i, atoi(t));
                        		t = trimwhitespace(t);
                         	temp = (char*)malloc(strlen(t));
                         	strncpy(temp,t,strlen(t)+1);
@@ -180,17 +198,17 @@ nxt:    while(buf)
                         	i++;
                 	}while((t= strtok(NULL,",:%"))!=NULL); //key
     			args[i] =NULL;
-			printf("Parsed all args\n");
+			log_debug(logger,"Parsed all args\n");
                 }
 
 	//
 	else if((ck = strstr(line, "trigger"))!=NULL)
 	{
-		printf("YAML: trigger\n");
+		log_debug(logger,"YAML: trigger\n");
 		tkn = strtok(line,":");
                 tkn = strtok(NULL,":,");
                 //event name
-                printf("Event name : %s\n",tkn);
+                log_debug(logger,"Event name : %s\n",tkn);
                 tkn = trimwhitespace(tkn);
                 *event = (char*)malloc(strlen(tkn)+1);
                 strncpy(*event,tkn,strlen(tkn));
@@ -201,7 +219,7 @@ nxt:    while(buf)
 
     }
 	
-        printf("Finished YAML parse\n");
+        log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
 
@@ -215,32 +233,26 @@ nxt:    while(buf)
  **************************************************************************************/
 MAGIMessage_t *MAGIMessageDecode(char* msgBuf)
 {
-	printf("Entering MAGIMessageDecode\n");
 
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	/*Caller has realized it is a MAGI message*/
 	MAGIMessage_t* MAGImsg = (MAGIMessage_t*) malloc(sizeof(MAGIMessage_t));
 	if(MAGImsg == NULL)
 	{
-		printf("malloc failed\n");
+		log_error("malloc failed in function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 		exit(0);
 	}
-//printf("Inside MAGI Decode\n");
 	MAGImsg->headers =NULL; 
 	char* parser = msgBuf;
-//printf("parser points to : %x\n",parser);
 	int len_optHeaders;
 
-	//parser = parser+8;
 	/*Now parser points to length*/
 	memcpy(&MAGImsg->length,parser,4);
-printf("Before ntohl, len :%d\n",MAGImsg->length);
 	MAGImsg->length = ntohl(MAGImsg->length);
 
 	parser = parser+ 4; /*HeaderLen*/
-//printf("parser points to : %x\n",parser);
 	memcpy(&MAGImsg->headerLength,parser,2);
 	MAGImsg->headerLength = ntohs(MAGImsg->headerLength);
-printf("Got length: %d\n headerLength: %d \n",MAGImsg->length,MAGImsg->headerLength);
 	len_optHeaders = MAGImsg->headerLength -6; 
 
 	parser = parser+2;/*points to Identifier*/
@@ -253,7 +265,7 @@ printf("Got length: %d\n headerLength: %d \n",MAGImsg->length,MAGImsg->headerLen
 	parser = parser + 1; /*content type*/
 	memcpy(&MAGImsg->contentType,(void*)parser,1);
 	parser = parser +1;	
-printf("\nAgent Magi decode:  optHeaderLen: %d\n id = %d\n contentType = %d\n", len_optHeaders,MAGImsg->id,MAGImsg->contentType);
+
 	while(len_optHeaders > 0){
 		headerOpt_t * opt_header = (headerOpt_t *) malloc(sizeof(headerOpt_t)); 
 
@@ -287,38 +299,61 @@ printf("\nAgent Magi decode:  optHeaderLen: %d\n id = %d\n contentType = %d\n", 
 		len_optHeaders = len_optHeaders - 2 - opt_header->len;
 		
 	}
-//printf("\nAgent:Checking data part of MAGI msg received: %d\n", MAGImsg->contentType);	
+
 	MAGImsg->data = (char*)malloc(MAGImsg->length - MAGImsg->headerLength - 2);
 
 	switch(MAGImsg->contentType)
 	{
 		case YAML:
 		       		memcpy(MAGImsg->data,parser,MAGImsg->length - MAGImsg->headerLength - 2 );
-				printf("Received YAML message...\n");	
+				log_debug(logger,"Received YAML message...\n");	
 				char* event =NULL;			
 				decodeYAML(MAGImsg->data,&(MAGImsg->funcArgs.func),&(MAGImsg->funcArgs.args),&event);
-
-				printf("Calling function\n");
-				int retVal = call_function(MAGImsg->funcArgs.func,&(MAGImsg->funcArgs.args));
+				if(MAGImsg->funcArgs.func == NULL)
+				  return;		
+				log_debug(logger,"Calling function\n");
+				char* retVal = NULL; 
+				retVal = malloc(1024);
+				char* retType = malloc(50); 
+				call_function(MAGImsg->funcArgs.func,&(MAGImsg->funcArgs.args),retVal,retType);
+			//	if(retVal != NULL)
+				log_info(logger,"MAGIDecode() Call function returned\n");
+				log_info(logger,"retVal of function :%s",retVal);
 				if(event)
 				{
-					printf("Sending out Trigger message\n");
-					char ndata[250];
-					sprintf(ndata,"{event: %s, result: %d, nodes: %s}",event,retVal,hostName);
-					char* td = (char*)malloc(strlen(ndata)+1);
+				
+					log_info(logger,"Sending out Trigger message\n");
+					char ndata[1500];
+					if(!strcmp(retType,"dictionary"))
+				//	char ck[50];
+				//	strncpy(ck,retVal,50);
+				//	char* tk = strtok(ck,":,"); 
+				//	if(tk)
+					{
+						
+						sprintf(ndata,"{event: %s, %s, nodes: %s}",event,retVal,hostName);
+
+
+					}
+					else{
+					 /*Todo: Malloc this strlen(event+retVal+hostName)*/
+					sprintf(ndata,"{event: %s, retVal: %s, nodes: %s}",event,retVal,hostName);
+					}
+					free(retVal);
+					log_info(logger,"Trigger message: %s\n",ndata);
+					char* td = (char*)malloc(strlen(ndata));
 					strcpy(td,ndata);
 					trigger("control", "control", YAML, td);
-					printf("Sent a trigger message\n");
+					log_info(logger,"Sent the trigger message for event: %s\n",event);
 				}
-				printf("exiting decode\n");
 				break;
 
 		default:
-				printf("Content Type not supported\n");
+				log_info(logger,"Content Type not supported\n");
 				break;
 
 	}
-	printf("Exiting MAGIMessageDecode\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	return (MAGImsg);
 
 }
@@ -329,88 +364,13 @@ printf("\nAgent Magi decode:  optHeaderLen: %d\n id = %d\n contentType = %d\n", 
  * This function returns a serialized buffer from MAGIMessage structure
  * This function allocates memory for the buffer. This should be freed by the caller.
  **************************************************************************************/
-
-char * MAGIMessageEncode1(MAGIMessage_t* MAGImsg, uint32_t* bufLen)
-{
-	char * msgBuf=NULL;
-	printf("Entering MAGIMessageEncode\n");
-	//printf("MAGI len:%d\n",MAGImsg->length);
-	//printf("MAGI data:%s\n",MAGImsg->data);
-	msgBuf = (char*)malloc(MAGImsg->length+4);
-	/*err check*/
-	char* tmp = msgBuf;
-
-	/*Copy the preamble*/
-/*	memcpy(msgBuf,"MAGI\x88MSG",8);
-	tmp += 8;*/
-
-	uint32_t conv = htonl(MAGImsg->length);
-	memcpy(tmp, &(conv), 4);
-	tmp+=4;
-	
-	if(MAGImsg->headerLength == 0)
-		memset(tmp,0,2);
-	else{
-		uint16_t conv1 = htons(MAGImsg->headerLength);
-		memcpy(tmp, &conv1, 2);
-	}
-	tmp+=2;
-	
-	if(MAGImsg->id == 0)
-		memset(tmp,0,4);
-	else
-	{
-		conv = htonl(MAGImsg->id);
-		memcpy(tmp, &conv, 4);
-	}
-	tmp+=4;
-
-	memcpy(tmp, &(MAGImsg->flags), 1);
-	tmp+=1;
-
-	memcpy(tmp,&(MAGImsg->contentType), 1);
-	tmp+=1;
-
-
-	/*tmp pointing to start of opt_headers*/
-	headerOpt_t * header = MAGImsg->headers;
-	/*No error checking of the total size - TODO*/
-	while(header != NULL)
-	{
-	memcpy((void*)tmp,(void*)&header->type,1);
-	tmp+=1;
-	memcpy((void*)tmp,(void*)&header->len,1);
-	tmp+=1;
-	memcpy((void*)tmp,(void*)header->value,header->len);
-	tmp+=header->len;
-	header = header->next;
-	}
-//printf("Copying memory in MAGIEnc\n");
-	memcpy((void*)tmp,(void*)MAGImsg->data, MAGImsg->length - MAGImsg->headerLength - 2 );
-	*bufLen = MAGImsg->length+4;
-	//printf("msgBuf: %s\n",msgBuf);
-//printf("Done MAGI  ENC\n");
-
-
-	printf("Exiting MAGIMessageEncode\n");
-
-	return msgBuf;
-
-}
-
 char * MAGIMessageEncode(char** b,MAGIMessage_t* MAGImsg, uint32_t* bufLen)
 {
 	char * msgBuf;
-	printf("Entering MAGIMessageEncode\n");
-	//printf("MAGI len:%d\n",MAGImsg->length);
-	//printf("MAGI data:%s\n",MAGImsg->data);
+	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	msgBuf = (char*)malloc(MAGImsg->length+4);
 	/*err check*/
 	char* tmp = msgBuf;
-
-	/*Copy the preamble*/
-/*	memcpy(msgBuf,"MAGI\x88MSG",8);
-	tmp += 8;*/
 
 	uint32_t conv = htonl(MAGImsg->length);
 	memcpy(tmp, &(conv), 4);
@@ -449,19 +409,15 @@ char * MAGIMessageEncode(char** b,MAGIMessage_t* MAGImsg, uint32_t* bufLen)
 	tmp+=1;
 	memcpy((void*)tmp,(void*)&header->len,1);
 	tmp+=1;
-	printf("header->len : %d\nvalue:%s\n",header->len,header->value);
 	memcpy((void*)tmp,(void*)header->value,header->len);
 	tmp+=header->len;
 	header = header->next;
 	}
-//printf("Copying memory in MAGIEnc\n");
 	memcpy((void*)tmp,(void*)MAGImsg->data, MAGImsg->length - MAGImsg->headerLength - 2 );
 	*bufLen = MAGImsg->length+4;
-	//printf("msgBuf: %s\n",msgBuf);
-//printf("Done MAGI  ENC\n");
 
 
-	printf("Exiting MAGIMessageEncode\n");
+	log_debug(logger,"Exiting function: %s\n",__func__);
 	*b = msgBuf;
 	return msgBuf;
 

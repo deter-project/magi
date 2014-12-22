@@ -5,6 +5,7 @@ Logger * Logger_create( FILE* fp, int log_level )
 	Logger *l = (Logger *)malloc(sizeof(Logger));
 	if ( l == NULL )
 	return NULL;
+	pthread_mutex_init(&l->log_mutex, NULL);
 	l->datetime_format = (char *)"%Y-%m-%d %H:%M:%S";
 	if(log_level >= 0 && log_level < 4)
 		l->level = log_level;
@@ -34,9 +35,11 @@ void log_add(Logger *l, int level, const char *msg)
 	time_t meow = time(NULL);
 	char buf[64];
 	strftime(buf, sizeof(buf), l->datetime_format, localtime(&meow));
+	pthread_mutex_lock(&l->log_mutex);
 	fprintf(l->fp, "%s : %s\n",buf,msg);
-
 	fflush(l->fp);
+	pthread_mutex_unlock(&l->log_mutex);
+
 }
 
 void log_debug(Logger *l, const char *fmt, ...)
