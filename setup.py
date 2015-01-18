@@ -43,7 +43,8 @@ class ToShare(Command):
             
     def run(self):
         self.call("cp dist/MAGI*gz %s" % self.path)
-        self.call("cp scripts/magi_bootstrap.py %s" % self.path)
+        self.call("cp tools/helpers.py %s" % self.path)
+        self.call("cp tools/magi_bootstrap.py %s" % self.path)
         self.call("cp tools/magi_orchestrator.py %s" % self.path)
         self.call("cp tools/magi_status.py %s" % self.path)
         self.call("cp tools/magi_graph.py %s" % self.path)
