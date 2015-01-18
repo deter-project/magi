@@ -88,13 +88,16 @@ def registerShard(mongod=config.getNodeName(), mongos=config.getServer(), timeou
 
     helpers.exitlog(log, functionName)
 
-def isShardRegistered(dbHost=config.getNodeName(), configHost=configHost, block=False):
+def isShardRegistered(dbHost=None, configHost=configHost, block=False):
     """
         Check if given mongo db host is registered as a shard
     """
     functionName = isShardRegistered.__name__
     helpers.entrylog(log, functionName, locals())
     
+    if dbHost == None:
+        dbHost = getCollector()
+        
     dbHost = helpers.toControlPlaneNodeName(dbHost)
     configHost = helpers.toControlPlaneNodeName(configHost)
         
@@ -125,7 +128,7 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
             
     helpers.exitlog(log, functionName)
         
-def getConnection(host='localhost', port=DATABASE_SERVER_PORT, block=True, timeout=TIMEOUT):
+def getConnection(host=None, port=DATABASE_SERVER_PORT, block=True, timeout=TIMEOUT):
     """
         Function to get connection to a database server
     """
@@ -143,7 +146,7 @@ def getConnection(host='localhost', port=DATABASE_SERVER_PORT, block=True, timeo
     helpers.exitlog(log, functionName)
     return Connection.getConnection(host, port, block, timeout)
             
-def getCollection(agentName, dbHost=config.getNodeName(), dbPort=DATABASE_SERVER_PORT):
+def getCollection(agentName, dbHost=None, dbPort=DATABASE_SERVER_PORT):
     """
         Function to get a pointer to a given agent data collection
     """
