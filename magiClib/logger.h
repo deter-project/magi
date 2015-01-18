@@ -8,6 +8,7 @@ extern "C" {
 #include <time.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <pthread.h>
 #define LOG_DEBUG 1
 #define LOG_INFO 0
 #define LOG_WARN 2
@@ -16,6 +17,7 @@ extern "C" {
 #define LOG_MAX_MSG_LEN 1024
 struct _Logger {
 int level;
+pthread_mutex_t log_mutex;
 char *datetime_format;
 FILE *fp;
 };

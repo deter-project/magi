@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "logger.h"
 extern Logger* logger;
-/*TODO : #define for all length values + memory error checks*/
+/*TODO : #MACRO definitions for all length values + memory error checks*/
 
 /****************************************************
  * Helper function to calculate options total length

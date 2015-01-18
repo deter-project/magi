@@ -6,11 +6,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <signal.h>
-#include <stdarg.h>
-#include "AgentRequest.h"
-#include "MAGIMessage.h"
 #include "logger.h"
-
+#include "AgentRequest.h"
 
 typedef struct Queue{	
 	AgentRequest_t* req; 
@@ -27,9 +24,3 @@ typedef struct Transport{
 	pthread_mutex_t qlock;
 
 }Transport_t;
-
-void sendOut(AgentRequest_t* req);
-int isEmpty(Transport_t* transport);
-AgentRequest_t* dequeue(Transport_t *transport);
-Transport_t * enqueue(Transport_t *transport,AgentRequest_t *req);
-

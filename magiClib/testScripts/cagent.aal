@@ -1,0 +1,66 @@
+
+streamstarts: [addstream]
+
+groups:
+  cagent_group: [clientnode]
+
+agents:
+  c_agent:
+    group: cagent_group
+    path: /proj/montage/modules/cagent/
+    execargs: {}
+
+eventstreams:
+
+  addstream:
+  - type: event
+    agent: c_agent
+    method: add
+    trigger: addDone
+    args:
+      arg1: 5
+      key2: 10
+      
+  - type: trigger
+    triggers: [ { event: addDone, retVal: 15 , target: 'catstream' }]
+
+  catstream:
+  - type: event
+    agent: c_agent
+    method: ccat
+    trigger: catDone
+    args:
+      arg1: abc
+      key2: def
+
+  - type: trigger
+    triggers: [ { event: catDone, retVal: abcdef , target: 'dictstream' }]
+
+  dictstream:
+  - type: event
+    agent: c_agent
+    method: dictTest
+    trigger: dictDone
+    args:
+      arg1: Arg1Val
+      key2: Arg2Val
+
+  - type: trigger
+    triggers: [ {event: dictDone, arg1: Arg1Val, arg2: Arg2Val, target: 'substream'}]
+
+       
+  substream:
+  - type: event
+    agent: c_agent
+    method: sub
+    trigger: subDone
+    args:
+      arg1: 10
+      key2: 2
+      
+  - type: trigger
+    triggers: [ {event: subDone, retVal: 8 , target: 'exit'}]
+    
+  - type: trigger
+    triggers: [ {timeout: 10, target: exit} ]
+        

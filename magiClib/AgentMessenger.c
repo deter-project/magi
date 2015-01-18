@@ -1,4 +1,7 @@
+#include "AgentMessenger.h"
 #include "AgentTransport.h"
+#include "MAGIMessage.h"
+#include <stdio.h>
 extern Transport_t* inTransport,*outTransport;
 extern Logger* logger;
 int stop_flag = 0;
@@ -214,19 +217,32 @@ void send_start_trigger()
 	log_debug(logger,"Exiting function: %s\n",__func__);
 }
 
+void send_stop_trigger()
+{
+        log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
+        char* data = (char*)malloc(100);
+        char temp[100];
+        sprintf(temp,"{nodes: %s, event: AgentUnloadDone, agent: %s}",hostName,agentName);
+        strcpy(data,temp);
+        trigger("control",NULL,MESSAGE,data);
+        log_debug(logger,"Exiting function: %s\n",__func__);
+}
+
 typedef struct {
 	char *name;
 	int aCnt;
+	char* retType;
   	char* argList[10];
-  	int (*func)();  
+  	char* (*func)();  
 }fMap;
 
 fMap* function_map;
 
 typedef struct fList{
 	char* name;
-	int* fptr;
+	char* (*fptr)();
 	int aCnt;
+	char* retType;
 	struct fList* next;
 	char* argList[10];
 
@@ -235,12 +251,12 @@ typedef struct fList{
 int count=0;
 static fList_t* funcList=NULL; 
 
-fList_t* addFunc(char* name, void* fptr,int number,...)
+fList_t* addFunc(char* name, char* retType, void* fptr,int number,...)
 {
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	fList_t* tmp = (fList_t*)malloc(sizeof(funcList));
 	tmp->name = malloc(strlen(name)+1);
-
+	tmp->retType = malloc(strlen(retType)+1);
+	strcpy(tmp->retType,retType);
 	va_list kw;
     	va_start(kw, number);
 	char* args;
@@ -273,7 +289,6 @@ fList_t* addFunc(char* name, void* fptr,int number,...)
 
 fMap* create_functionMap()
 {
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	count=0;
 	fList_t *temp = funcList;
 	while(temp)
@@ -293,6 +308,7 @@ fMap* create_functionMap()
 	{
 		(function_map[i]).name = temp->name;
 		(function_map[i]).func = temp->fptr;
+		(function_map[i]).retType = temp->retType;
 		int j =0;
 		while(j<temp->aCnt)
 		{
@@ -308,7 +324,7 @@ fMap* create_functionMap()
 
 }  
 
-void stopFunc()
+int* stopFunc()
 {
 	stop_flag = 1;
 	return;
@@ -317,8 +333,7 @@ void stopFunc()
 
 int agentStart(int argc, char** argv)
 {
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-	addFunc("stop",&stopFunc,0,NULL);
+	addFunc("stop","int*",&stopFunc,0,NULL);
 	fMap* t;
 	if((t= create_functionMap())==NULL)
 		return -1;
@@ -328,18 +343,70 @@ int agentStart(int argc, char** argv)
 	while(!stop_flag)
 		sleep(1);
 	log_info(logger,"Agent closing connection...");
+	unlistenDock(dockName);
+	send_stop_trigger();
 	// close transport module
 	closeTransport();	
 	
 }
 
 
+char* d2Ystring(dictionary d,char* buf)
+{
+	dictionary temp = d;
+	int len =0;
+	if(d == NULL)
+	{
+		return NULL;
+	}
+	while(temp!=NULL)
+	{
+		len += strlen(temp->name);
+		len += strlen(temp->value); 
+		len +=3;
+		temp = temp->next;
+	}
+	temp = d;
+	char* dBuf;
+	if(len < 1024)
+		 dBuf =malloc(len);
+	else
+     		return NULL;
 
-int call_function(const char *name, char** args)
+	memset(dBuf,0,len);
+	int i =0;
+	while(temp !=NULL)
+	{
+		if (i == 0)
+		{strcpy(dBuf,temp->name);}//	strcpy(dBuf," ");
+		else	
+		{
+		strcat(dBuf," ");
+		strcat(dBuf,temp->name);
+		}
+		strcat(dBuf,": ");
+		strcat(dBuf,temp->value);
+		if(temp->next != NULL)
+			strcat(dBuf,",");
+		//else
+			//strcat(dBuf,"}");
+		temp = temp->next;
+		i++;
+
+	}
+	strcpy(buf,dBuf);
+	return dBuf;
+}
+
+
+
+char* call_function(const char *name, char** args,char* rets,char* retType)
 {
   log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
   int i=0,argcnt = 0;
-	int retVal = 0;
+
+	
+  char* retString = malloc(100);
   while(args[argcnt]!=NULL)
   {
 	argcnt++; /*Number of args*/		
@@ -353,6 +420,8 @@ int call_function(const char *name, char** args)
 		if(argcnt != function_map[i].aCnt)
 			return -1;
 		int j =0;
+		log_info(logger,"argument count matched\n");
+
 		while(j<argcnt)
 		{
 			if(!strcmp(function_map[i].argList[j],"int"))
@@ -371,36 +440,481 @@ int call_function(const char *name, char** args)
 			j++;
 
 		}
+		log_info(logger,"data types matched\n");
 		if(argcnt == 0)
-			retVal = function_map[i].func();
-      		else if(argcnt ==1)
-			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s);
-		else if(argcnt == 2)
-			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s);
-		else if(argcnt == 3)
-			retVal = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s,(sizeof(data[2])==sizeof(int)) ? data[2].i : data[2].s);
-		else if(argcnt == 4)
-			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3));
-		else if(argcnt == 5)
-			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4));
-		else if(argcnt == 6)
-			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5));
-		else if(argcnt == 7)
-			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6));
-		else if(argcnt == 8)
-			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7));
-		else if(argcnt == 9)
-			retVal = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7),ARG(8));
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func();
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func();			
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
 
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func();	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt ==1)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0));			
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 2)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				 log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s);
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)(function_map[i].func((sizeof(data[0])==sizeof(int)) ? data[0].i : data[0].s,(sizeof(data[1])==sizeof(int)) ? data[1].i : data[1].s));
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 3)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0),ARG(1),ARG(2));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0),ARG(1),ARG(2));	
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0),ARG(1),ARG(2));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 4)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3));	
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 5)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4));	
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 6)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5));	
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 7)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6));	
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 8)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7));	
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
+		else if(argcnt == 9)
+		{
+			if(!(strcmp(function_map[i].retType,"int*")))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				int* ret = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7),ARG(8));
+				log_info(logger,"Function call returned\n");
+				int v=*ret;
+				log_info(logger,"value:%d\n",v);
+				sprintf(retString,"%d",v);
+				log_info(logger,"retString is : %s\n",retString);
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+			}
+			else if(!strcmp(function_map[i].retType,"char*"))
+			{
+				log_info(logger,"Calling function: %s\n",name);
+				char* retString = function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7),ARG(8));	
+				log_info(logger,"Exiting %s \n",__func__);
+				strcpy(rets,retString);
+                		return retString;
+
+			}
+			else
+			{
+				//Assumed to be dictionary retType
+				dictionary d =NULL;
+				char* t = (char*)function_map[i].func(ARG(0),ARG(1),ARG(2),ARG(3),ARG(4),ARG(5),ARG(6),ARG(7),ARG(8));	
+				d = (dictionary)t;
+				char* retst = malloc(1024);
+				d2Ystring(d,retst);
+				strcpy(rets,retst);
+				strcpy(retType,"dictionary");
+				return retString;
+			}
+
+		}
 		else 
 		{
 			log_info(logger,"Not able to handle these many number of arguments\n");
-			return -1;
+			return NULL;
 		}
 		log_debug("Exiting %s \n",__func__);
-		return retVal;
+		return retString;
     	}
   }
 
-  return -1;
+  return NULL;
+}
+
+dictionary insert(dictionary* list, char* key,char* value)
+{
+	dList_t* head = *list;
+	dList_t* temp = malloc(sizeof(dList_t));
+	if(temp == NULL)
+		return NULL;
+	temp->name = malloc(strlen(key)+1);
+	strcpy(temp->name, key);
+
+	temp->value = malloc(strlen(value)+1);
+	strcpy(temp->value,value);
+	 	
+	if(head == NULL)
+	{
+		//newList
+		temp->next = NULL;
+		head = temp;
+		*list = head;
+		return head;			
+	}
+	temp->next = head;
+	head = temp;
+	*list = head;
+	return head;
+}
+
+
+
+char* dfind(dList_t* list, char* key)
+{
+	dList_t* temp = list;
+	if (list == NULL)
+		return NULL;
+	while(temp != NULL)
+	{
+		if(!(strcmp(temp->name,key)))
+		{
+			return (temp->value);
+		}
+		temp=temp->next;
+	}
+
+}
+
+dList_t* ArgParser(int argc, char** argv)
+{
+  /*argv 1 and 2 are agentName and dockName*/
+  if(argc < 4)
+	return NULL;
+   dList_t* dList = NULL;
+   insert(&dList,"agentName",argv[1]);
+   insert(&dList,"dockName",argv[2]);	
+    /*From 3rd count starts the key value pair*/
+  int count =3;	
+  while(count < argc)
+ {
+		char* temp,*name,*value;
+		temp = (char*)malloc(strlen(argv[count])+1);
+		if(temp ==NULL)
+		{
+			//log_error(logger,"Malloc failed: Parsing arguments\n");
+			return NULL;
+		}
+		memset(temp,0,strlen(argv[count])+1);
+		strcpy(temp,argv[count]);
+		char* tkn = strtok(temp,"=");
+		tkn = trimwhitespace(tkn);
+		/*got the key*/
+		name = malloc(strlen(tkn)+1);
+		strcpy(name,tkn);  
+		/*parse the value*/
+		tkn = strtok(NULL,"=");
+		tkn = trimwhitespace(tkn);
+		value = (char*) malloc(strlen(tkn)+1);
+		strcpy(value,tkn);
+		insert(&dList,name,value);
+		//free((char*)temp);
+		temp = NULL;
+		count++;
+  }
+
+ return dList; 
+
 }

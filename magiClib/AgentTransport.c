@@ -1,14 +1,21 @@
-#include "AgentTransport.h"
-#include "logger.h"
-#include <netdb.h>
-#include <pthread.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include "MAGIMessage.h"
+#include "AgentTransport.h"
+#include <pthread.h>
 int portno;
 char msg[4096];
 
 pthread_t sender,listener;
 
-static int listener_stop = 0,listener_clear =0; 
+static int listener_stop = 0,listener_clear =1; 
 static int fd;
 Transport_t* inTransport,*outTransport;
 struct sockaddr_in serv_addr;/*Holds Address info of server*/
@@ -116,7 +123,8 @@ void* sendThd()
 			char* msg;
 			msg = AgentEncode(req,&length);
 			log_info(logger,"Sending out msg on socket...\n");
-			int err = send(fd, msg, length, 0);
+			int err = 0;
+ 	        	err = send(fd, msg, length, 0);
 			if(err == -1)
 			{
 				log_error(outTransport->logger,"Message send failed...\n%s:%d:%s\n",__FILE__, __LINE__,__func__);
@@ -137,7 +145,7 @@ Listen Thread
 void* listenThd()
 {
 	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-	while(!listener_stop)
+	while(1)
 	{
 		/*pthread_Cancel should exit from read blocking call. If a bug appears, then
 		read has to be timed*/
@@ -188,12 +196,20 @@ Parse helper
 **************************************************************/
 void parse_args(int argc, char**argv)
 {
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-	agentName = (char*)malloc(strlen(argv[1]+1));
-	strcpy(agentName,argv[1]);
-	dockName = (char*)malloc(strlen(argv[2]+1));
-	strcpy(dockName,argv[2]);
-
+	//log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
+	if(argc >1)
+	{
+		agentName = (char*)malloc(strlen(argv[1]+1));
+	/*1st and 2nd args are assumed to be agentName and dockName*/
+		strcpy(agentName,argv[1]);
+		dockName = (char*)malloc(strlen(argv[2]+1));
+		strcpy(dockName,argv[2]);
+	}
+	else
+	{
+		agentName = "cAgent";
+		dockName = "testDock";
+	}
 	int count = 3;
 	while(count < argc)
 	{
@@ -265,7 +281,7 @@ void parse_args(int argc, char**argv)
 
 	}
 
-	log_debug(logger,"Exiting function: %s\n",__func__);
+	//log_debug(logger,"Exiting function: %s\n",__func__);
 
 
 }
@@ -278,13 +294,18 @@ void parse_args(int argc, char**argv)
 **************************************************************/
 void init_connection(int argc,char** argv)
 {
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	parse_args(argc,argv);
 	/*Create logger and start logging*/
 	if(logFileName == NULL)
 	{
-		logFileName = (char*)malloc(strlen(agentName)+strlen(".log")+1);
-		strcpy(logFileName,agentName);
+//		logFileName = (char*)malloc(strlen(agentName)+strlen(".log")+1+60);
+//		 strcpy(logFileName,"/users/jaipuria/playground/deter/magi/scripts/");
+	
+
+		logFileName = (char*)malloc(strlen(agentName)+strlen(".log")+1+strlen("/var/log/magi/logs/"));
+		strcpy(logFileName,"/var/log/magi/logs/");
+		strcat(logFileName,agentName);
+	//	strcpy(logFileName,agentName);
 		strcat(logFileName,".log");
 	}
 	logFile = fopen(logFileName,"w");	
@@ -309,11 +330,7 @@ void init_connection(int argc,char** argv)
 	/*Log the parsed info*/
 	
 	log_info(logger,"agentName : %s\ndockName : %s\ncommHost : %s\nhostName : %s\nlogFileName : %s\ncommPort : %d\nloglevel : %d\n", agentName,dockName,commHost,hostName,logFileName,commPort,log_level);
-	if(commGroup != NULL)
-	{
-		log_info(logger,"commGroup : %s\n", commGroup);
-		joinGroup(commGroup);
-	}
+
 
 
 	/*Set up transport queues*/
@@ -332,13 +349,15 @@ void init_connection(int argc,char** argv)
 	}
 
 	/*Set addr and port*/
-	server = gethostbyname(commHost);
+       // server = getIP(commHost);
 	portno = commPort;
+	struct hostent* server = gethostbyname(commHost);
+ 	bzero(&serv_addr,sizeof(serv_addr));
 
-   	bzero(&serv_addr,sizeof(serv_addr));
-   	serv_addr.sin_family = AF_INET;
+    	bcopy((char *)server->h_addr,(char *)&serv_addr.sin_addr.s_addr,server->h_length);
 
-    	bcopy((char *)server->h_addr,(char *)&serv_addr.sin_addr.s_addr,server->h_length);	
+     	serv_addr.sin_family = AF_INET;
+
 	//serv_addr.sin_addr.s_addr=(inet_addr("127.0.0.1"));
 	serv_addr.sin_port = htons(portno);
 	log_debug(logger,"Exiting function: %s\n",__func__);
@@ -350,7 +369,8 @@ void init_connection(int argc,char** argv)
 ******************************************************************/
 void start_connection()
 {
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
+	//log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
+	 	
 	//Connect to the given socket
 	if (connect(fd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
 	{
@@ -377,7 +397,11 @@ void start_connection()
 	
 	log_info(logger,"Sending a Listen Dock Msg\n");
 	listenDock(dockName);
-	log_debug(logger,"Exiting function: %s\n",__func__);
+	if(commGroup != NULL)
+	{
+		log_info(logger,"commGroup : %s\n", commGroup);
+		joinGroup(commGroup);
+	}
 
 }
 
@@ -386,10 +410,13 @@ void closeTransport()
 	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
 	pthread_cancel(listener);
 	listener_stop = 1;
-	while(!(outTransport->front ==NULL && listener_clear));
-	//ready to close send thd and close the socket
+	while(!(outTransport->front ==NULL))
+	{
+		sleep(1);
+	}
+//ready to close send thd and close the socket
 	pthread_cancel(sender);
-	close(fd);
+        close(fd);
 	log_debug(logger,"Exiting function: %s\n",__func__);
 
 }
