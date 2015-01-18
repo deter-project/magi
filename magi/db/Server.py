@@ -204,7 +204,7 @@ def createMongoDConfig(configDir=TEMP_DIR,
         f.write('logappend=true\n')
         f.close() 
     except:
-        log.exception("Failed to create dbHostb default configuration file")
+        log.exception("Failed to create mongo db default configuration file")
         raise
     return configfile
 
