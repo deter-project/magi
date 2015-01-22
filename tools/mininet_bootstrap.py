@@ -7,12 +7,8 @@ import os
 import sys
 import time
 
-from networkx.readwrite import json_graph
-import yaml
-
 from helpers import call, is_os_64bit, is_running, verifyPythonDevel
-from helpers import isInstalled, installPython, installC, installPackage, installPreBuilt
-import networkx as nx
+from helpers import isInstalled, installPython, installPackage, installPreBuilt
 
 class BootstrapException(Exception): pass
 class TarException(BootstrapException): pass
@@ -65,24 +61,10 @@ if __name__ == '__main__':
 	log = logging.getLogger(__name__)
 	#log.info('set log level to %s (%d)' % (options.loglevel, log.getEffectiveLevel()))
 
-	if options.file:
-		jgraph = yaml.load(open(options.file))
-		topoGraph = json_graph.node_link_graph(jgraph)
-# 		G = nx.Graph()
-# 		G.add_nodes_from(['h1','h2','h3','h4', 'h5', 'h6'])
-# 		G.add_edge('h1','h2')
-# 		G.add_edge('h1','h3')
-# 		G.add_edge('h1','h4')
-# 		G.add_edge('h2','h5')
-# 		G.add_edge('h5','h6')	
-# 		print "Nodes %s " % G.nodes()
-# 		print "Edges %s"  % G.edges()
-	else:
+	if not options.file:
 		parser.print_help()
 		parser.error("Missing topology file")
 		
-	log.info("Topology Graph: %s" %(topoGraph))
-	
 	rpath = options.rpath
 	
 	try:
@@ -126,14 +108,30 @@ if __name__ == '__main__':
 			#updating sys.path with the installed packages
 			import site
 			site.main()
-	
+			
+		# Changing working directory to script's directory
+		os.chdir(os.path.dirname(os.path.realpath(__file__)))
+
 		# Now that installation in done on the local node, import utilities 
 		from magi import __version__
-		from magi.util import config, helpers
 		from mininet_helpers import createMininetHosts, Mininet, dumpNodeConnections, CLI
+		import yaml
+		import networkx as nx
+		from networkx.readwrite import json_graph
+		
+		jgraph = yaml.load(open(options.file))
+		topoGraph = json_graph.node_link_graph(jgraph)
+# 		topoGraph = nx.Graph()
+# 		topoGraph.add_nodes_from(['h1','h2'])
+# 		topoGraph.add_edge('h1','h2')
+# 		print "Nodes %s " % topoGraph.nodes()
+# 		print "Edges %s"  % topoGraph.edges()
+
+		log.info("Topology Graph: %s" %(topoGraph))
 		
 		topo = createMininetHosts(topoGraph)
 		net = Mininet(topo=topo, controller=None)
+		
 		net.start()
 		dumpNodeConnections(net.hosts)
 	
@@ -179,6 +177,9 @@ if __name__ == '__main__':
 		
 		#net.pingAll()
 		CLI(net)
+		
+		os.system("kill -9 `ps -ef | grep magi_daemon | grep -v grep | awk '{print $2}'`")
+		
 		net.stop()	
 		
 	except Exception, e:
