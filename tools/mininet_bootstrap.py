@@ -178,6 +178,9 @@ if __name__ == '__main__':
 		#net.pingAll()
 		CLI(net)
 		
+		#TODO: Figure out a good way to terminate magi_daemon processes
+		os.system("kill `ps -ef | grep magi_daemon | grep -v grep | awk '{print $2}'`")
+		time.sleep(2)
 		os.system("kill -9 `ps -ef | grep magi_daemon | grep -v grep | awk '{print $2}'`")
 		
 		net.stop()	
