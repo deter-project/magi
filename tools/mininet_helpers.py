@@ -77,6 +77,14 @@ class createMininetHosts(Topo):
 	def __init__(self, topoGraph):
 		Topo.__init__(self)
 		interfacelist = defaultdict(list)
+		
+		nodes = topoGraph.nodes()
+		nodes.sort()
+		bridgeNode = nodes[0]
+		for node in nodes:
+			if 'control' == node.lower():
+				bridgeNode = 'control'
+				break
 
 		#Creates mininet hosts that can route packets and generates list of interfaces necessary for each host
 		for nodeName in topoGraph.nodes():
@@ -109,11 +117,11 @@ class createMininetHosts(Topo):
 			dbConfig['sensorToCollectorMap'] = {nodeName: nodeName}
 			
 			transportsConfig = []
-			if nodeName != 'server':
-				transportsConfig.append({'class': 'TCPTransport', 'address': 'server', 'port': 28808})
-			else:
+			if nodeName == bridgeNode:
 				transportsConfig.append({'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
 				transportsConfig.append({'class': 'TCPServer', 'address': '0.0.0.0', 'port': 28808})
+			else:
+				transportsConfig.append({'class': 'TCPTransport', 'address': bridgeNode, 'port': 28808})
 				
 			nodeConfig = dict()
 			nodeConfig['localInfo'] = localInfo
@@ -124,9 +132,8 @@ class createMininetHosts(Topo):
 			fp = open(nodeConfFile, 'w')
 			fp.write(yaml.safe_dump(nodeConfig))
 			fp.close()
-
 			
-		print "final %s" % interfacelist.items() 
+		print "Interface List: %s" % interfacelist.items() 
 			
 		#adds edges in mininet topology and configures Ip addresses
 		hostsConfigEntries = []
@@ -148,8 +155,8 @@ class createMininetHosts(Topo):
 			ip2 = iplist.popleft()
 			#link1 = Link.__init__(e[0], e[1], intfName1=interface1, intfName2=interface2, addr1=iplist.popleft(), addr2=iplist.popleft())
 			self.addLink( a[0], a[1], intfName1=interface1, intfName2=interface2, params1={'ip': ip1 }, params2={ 'ip' : ip2 } )
-			hostsConfigEntries.append("%s	%s-%s %s\n" %(ip1.split('/')[0], a[0], a[1], a[0]))
-			hostsConfigEntries.append("%s	%s-%s %s\n" %(ip2.split('/')[0], a[1], a[0], a[1]))
+			hostsConfigEntries.append("%s	%s-%s %s" %(ip1.split('/')[0], a[0], a[1], a[0]))
+			hostsConfigEntries.append("%s	%s-%s %s" %(ip2.split('/')[0], a[1], a[0], a[1]))
 			print "\n\nadded link between %s and %s\n\n" %(a[0], a[1])
 			#print self.linkInfo(a[0], a[1])
 			
