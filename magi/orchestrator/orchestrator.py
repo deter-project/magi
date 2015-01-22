@@ -161,6 +161,7 @@ class Orchestrator(object):
             log.error('Cannot initialize database')
             
         self.record = False
+        self.overWriteCachedTriggers = False
 
     def runInThread(self):
 
@@ -196,8 +197,12 @@ class Orchestrator(object):
             log.debug("TotalStreams: %d", self.aal.getTotalStreams())
 
         self.record = True
+        self.overWriteCachedTriggers = True
+        
         self.runStreams()
+        
         self.record = False
+        self.overWriteCachedTriggers = False
 
         if self.doTearDown:
             log.info("Running Exit Stream")
@@ -285,7 +290,8 @@ class Orchestrator(object):
         '''
         # If we're doing exitOnFailure, then exit on failure
         if self.exitOnFailure:
-            if (trigger.args.get('result') == False):
+            if (trigger.args.get('retVal') == False):
+                log.info(trigger)
                 s = ('Got a False return value from agent method. Since '
                      'exitOnFailure is True, the orchestrator will now jump'
                      ' to the exit target and unload the agents.')
@@ -413,7 +419,7 @@ class Orchestrator(object):
                                 log.info("orch sends %s" % msg.data)
                             self.messaging.send(msg)
                         
-                        if event.trigger:
+                        if self.overWriteCachedTriggers and event.trigger:
                             # this event has an accompanying trigger
                             # if the cache has the same trigger, it becomes
                             # stale now, and should be removed
@@ -439,7 +445,7 @@ class Orchestrator(object):
                     elif streamIter.isNextTrigger():
                         triggerList = streamIter.next()
                         for trigger in triggerList:
-                            if trigger.isComplete(self.triggerCache):
+                            if trigger.isComplete(self.activeTriggerCache):
                                 self.display.triggerCompleted(streamIter, trigger)
                                 if self.record and self.collection:
                                     self.collection.insert({'streamName' : streamIter.getName(), 
@@ -449,6 +455,7 @@ class Orchestrator(object):
                                     streamIter.dbIndex += 1
                                 self.jumpToTarget(streamIter, trigger)
                                 progress = True
+                                break
                                 
                     else:
                         log.error('Unknown object in stream "%s". ' \
@@ -493,17 +500,18 @@ class Orchestrator(object):
             it just gets added to the end of the list
             Return the value that was appended or modified.
         """
-        log.debug('trigger cache: %s' % self.triggerCache) 
+        #log.debug('trigger cache: %s' % self.triggerCache) 
         
         #Collecting incoming trigger data into the database
-#         if self.collection:
-#             self.collection.insert({'type' : 'trigger',
-#                                     'event' : incoming.event,
-#                                     'nodes' : list(incoming.nodes), 
-#                                     'args' : incoming.args})
+    #         if self.collection:
+    #             self.collection.insert({'type' : 'trigger',
+    #                                     'event' : incoming.event,
+    #                                     'nodes' : list(incoming.nodes), 
+    #                                     'args' : incoming.args})
         
         # Invalidate existing triggers that the new trigger overrides
-        self.invalidateTriggers(incoming.event, incoming.nodes)
+        if self.overWriteCachedTriggers:
+            self.invalidateTriggers(incoming.event, incoming.nodes)
         
         for node in incoming.nodes:
             nodeTrigger = copy.copy(incoming)
@@ -512,18 +520,21 @@ class Orchestrator(object):
             self.triggerCache[nodeTrigger.event].append(nodeTrigger)
             self.activeTriggerCache[nodeTrigger.event].append(nodeTrigger)
         
-        log.debug('Updated trigger cache: %s' % self.triggerCache) 
+        #log.debug('Updated trigger cache: %s' % self.triggerCache) 
         
         return self.activeTriggerCache[incoming.event]
 
-    def invalidateTriggers(self, triggerEvent, nodes):
+    def invalidateTriggers(self, triggerEvent, nodes=None):
+        functionName = self.invalidateTriggers.__name__
+        helpers.entrylog(log, functionName, locals())
         nodes = helpers.toSet(nodes)
         activeTriggers = self.activeTriggerCache[triggerEvent]
         for trigger in activeTriggers:
             if (not nodes) or (trigger.nodes.issubset(nodes)):
+                log.debug("Deactivating trigger: %s" %(trigger))
                 trigger.deActivate()
                 activeTriggers.remove(trigger)
-            
+                
     def doMessageAction(self, msgData):
         """
             The function takes a message, and demuxxes it. Based on the content of the message it 
