@@ -360,9 +360,9 @@ class ControlGraphCluster(dict):
                     log.exception('Invalid Node Type')
                     raise TypeError('Invalid Node Type')
                         
-                log.debug("Previous Nodes: ", prevNodes)
-                log.debug("Current Nodes: ", currentNodes)
-                log.debug("Trigger Nodes with target: ", hasTarget)
+                log.debug("Previous Nodes: %s" %(prevNodes))
+                log.debug("Current Nodes: %s" %(currentNodes))
+                log.debug("Trigger Nodes with target: %s" %(hasTarget))
             
                 # This code does not have the data you need 
                 for pnode in prevNodes:
