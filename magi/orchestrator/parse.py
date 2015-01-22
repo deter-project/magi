@@ -57,9 +57,13 @@ class Trigger():
         """ Create a new trigger object from the aal """
         self.target = triggerData.pop('target', None)
         self.active = False
+        self.timeActivated = None
         
     def activate(self, activationTime=None):
+        if not activationTime:
+            activationTime = time.time()
         self.active = True
+        self.timeActivated = activationTime
     
     def deActivate(self, activationTime=None):
         self.active = False
@@ -88,13 +92,6 @@ class TimeoutTrigger(Trigger):
     def __init__(self, triggerData):
         Trigger.__init__(self, triggerData)
         self.timeout = triggerData.get('timeout', 0) / 1000
-        self.timeActivated = None
-        
-    def activate(self, activationTime=None):
-        if not activationTime:
-            activationTime = time.time()
-        Trigger.activate(self, activationTime)
-        self.timeActivated = activationTime
         
     def isComplete(self, triggerCache=None):
         if self.isActive():
