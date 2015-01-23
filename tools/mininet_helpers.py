@@ -78,6 +78,8 @@ class createMininetHosts(Topo):
 		Topo.__init__(self)
 		interfacelist = defaultdict(list)
 		
+		inetSwitch = self.addSwitch('z1')
+		
 		nodes = topoGraph.nodes()
 		nodes.sort()
 		bridgeNode = nodes[0]
@@ -88,13 +90,16 @@ class createMininetHosts(Topo):
 
 		#Creates mininet hosts that can route packets and generates list of interfaces necessary for each host
 		for nodeName in topoGraph.nodes():
-			self.addNode(name=nodeName, cls=LinuxRouter, ip='')
+			
+			node = self.addNode(name=nodeName, cls=LinuxRouter, ip='')
+			#self.addLink(inetSwitch, node)
+			
 			neighbors = topoGraph.neighbors(nodeName)
-			intflist = deque([])
+			nodeIntfList = deque([])
 			for i in range(len(neighbors)):
-				intfname = '%s-eth%s'%(nodeName, i)				
-				intflist.append(intfname)
-			interfacelist[nodeName].append(intflist)
+				intfname = '%s-eth%s'%(nodeName, i+1)				
+				nodeIntfList.append(intfname)
+			interfacelist[nodeName] = nodeIntfList
 			
 			# create config files for nodes
 			directory = "/tmp/%s" % nodeName
@@ -139,27 +144,48 @@ class createMininetHosts(Topo):
 		hostsConfigEntries = []
 		for e in topoGraph.edges():
 			#node1, node2 = self.get(e[0]), self.get(e[1]) 
-			a = []
-			a.append(e[0])
-			a.append(e[1])
-			a.sort()
-			print "adding link between %s and %s" %(a[0], a[1])
-			intf1name = interfacelist[a[0]]
-			intf2name = interfacelist[a[1]]			
-			print "intf1 name = %s,intf1 name = %s" %(intf1name[0], intf2name[0])
-			interface1 = intf1name[0].popleft()
-			interface2 = intf2name[0].popleft()
-			interfacelist[a[0]]=[intf1name[0]]
-			interfacelist[a[1]]=[intf2name[0]]
+			edgeNodes = []
+			edgeNodes.append(e[0])
+			edgeNodes.append(e[1])
+			edgeNodes.sort()
+			
+			print "adding link between %s and %s" %(edgeNodes[0], edgeNodes[1])
+			
+			node1InterfaceList = interfacelist[edgeNodes[0]]
+			node2InterfaceList = interfacelist[edgeNodes[1]]	
+			
+			node1Interface = node1InterfaceList.popleft()
+			node2Interface = node2InterfaceList.popleft()
+					
+			print "node1Interface name = %s, node2Interface name = %s" %(node1Interface, node2Interface)
+			
 			ip1 = iplist.popleft()
 			ip2 = iplist.popleft()
-			#link1 = Link.__init__(e[0], e[1], intfName1=interface1, intfName2=interface2, addr1=iplist.popleft(), addr2=iplist.popleft())
-			self.addLink( a[0], a[1], intfName1=interface1, intfName2=interface2, params1={'ip': ip1 }, params2={ 'ip' : ip2 } )
-			hostsConfigEntries.append("%s	%s-%s %s" %(ip1.split('/')[0], a[0], a[1], a[0]))
-			hostsConfigEntries.append("%s	%s-%s %s" %(ip2.split('/')[0], a[1], a[0], a[1]))
-			print "\n\nadded link between %s and %s\n\n" %(a[0], a[1])
+			
+			print "ip1 = %s, ip2 = %s" %(ip1, ip2)
+			
+			#link1 = Link.__init__(e[0], e[1], intfName1=node1Interface, intfName2=node2Interface, addr1=iplist.popleft(), addr2=iplist.popleft())
+			self.addLink( edgeNodes[0], edgeNodes[1], intfName1=node1Interface, intfName2=node2Interface, params1={'ip': ip1 }, params2={ 'ip' : ip2 } )
+			
+			hostsConfigEntries.append("%s	%s-%s %s" %(ip1.split('/')[0], edgeNodes[0], edgeNodes[1], edgeNodes[0]))
+			hostsConfigEntries.append("%s	%s-%s %s" %(ip2.split('/')[0], edgeNodes[1], edgeNodes[0], edgeNodes[1]))
+			print "\n\nadded link between %s and %s\n\n" %(edgeNodes[0], edgeNodes[1])
 			#print self.linkInfo(a[0], a[1])
 			
+		itr = 1
+		for nodeName in topoGraph.nodes():
+			nodeIntf = '%s-eth0'%(nodeName)
+			switchIntf = 's1-eth%s'%(nodeName)
+			nodeIP = '10.1.%d.1/24'%(itr)
+			switchIP = '10.1.%d.2/24'%(itr)
+			
+			print "nodeIntf name = %s, switchIntf name = %s" %(nodeIntf, switchIntf)
+			print "nodeIP name = %s, switchIP name = %s" %(nodeIP, switchIP)
+			
+			self.addLink( nodeName, 'z1', intfName1=nodeIntf, params1={'ip': nodeIP }, params2={ 'ip' : switchIP } )
+			itr += 1
+			
+		
 		addEtcHostsMininetConfig(hostsConfigEntries)
 				
 

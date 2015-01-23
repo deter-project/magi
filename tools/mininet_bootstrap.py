@@ -132,7 +132,16 @@ if __name__ == '__main__':
 		topo = createMininetHosts(topoGraph)
 		net = Mininet(topo=topo, controller=None)
 		
-		net.start()
+# 		from mininet.link import Intf
+# 		intfName = 'eth0'
+# 		switch = net.switches[ 0 ]
+# 		log.info( '*** Adding hardware interface %s to switch %s' %(intfName, switch.name) )
+# 		_intf = Intf( intfName, node=switch )
+
+# 		from nat import connectToInternet, stopNAT
+# 		rootnode = connectToInternet( net )
+# 		net.start()
+
 		dumpNodeConnections(net.hosts)
 	
 		#computes shortest path between all pairs of nodes and updates routing table on each node
@@ -143,9 +152,15 @@ if __name__ == '__main__':
 					sp = nx.shortest_path(topoGraph, srcNode, destNode)
 					log.info("Route from %s to %s is %s" %(srcNode, destNode, sp))
 					print net[srcNode].cmd('route add -host %s gw %s-%s' %(destNode, sp[1], srcNode))
+			print net[srcNode].cmd('ip route add 10.1.1.2 dev %s-eth0' %(srcNode))
+			print net[srcNode].cmd('ip route add default via 10.1.1.2')
+			#print net[srcNode].cmd('ip route add 192.168.0.0/24 dev %s-eth0' %(srcNode))
 			log.info("Routing table for node: %s" %(srcNode))
 			log.info(net[destNode].cmd('route'))
 			
+		print net['z1'].cmd('ip route add 10.1.1.1 dev z1-eth1')
+		print net['z1'].cmd('ip route add 10.0.0.0/16 via 10.1.1.1')
+		
 		hosts = net.hosts
 		for node in hosts:
 			print node.name, node.IP()	
@@ -171,6 +186,8 @@ if __name__ == '__main__':
 
 			node.cmd(daemonCmd)
 			
+			node.cmd('/usr/sbin/sshd')
+			
 			time.sleep(1)
 			
 		log.info("Started all daemons and loaded configs")
@@ -182,6 +199,8 @@ if __name__ == '__main__':
 		os.system("kill `ps -ef | grep magi_daemon | grep -v grep | awk '{print $2}'`")
 		time.sleep(2)
 		os.system("kill -9 `ps -ef | grep magi_daemon | grep -v grep | awk '{print $2}'`")
+		
+# 		stopNAT( rootnode )
 		
 		net.stop()	
 		
