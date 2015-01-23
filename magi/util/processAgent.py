@@ -36,6 +36,8 @@ def initializeProcessAgent(agent, argv):
                           'commGroup': None}, 
                   args)
     
+    config.getConfig()['localInfo']['nodename'] = agent.hostname
+    
     agent.docklist.add(dock)
     
     helpers.makeDir(os.path.dirname(agent.logfile))
