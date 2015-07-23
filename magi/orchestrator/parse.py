@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import cStringIO
 from collections import defaultdict
 import logging
@@ -42,7 +44,7 @@ log = logging.getLogger(__name__)
 
 """
 
-class Trigger():
+class Trigger(object):
     """
         Represents a trigger that the event stream wants to wait on.
         May include a timeout to continue regardless of completion.
@@ -455,200 +457,207 @@ class AAL(object):
         self.startup = True 
         self.agentLoadTimeout = 200000
         
-        yaml_file = cStringIO.StringIO()
-        read_data = False
-        for f in files:
-            # we concatenate the given files. 
-            # This allows us to parse all the files as a single YAML
-            # string. PyYAML does not support multidocument YAML 
-            # documents, otherwise we could separate these files explicitly
-            # with the yaml document separator, '---'. 
-            with open(f, 'r') as fd:
-                yaml_file.write(fd.read())
-                read_data = True
-
-        if not read_data:  # There is a more elegant way to do this.
-            log.critical('Yaml Parse Error: reading event AAL files.')
-            sys.exit(1)
-
-        self.rawAAL = yaml.load(yaml_file.getvalue())
-        
-        self.setupStream = Stream()
-        self.teardownStream = Stream()
-        #Event Streams
-        self.streams = dict()
-        #Incoming event triggers keyed by stream name
-        self.ieventtriggers = defaultdict(set) 
-        #Outgoing event triggers keyed by stream name
-        self.oeventtriggers = defaultdict(set) 
-
-        # Sanity Check: does the AAL have the following directives. 
-        # if not, log that they are missing but continue 
-        for k in ['streamstarts', 'agents', 'groups', 'eventstreams']:
-            if not k in self.rawAAL.keys():
-                log.critical('missing required key in AAL: %s', k)
-
-        # Add default group to address ALL nodes
-        allNodes = set()
-        for nodes in self.rawAAL['groups'].values():
-            allNodes |= helpers.toSet(nodes)
-        self.rawAAL['groups']['__ALL__'] = list(allNodes)
-        
-        # Add MAGI Daemon on all nodes as a default agent
-        self.rawAAL['agents'].setdefault('__DAEMON__', {'group' : '__ALL__',
-                                                     'dock' : 'daemon'})
-        
-        # The AAL extra-YAML references
-        self._resolveReferences()
-        
-        ##### STARTUP STREAM #####
-        
-        # Define startup stream 
-        # By default we add a startup stream 
-        if self.startup: 
-        # Stand up the experiemnt, load agents, build groups.
-            for name, nodes in self.rawAAL['groups'].iteritems():
-                self.setupStream.append(BuildGroupCall(name, nodes))
-
-            # Add triggers for the BuildGroup calls 
-            for name, nodes in self.rawAAL['groups'].iteritems():
-                self.setupStream.append(
-                    TriggerList([
-                        {'event': 'GroupBuildDone', 'group': name, 
-                         'nodes': nodes},
-                        {'timeout': int(groupBuildTimeout), 
-                         'target': 'exit'}]))
-
-            loadAgentStream = Stream()
-            
-            for name, agent in self.rawAAL['agents'].iteritems():
-                # for agents that need to be installed
-                if 'path' in agent:
-                    # create an internal agent dock using unique name of agent. 
-                    # if specified in the AAL, do not do this. 
-                    if not 'dock' in agent:
-                        agent['dock'] = name + '_dock'
-                    if not 'code' in agent:
-                        agent['code'] = name + '_code' 
+        try:
+            yaml_file = cStringIO.StringIO()
+            read_data = False
+            for f in files:
+                # we concatenate the given files. 
+                # This allows us to parse all the files as a single YAML
+                # string. PyYAML does not support multidocument YAML 
+                # documents, otherwise we could separate these files explicitly
+                # with the yaml document separator, '---'. 
+                with open(f, 'r') as fd:
+                    yaml_file.write(fd.read())
+                    read_data = True
     
-                    # Add event call to load agent
-                    self.setupStream.append(LoadAgentCall(name, **agent))
-                    
-                    # Add triggers to ensure the agents are loaded correctly 
-                    # However, add them only after all the load agent events
-                    timeout = agent.get('loadTimeout', self.agentLoadTimeout)
-                    loadAgentStream.append(
+            if not read_data:  # There is a more elegant way to do this.
+                log.critical('Yaml Parse Error: reading event AAL files.')
+                sys.exit(1)
+    
+            self.rawAAL = yaml.load(yaml_file.getvalue())
+            
+            self.setupStream = Stream()
+            self.teardownStream = Stream()
+            #Event Streams
+            self.streams = dict()
+            #Incoming event triggers keyed by stream name
+            self.ieventtriggers = defaultdict(set) 
+            #Outgoing event triggers keyed by stream name
+            self.oeventtriggers = defaultdict(set) 
+    
+            # Sanity Check: does the AAL have the following directives. 
+            # if not, log that they are missing but continue 
+            for k in ['streamstarts', 'agents', 'groups', 'eventstreams']:
+                if not k in self.rawAAL.keys():
+                    log.critical('missing required key in AAL: %s', k)
+    
+            # Add default group to address ALL nodes
+            allNodes = set()
+            for nodes in self.rawAAL['groups'].values():
+                allNodes |= helpers.toSet(nodes)
+            self.rawAAL['groups']['__ALL__'] = list(allNodes)
+            
+            # Add MAGI Daemon on all nodes as a default agent
+            self.rawAAL['agents'].setdefault('__DAEMON__', {'group' : '__ALL__',
+                                                         'dock' : 'daemon'})
+            
+            # The AAL extra-YAML references
+            self._resolveReferences()
+            
+            ##### STARTUP STREAM #####
+            
+            # Define startup stream 
+            # By default we add a startup stream 
+            if self.startup: 
+            # Stand up the experiemnt, load agents, build groups.
+                for name, nodes in self.rawAAL['groups'].iteritems():
+                    self.setupStream.append(BuildGroupCall(name, nodes))
+    
+                # Add triggers for the BuildGroup calls 
+                for name, nodes in self.rawAAL['groups'].iteritems():
+                    self.setupStream.append(
                         TriggerList([
-                            {'event': 'AgentLoadDone', 'agent': name, 
-                             'nodes': self.rawAAL['groups'][agent['group']]},
-                            {'timeout': int(timeout), 'target': 'exit'} 
-                             ]))
-
-                else:
-                    if not 'dock' in agent:
-                        agent['dock'] = 'daemon'
-
-            # Now, add the load agent triggers
-            self.setupStream.extend(loadAgentStream)
-
-
-        ##### TEARDOWN STREAM #####
+                            {'event': 'GroupBuildDone', 'group': name, 
+                             'nodes': nodes},
+                            {'timeout': int(groupBuildTimeout), 
+                             'target': 'exit'}]))
+    
+                loadAgentStream = Stream()
+                
+                for name, agent in self.rawAAL['agents'].iteritems():
+                    # for agents that need to be installed
+                    if 'path' in agent:
+                        # create an internal agent dock using unique name of agent. 
+                        # if specified in the AAL, do not do this. 
+                        if not 'dock' in agent:
+                            agent['dock'] = name + '_dock'
+                        if not 'code' in agent:
+                            agent['code'] = name + '_code' 
         
-        # We always define a teardown stream as jumping to target exit 
-        # activates this stream 
-        # tear down the experiment, unload agents, leave groups.
-        unloadAgentStream = Stream()
-
-        for name, agent in self.rawAAL['agents'].iteritems():
-            if 'path' in agent:
-                self.teardownStream.append(UnloadAgentCall(name, **agent))
+                        # Add event call to load agent
+                        self.setupStream.append(LoadAgentCall(name, **agent))
+                        
+                        # Add triggers to ensure the agents are loaded correctly 
+                        # However, add them only after all the load agent events
+                        timeout = agent.get('loadTimeout', self.agentLoadTimeout)
+                        loadAgentStream.append(
+                            TriggerList([
+                                {'event': 'AgentLoadDone', 'agent': name, 
+                                 'nodes': self.rawAAL['groups'][agent['group']]},
+                                {'timeout': int(timeout), 'target': 'exit'} 
+                                 ]))
+    
+                    else:
+                        if not 'dock' in agent:
+                            agent['dock'] = 'daemon'
+    
+                # Now, add the load agent triggers
+                self.setupStream.extend(loadAgentStream)
+    
+    
+            ##### TEARDOWN STREAM #####
             
-                # Add triggers to ensure the agents are unloaded correctly 
-                # However, add them only after all the unload agent events
-                # Use the same timeouts as setup stream
-                timeout = agent.get('loadTimeout', self.agentLoadTimeout)
-                unloadAgentStream.append(
+            # We always define a teardown stream as jumping to target exit 
+            # activates this stream 
+            # tear down the experiment, unload agents, leave groups.
+            unloadAgentStream = Stream()
+    
+            for name, agent in self.rawAAL['agents'].iteritems():
+                if 'path' in agent:
+                    self.teardownStream.append(UnloadAgentCall(name, **agent))
+                
+                    # Add triggers to ensure the agents are unloaded correctly 
+                    # However, add them only after all the unload agent events
+                    # Use the same timeouts as setup stream
+                    timeout = agent.get('loadTimeout', self.agentLoadTimeout)
+                    unloadAgentStream.append(
+                        TriggerList([
+                                {'event': 'AgentUnloadDone',
+                                'agent': name,
+                                'nodes': self.rawAAL['groups'][agent['group']]},
+                                {'timeout': int(timeout), 'target': 'exit'} 
+                                 ]))
+    
+            # Now, add the unload agent triggers
+            self.teardownStream.extend(unloadAgentStream)
+                
+            for name, nodes in self.rawAAL['groups'].iteritems():
+                self.teardownStream.append(LeaveGroupCall(name, nodes))
+            for name, nodes in self.rawAAL['groups'].iteritems():
+                self.teardownStream.append(
                     TriggerList([
-                            {'event': 'AgentUnloadDone',
-                            'agent': name,
-                            'nodes': self.rawAAL['groups'][agent['group']]},
-                            {'timeout': int(timeout), 'target': 'exit'} 
-                             ]))
-
-        # Now, add the unload agent triggers
-        self.teardownStream.extend(unloadAgentStream)
+                        {'event': 'GroupTeardownDone', 'group': name, 
+                         'nodes': nodes},
+                        {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
+    
+    
+            ##### EVENT STREAMS #####
+    
+            for streamName, estream in self.rawAAL['eventstreams'].iteritems():
+                newstream = Stream()
+                self.streams[streamName] = newstream
+                for event in estream:
+                    # The eventstream consists of triggers and events. 
+                    # First we process the type trigger, then event. 
+                    # we log errors if it is not an event or trigger.
+                    if event['type'] == 'event':
+                        agent = self.rawAAL['agents'][event['agent']]
+                        newstream.append(EventMethodCall(agent, event))
+                        if 'trigger' in event:
+                            self.oeventtriggers[streamName].add(event['trigger'])
+                            
+                    elif event['type'] == 'trigger':
+                        triggerList = TriggerList(event['triggers'])
+                        newstream.append(triggerList)
+                        self.ieventtriggers[streamName].update(set([trigger.event 
+                                                             for trigger in 
+                                                             getEventTriggers(triggerList)]))
+                            
+                    else:
+                        log.warning("Skipping unknown stream entry type %s",
+                                    event['type'])
             
-        for name, nodes in self.rawAAL['groups'].iteritems():
-            self.teardownStream.append(LeaveGroupCall(name, nodes))
-        for name, nodes in self.rawAAL['groups'].iteritems():
-            self.teardownStream.append(
-                TriggerList([
-                    {'event': 'GroupTeardownDone', 'group': name, 
-                     'nodes': nodes},
-                    {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
-
-
-        ##### EVENT STREAMS #####
-
-        for streamName, estream in self.rawAAL['eventstreams'].iteritems():
-            newstream = Stream()
-            self.streams[streamName] = newstream
-            for event in estream:
-                # The eventstream consists of triggers and events. 
-                # First we process the type trigger, then event. 
-                # we log errors if it is not an event or trigger.
-                if event['type'] == 'event':
-                    agent = self.rawAAL['agents'][event['agent']]
-                    newstream.append(EventMethodCall(agent, event))
-                    if 'trigger' in event:
-                        self.oeventtriggers[streamName].add(event['trigger'])
-                        
-                elif event['type'] == 'trigger':
-                    triggerList = TriggerList(event['triggers'])
-                    newstream.append(triggerList)
-                    self.ieventtriggers[streamName].update(set([trigger.event 
-                                                         for trigger in 
-                                                         getEventTriggers(triggerList)]))
-                        
-                else:
-                    log.warning("Skipping unknown stream entry type %s",
-                                event['type'])
-        
-        
-        outGoingEventTriggers = set()
-        for triggerSet in self.oeventtriggers.values():
-            outGoingEventTriggers |= triggerSet
             
-        inComingEventTriggers = set()
-        for triggerSet in self.ieventtriggers.values():
-            inComingEventTriggers |= triggerSet
+            outGoingEventTriggers = set()
+            for triggerSet in self.oeventtriggers.values():
+                outGoingEventTriggers |= triggerSet
+                
+            inComingEventTriggers = set()
+            for triggerSet in self.ieventtriggers.values():
+                inComingEventTriggers |= triggerSet
+                
+            if inComingEventTriggers.issubset(outGoingEventTriggers):
+                log.info('Incoming event triggers is a subset of outgoing event triggers')
+            elif triggerCheck:
+                log.error('Incoming event triggers are not a subset of outgoing event triggers')
+                raise AALParseError('Incoming event triggers are not a subset of outgoing event triggers')
             
-        if inComingEventTriggers.issubset(outGoingEventTriggers):
-            log.info('Incoming event triggers is a subset of outgoing event triggers')
-        elif triggerCheck:
-            log.error('Incoming event triggers are not a subset of outgoing event triggers')
-            raise AALParseError('Incoming event triggers are not a subset of outgoing event triggers')
-        
-        self.cgraph = ControlGraph() 
-        for streamName, eventStream in self.streams.iteritems():
-            cluster = self.cgraph.createCluster(streamName)
-            cluster.nodes.append({'type' : 'node',
-                                  'id' : streamName,
-                                  'label' : streamName,
-                                  'edgeto' : set()})
-            for event in eventStream:
-                if isinstance(event, EventObject):
-                    self.cgraph.addEvent(streamName, event)
-                elif isinstance(event, TriggerList):
-                    self.cgraph.addTrigger(streamName, event)
-            self.cgraph.finishCluster(streamName)
-        # the setup and tear-down event streams are presented as singleton events
-        self.cgraph.finishControlgraph()
-
-        if dagdisplay:
-            print "dagdisplay True, creating graph" 
-            self.cgraph.writePng()    
-            #print self.cgraph 
+            self.cgraph = ControlGraph() 
+            for streamName, eventStream in self.streams.iteritems():
+                cluster = self.cgraph.createCluster(streamName)
+                cluster.nodes.append({'type' : 'node',
+                                      'id' : streamName,
+                                      'label' : streamName,
+                                      'edgeto' : set()})
+                for event in eventStream:
+                    if isinstance(event, EventObject):
+                        self.cgraph.addEvent(streamName, event)
+                    elif isinstance(event, TriggerList):
+                        self.cgraph.addTrigger(streamName, event)
+                self.cgraph.finishCluster(streamName)
+            # the setup and tear-down event streams are presented as singleton events
+            self.cgraph.finishControlgraph()
+    
+            if dagdisplay:
+                print "dagdisplay True, creating graph" 
+                self.cgraph.writePng()    
+                #print self.cgraph
+                
+        except Exception, e:
+            import traceback
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            log.error(''.join(traceback.format_exception(exc_type, exc_value, exc_tb)))
+            raise AALParseError("Exception while parsing AAL: %s" %str(e))
             
     def getSetupStream(self):
         return self.setupStream
