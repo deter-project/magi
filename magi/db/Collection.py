@@ -47,6 +47,9 @@ class Collection(pymongo.collection.Collection):
         """
             Insert data. Add the default fields before insertion.
         """
+        if (not isinstance(doc_or_docs, dict)) and (not isinstance(doc_or_docs, list)):
+            raise TypeError("document(s) must be an instance of dict or a list of dicts")
+            
         if isinstance(doc_or_docs, dict):
             docs = [doc_or_docs]
             
