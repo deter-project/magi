@@ -196,9 +196,8 @@ def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
     
     experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
     dbdl = experimentConfig['dbdl']
-    expdl = experimentConfig['expdl']
     
-    return "%s.%s.%s" % (dbdl['configHost'], expdl['experimentName'], expdl['projectName'])
+    return toControlPlaneNodeName(dbdl['configHost'])
 
 def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=None):
     if not experimentConfigFile:
