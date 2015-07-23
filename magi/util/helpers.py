@@ -98,17 +98,17 @@ def toDirected(graph, root):
             
     return d
 
-def entrylog(log, functionName, arguments=None):
+def entrylog(log, functionName, arguments=None, level=logging.DEBUG):
     if arguments == None:
-        log.debug("Entering function %s", functionName)
+        log.log(level, "Entering function %s", functionName)
     else:
-        log.debug("Entering function %s with arguments: %s", functionName, arguments)
+        log.log(level, "Entering function %s with arguments: %s", functionName, arguments)
 
-def exitlog(log, functionName, returnValue=None):
+def exitlog(log, functionName, returnValue=None, level=logging.DEBUG):
     if returnValue == None:
-        log.debug("Exiting function %s", functionName)
+        log.log(level, "Exiting function %s", functionName)
     else:
-        log.debug("Exiting function %s with return value: %s", functionName, returnValue)
+        log.log(level, "Exiting function %s with return value: %s", functionName, returnValue)
 
 def is_os_64bit():
         return platform.machine().endswith('64')
