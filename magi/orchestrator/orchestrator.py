@@ -150,10 +150,10 @@ class Orchestrator(object):
 
         self.collection = None
         try:
-            self.collection = Collection.getCollection('orchestrator', 
-                                                       gethostname(),
-                                                       dbHost,
-                                                       dbPort)
+            self.collection = Collection.getCollection(agentName='orchestrator', 
+                                                       hostName=gethostname(),
+                                                       dbHost=dbHost,
+                                                       dbPort=dbPort)
             self.collection.remove({})
             self.collection.insert({'aalSvg' : self.aal.cgraph.createSvg()})
             

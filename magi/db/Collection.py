@@ -1,11 +1,12 @@
 import logging 
 import time
 
+from Connection import Connection
+from magi.db import DATABASE_SERVER_PORT
 from magi.util import helpers
 import pymongo
 
 from Connection import getConnection
-from magi.db import DATABASE_SERVER_PORT
 
 
 log = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ AGENT_FIELD = 'agent'
 if 'collectionCache' not in locals():
     collectionCache = dict()
     
-def getCollection(agentName, hostName, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
+def getCollection(agentName, hostName, connection=None, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
     """
         Function to get a pointer to a given agent data collection
     """
@@ -25,9 +26,19 @@ def getCollection(agentName, hostName, dbHost='localhost', dbPort=DATABASE_SERVE
     helpers.entrylog(log, functionName, locals())
     
     global collectionCache
-    
+
+    if connection:
+        if not isinstance(connection, Connection):
+            raise TypeError("Invalid connection instance")    
+        dbHost = connection.host
+        dbPort = connection.port
+        
     if (agentName, dbHost, dbPort) not in collectionCache:
-        collectionCache[(agentName, hostName, dbHost, dbPort)] = Collection(agentName, hostName, dbHost, dbPort)
+        collectionCache[(agentName, hostName, dbHost, dbPort)] = Collection(agentName=agentName, 
+                                                                            hostName=hostName, 
+                                                                            connection=connection,
+                                                                            dbHost=dbHost, 
+                                                                            dbPort=dbPort)
     
     helpers.exitlog(log, functionName)
     return collectionCache[(agentName, hostName, dbHost, dbPort)]
@@ -37,8 +48,9 @@ class Collection(pymongo.collection.Collection):
     
     INTERNAL_KEYS = ['host', 'created', AGENT_FIELD]
 
-    def __init__(self, agentName, hostName, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
-        connection = getConnection(host=dbHost, port=dbPort, block=False)
+    def __init__(self, agentName, hostName, connection=None, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
+        if not connection:
+            connection = getConnection(host=dbHost, port=dbPort, block=False)
         pymongo.collection.Collection.__init__(self, connection[DB_NAME], COLLECTION_NAME)
         self.agentName = agentName
         self.hostName = hostName

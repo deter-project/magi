@@ -159,8 +159,12 @@ def getCollection(agentName, dbHost=None, dbPort=DATABASE_SERVER_PORT):
     global collectionHosts
     collectionHosts[agentName].add(dbHost)
     
+    connection = getConnection(host=dbHost, port=dbPort, block=False)
+    
     helpers.exitlog(log, functionName)
-    return Collection.getCollection(agentName, config.getNodeName(), dbHost, dbPort)
+    return Collection.getCollection(agentName=agentName, 
+                                    hostName=config.getNodeName(),
+                                    connection=connection)
 
 def isDBRunning(host='localhost', port=DATABASE_SERVER_PORT):
     """
@@ -184,7 +188,9 @@ def getData(agentName, filters=None, timestampRange=None, dbHost='localhost', db
         ts_start, ts_end = timestampRange
         filters_copy['created'] = {'$gte': ts_start, '$lte': ts_end}
     
-    collection = Collection.getCollection(agentName, config.getNodeName(), dbHost, dbPort)
+    collection = getCollection(agentName=agentName, 
+                               dbHost=dbHost, 
+                               dbPort=dbPort)
     cursor = collection.findAll(filters_copy)
     
     result = []
