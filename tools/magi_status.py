@@ -107,6 +107,7 @@ def sendMessage(bridgeNode, bridgePort, nodes, docks, method, args):
 def recieveMessages(messaging, nodeSet, timeout=30):
     
     result = dict()
+    nodes = helpers.toSet(value=nodeSet.copy())
     
     # Wait for timeout seconds before stopping 
     start = time.time()
@@ -122,11 +123,11 @@ def recieveMessages(messaging, nodeSet, timeout=30):
             if msg.src is not CLIENT_NAME:
                 log.info('Node %s' %(msg.src))
                 result[msg.src] = yaml.load(msg.data)
-                nodeSet.discard(msg.src)
+                nodes.discard(msg.src)
         # If there are no messages in the Queue, just wait some more 
         except Queue.Empty:
             #check if there is need to wait any more
-            if len(nodeSet) == 0:
+            if len(nodes) == 0:
                 break
             
     return result
