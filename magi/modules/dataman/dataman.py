@@ -12,7 +12,7 @@ from magi.util.agent import NonBlockingDispatchAgent, agentmethod
 import pymongo
 import yaml
 
-from magi.db.Collection import AGENT_FIELD
+from magi.db.Collection import AGENT_FIELD_KEY
 
 
 log = logging.getLogger(__name__)
@@ -117,11 +117,12 @@ class DataManAgent(NonBlockingDispatchAgent):
                                database.sensorToCollectorMap[helpers.ALL], 
                                database.LOG_COLLECTION_NAME)
         
-        log.info('Creating index on field: %s' %(AGENT_FIELD))
+        log.info("Creating index for %s.%s on key '%s'" %(database.DB_NAME, 
+                                                          database.COLLECTION_NAME, 
+                                                          AGENT_FIELD_KEY))
         configConn = database.getConnection(host=config.getServer(), 
                                             port=database.ROUTER_SERVER_PORT)
-        configConn[database.DB_NAME][database.COLLECTION_NAME].ensure_index([(AGENT_FIELD, 
-                                                                              pymongo.ASCENDING)])
+        configConn[database.DB_NAME][database.COLLECTION_NAME].create_index(AGENT_FIELD_KEY)
         
         helpers.exitlog(log, functionName)
        

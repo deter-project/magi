@@ -13,7 +13,10 @@ log = logging.getLogger(__name__)
 
 DB_NAME = 'magi'
 COLLECTION_NAME = 'experiment_data'
-AGENT_FIELD = 'agent'
+HOST_FIELD_KEY = 'host'
+CREATED_TS_FIELD_KEY = 'created'
+AGENT_FIELD_KEY = 'agent'
+
 
 if 'collectionCache' not in locals():
     collectionCache = dict()
@@ -46,7 +49,7 @@ def getCollection(agentName, hostName, connection=None, dbHost='localhost', dbPo
 class Collection(pymongo.collection.Collection):
     """Library to use for data collection"""
     
-    INTERNAL_KEYS = ['host', 'created', AGENT_FIELD]
+    INTERNAL_KEYS = [HOST_FIELD_KEY, CREATED_TS_FIELD_KEY, AGENT_FIELD_KEY]
 
     def __init__(self, agentName, hostName, connection=None, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
         if not connection:
@@ -70,9 +73,9 @@ class Collection(pymongo.collection.Collection):
                 raise TypeError("each document must be an instance of dict")
             if len(set(Collection.INTERNAL_KEYS) & set(doc.keys())) > 0:
                 raise RuntimeError("The following keys are restricted for internal use: %s" %(Collection.INTERNAL_KEYS))
-            doc['host'] = self.hostName
-            doc['created'] = time.time()
-            doc[AGENT_FIELD] = self.agentName
+            doc[HOST_FIELD_KEY] = self.hostName
+            doc[CREATED_TS_FIELD_KEY] = time.time()
+            doc[AGENT_FIELD_KEY] = self.agentName
             
         return pymongo.collection.Collection.insert(self, docs, *args, **kwargs)
         
@@ -86,8 +89,8 @@ class Collection(pymongo.collection.Collection):
         if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict")
         
-        spec['host'] = self.hostName
-        spec[AGENT_FIELD] = self.agentName
+        spec[HOST_FIELD_KEY] = self.hostName
+        spec[AGENT_FIELD_KEY] = self.agentName
         
         return pymongo.collection.Collection.find(self, *args, **kwargs)
     
@@ -101,7 +104,7 @@ class Collection(pymongo.collection.Collection):
         if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict")
         
-        spec[AGENT_FIELD] = self.agentName
+        spec[AGENT_FIELD_KEY] = self.agentName
         
         return pymongo.collection.Collection.find(self, *args, **kwargs)
     
@@ -117,8 +120,8 @@ class Collection(pymongo.collection.Collection):
         else:
             spec = spec_or_id
             
-        spec['host'] = self.hostName
-        spec[AGENT_FIELD] = self.agentName
+        spec[HOST_FIELD_KEY] = self.hostName
+        spec[AGENT_FIELD_KEY] = self.agentName
         return pymongo.collection.Collection.remove(self, spec_or_id, safe, **kwargs)
 
     def removeAll(self, spec_or_id=None, safe=None, **kwargs):
@@ -133,11 +136,11 @@ class Collection(pymongo.collection.Collection):
         else:
             spec = spec_or_id
             
-        spec[AGENT_FIELD] = self.agentName
+        spec[AGENT_FIELD_KEY] = self.agentName
         return pymongo.collection.Collection.remove(self, spec_or_id, safe, **kwargs)
 
         
 #    def removeAll(self):
 #        kwargs = dict()
-#        kwargs[AGENT_FIELD] = self.type
+#        kwargs[AGENT_FIELD_KEY] = self.type
 #        self.collection.remove(kwargs)
