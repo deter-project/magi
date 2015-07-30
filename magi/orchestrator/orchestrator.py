@@ -144,7 +144,9 @@ class Orchestrator(object):
         self.exitOnFailure = exitOnFailure
         self.verbose = verbose
 
-        self.display = OrchestratorDisplayState(color=useColor)
+        self.display = OrchestratorDisplayState(color=useColor, 
+                                                dbHost=dbHost, 
+                                                dbPort=dbPort)
         if dagdisplay:
             self.dagdisplay = DagDisplay()
 
@@ -155,10 +157,14 @@ class Orchestrator(object):
                                                        dbHost=dbHost,
                                                        dbPort=dbPort)
             self.collection.remove({})
+            log.info('Database collection initialized')
+        except Exception, e:
+            log.error('Cannot initialize database: %s' %str(e))
+        
+        try:  
             self.collection.insert({'aalSvg' : self.aal.cgraph.createSvg()})
-            
-        except:
-            log.error('Cannot initialize database')
+        except Exception, e:
+            log.error('Error creating/storing AAL SVG: %s' %str(e))
             
         self.record = False
         self.overWriteCachedTriggers = False
@@ -191,8 +197,8 @@ class Orchestrator(object):
         self.runStreams()
 
         log.info("Running Event Stream")
-        self.activeStreams = { k : StreamIterator(k, self.aal.getStream(k))
-                        for k in self.aal.getStartKeys()}
+        self.activeStreams = { k : StreamIterator(k, self.aal.getStream(k)) 
+                              for k in self.aal.getStartKeys() }
         if self.aal.getTotalStreams() > 1:
             log.debug("TotalStreams: %d", self.aal.getTotalStreams())
 

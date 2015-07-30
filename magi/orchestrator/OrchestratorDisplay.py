@@ -1,9 +1,15 @@
 
-import pprint
-import time
-import logging
-import parse
 from collections import defaultdict
+import logging
+import pprint
+from socket import gethostname
+import time
+
+from magi.db import Collection
+from magi.db.Collection import DATABASE_SERVER_PORT
+
+import parse
+
 
 log = logging.getLogger(__name__)
 
@@ -12,10 +18,20 @@ class OrchestratorDisplayState(object):
     '''A class that displays DAG transistion and orchstrator states in concise strings to 
     stdout. The Orchestrator instance calls methods in this class at the appropriate times
     and state transitions.'''
-    def __init__(self, color=True):
+    def __init__(self, color=True, dbHost="localhost", dbPort=DATABASE_SERVER_PORT):
         self.maxListDisplay = 5
         self.color = color
         self.waitingOn = defaultdict()
+        self.collection = None
+        try:
+            self.collection = Collection.getCollection(agentName='orchdisplay', 
+                                                       hostName=gethostname(),
+                                                       dbHost=dbHost,
+                                                       dbPort=dbPort)
+            self.collection.remove({})
+            log.info('Database collection initialized')
+        except Exception, e:
+            log.error('Cannot initialize database: %s' %str(e))
 
     def _name(self, si):
         if not si:
@@ -47,6 +63,10 @@ class OrchestratorDisplayState(object):
         now = self._timestamp()
         print '%s : %s : (%s) complete.' % (
             self._green(self._name(streamIter)), self._green('DONE'), now)
+        if self.collection:
+            self.collection.insert({'stream' : self._name(streamIter),
+                                    'type' : 'DONE',
+                                    'msg' : 'complete'})
 
     def streamJump(self, streamIter, target):
         '''Call when the execution path jumps to new stream.'''
@@ -54,6 +74,10 @@ class OrchestratorDisplayState(object):
         print '%s : %s : (%s) Execution path of stream has jumped to target: %s.' % (
             self._green(self._name(streamIter)), self._yellow('jump'), now, 
             target)
+        if self.collection:
+            self.collection.insert({'stream' : self._name(streamIter),
+                                    'type' : 'jump',
+                                    'msg' : 'Execution path of stream has jumped to target: %s' %(target)})
 
     def eventFired(self, streamIter):
         e = streamIter.next()
@@ -75,26 +99,50 @@ class OrchestratorDisplayState(object):
             print '%s : %s : (%s) %s %s --> %s %s' % (
                 self._name(streamIter), self._blue('sent'), now, e.method, e.args['group'],
                 to, trigger)
+            if self.collection:
+                self.collection.insert({'stream' : self._name(streamIter),
+                                        'type' : 'sent',
+                                        'msg' : '%s %s --> %s %s' %(e.method, e.args['group'], to, trigger)})
         elif e.method == 'loadAgent' or e.method == 'unloadAgent': 
             print '%s : %s : (%s) %s %s --> %s %s' % (
                 self._name(streamIter), self._blue('sent'), now, e.method, e.args['name'],
                 to, trigger)
+            if self.collection:
+                self.collection.insert({'stream' : self._name(streamIter),
+                                        'type' : 'sent',
+                                        'msg' : '%s %s --> %s %s' %(e.method, e.args['name'], to, trigger)})
         else:
             print '%s : %s : (%s) %s(%s) --> %s %s' % (
                 self._name(streamIter), self._blue('sent'), now, e.method, self._minstr(args),
                 to, trigger)
+            if self.collection:
+                self.collection.insert({'stream' : self._name(streamIter),
+                                        'type' : 'sent',
+                                        'msg' : '%s(%s) --> %s %s' %(e.method, self._minstr(args), to, trigger)})
 
     def triggerCompleted(self, streamIter, trigger):
         now = self._timestamp()
         if isinstance(trigger, parse.TimeoutTrigger):
             print '%s : %s : (%s) trigger completed: timeout: %s' % (
                 self._name(streamIter), self._green('trig'), now, trigger.timeout)
+            if self.collection:
+                self.collection.insert({'stream' : self._name(streamIter),
+                                        'type' : 'trig',
+                                        'msg' : 'trigger completed: timeout: %s' %(trigger.timeout)})
         elif isinstance(trigger, parse.EventTrigger):
             print '%s : %s : (%s) trigger completed: %s: %s' % (
                 self._name(streamIter), self._green('trig'), now, trigger.event, trigger.args)
+            if self.collection:
+                self.collection.insert({'stream' : self._name(streamIter),
+                                        'type' : 'trig',
+                                        'msg' : 'trigger completed: %s: %s' %(trigger.event, trigger.args)})
         else:
             print '%s : %s : (%s) trigger completed: %s' % (
                 self._name(streamIter), self._green('trig'), now, trigger.__class__.__name__)
+            if self.collection:
+                self.collection.insert({'stream' : self._name(streamIter),
+                                        'type' : 'trig',
+                                        'msg' : 'trigger completed: %s' %(trigger.__class__.__name__)})
             
     def waitingOnTriggers(self, cache, streams):
         '''Go through all outstanding triggers and find matched in the cache. Display
