@@ -3,6 +3,8 @@
 from magi.messaging import api
 from magi.orchestrator import AAL, Orchestrator
 from magi.orchestrator.parse import AALParseError
+from magi.db import ROUTER_SERVER_PORT
+
 from magi.util import helpers
 from socket import gaierror # this should really be wrapped in daemon lib.
 from sys import exit
@@ -194,11 +196,13 @@ if __name__ == '__main__':
                         "experiment configuration information")
         
     try:   
+        dbPort = ROUTER_SERVER_PORT
         tunnel_cmd = None
         db_tunnel_cmd = None
         if options.tunnel:
+            dbPort = 27020
             tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', bridgePort, bridgeNode, bridgePort, options.username)
-            db_tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', 27017, bridgeNode, 27017, options.username)
+            db_tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', dbPort, bridgeNode, ROUTER_SERVER_PORT, options.username)
             bridgeNode = '127.0.0.1'
             logging.info('Tunnel setup done')
                 
@@ -215,7 +219,8 @@ if __name__ == '__main__':
                     break
                 log.info("Magi daemon on one or more nodes not up")
             except:
-                pass
+                log.info("Magi daemon on one or more nodes not up")
+                time.sleep(5)
         
         log.info("All magi daemons are up and listening")
         
@@ -229,7 +234,7 @@ if __name__ == '__main__':
     
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
-                            useColor=(not options.nocolor), dbHost=bridgeNode, dbPort=27017)
+                            useColor=(not options.nocolor), dbHost=bridgeNode, dbPort=dbPort)
         orch.run()
         
     finally:
