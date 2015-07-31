@@ -257,7 +257,7 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         topoGraph = testbed.getTopoGraph()
         experimentNodes = topoGraph.nodes()
         isDBSharded = dbdl.setdefault('isDBSharded', False if len(experimentNodes) == 1 else DEFAULT_DB_SHARDED)
-        sensorToCollectorMap = dbdl.setdefault('sensorToCollectorMap', None)
+        sensorToCollectorMap = dbdl.setdefault('sensorToCollectorMap', {})
         validateSensorToColletorMap(sensorToCollectorMap)
         if isDBSharded:
             if dbdl.get('configHost') not in experimentNodes:
