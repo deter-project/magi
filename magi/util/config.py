@@ -266,7 +266,7 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
             # Cleaning up existing sensorToCollectorMap
             # Removing non-existing experiment nodes
             for (sensor, collector) in sensorToCollectorMap.iteritems():
-                if sensor not in experimentNodes + helpers.ALL:
+                if sensor not in experimentNodes + [helpers.ALL]:
                     del sensorToCollectorMap[sensor]
                 elif collector not in experimentNodes:
                     # Invalid default collector
