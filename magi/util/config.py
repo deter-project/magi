@@ -278,7 +278,7 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
             # Validate that all nodes have a valid collector
             if helpers.ALL not in sensorToCollectorMap:
                 for node in experimentNodes:
-                    if node not in experimentNodes:
+                    if node not in sensorToCollectorMap:
                         sensorToCollectorMap[node] = node
                 
         if isDBSharded:
