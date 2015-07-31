@@ -257,30 +257,8 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         topoGraph = testbed.getTopoGraph()
         experimentNodes = topoGraph.nodes()
         isDBSharded = dbdl.setdefault('isDBSharded', False if len(experimentNodes) == 1 else DEFAULT_DB_SHARDED)
-        sensorToCollectorMap = dbdl.get('sensorToCollectorMap')
-        if not sensorToCollectorMap or not isinstance(sensorToCollectorMap, dict):
-            dbdl['sensorToCollectorMap'] = dict()
-            for node in experimentNodes:
-                dbdl['sensorToCollectorMap'][node] = node
-        else:
-            # Cleaning up existing sensorToCollectorMap
-            # Removing non-existing experiment nodes
-            for (sensor, collector) in sensorToCollectorMap.iteritems():
-                if sensor not in experimentNodes + [helpers.ALL]:
-                    del sensorToCollectorMap[sensor]
-                elif collector not in experimentNodes:
-                    # Invalid default collector
-                    if sensor == helpers.ALL:
-                        del sensorToCollectorMap[sensor]
-                    else:
-                        sensorToCollectorMap[sensor] = sensor
-            
-            # Validate that all nodes have a valid collector
-            if helpers.ALL not in sensorToCollectorMap:
-                for node in experimentNodes:
-                    if node not in sensorToCollectorMap:
-                        sensorToCollectorMap[node] = node
-                
+        sensorToCollectorMap = dbdl.setdefault('sensorToCollectorMap', None)
+        validateSensorToColletorMap(sensorToCollectorMap)
         if isDBSharded:
             if dbdl.get('configHost') not in experimentNodes:
                 dbdl['configHost'] = testbed.getServer()
@@ -291,6 +269,32 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         dbdl['isDBEnabled'] = False
         
     return dbdl
+
+def validateSensorToColletorMap(sensorToCollectorMap):
+    experimentNodes = testbed.getTopoGraph().nodes()
+    if not sensorToCollectorMap or not isinstance(sensorToCollectorMap, dict):
+        sensorToCollectorMap = dict()
+        for node in experimentNodes:
+            sensorToCollectorMap[node] = node
+    else:
+        # Cleaning up existing sensorToCollectorMap
+        # Removing non-existing experiment nodes
+        for (sensor, collector) in sensorToCollectorMap.iteritems():
+            if sensor not in experimentNodes + [helpers.ALL]:
+                del sensorToCollectorMap[sensor]
+            elif collector not in experimentNodes:
+                # Invalid default collector
+                if sensor == helpers.ALL:
+                    del sensorToCollectorMap[sensor]
+                else:
+                    sensorToCollectorMap[sensor] = sensor
+        
+        # Validate that all nodes have a valid collector
+        if helpers.ALL not in sensorToCollectorMap:
+            for node in experimentNodes:
+                if node not in sensorToCollectorMap:
+                    sensorToCollectorMap[node] = node
+
 
 def getDefaultExpDL(distributionPath=DEFAULT_DIST_DIR):
     """ Create a default experiment description """
@@ -501,6 +505,8 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     if isDBEnabled:
         isDBSharded = databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
         databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
+        sensorToCollectorMap = databaseConfig['sensorToCollectorMap']
+        validateSensorToColletorMap(sensorToCollectorMap)
         if isDBSharded:
             databaseConfig.setdefault('configHost', dbdl['configHost'])
         else:
@@ -508,6 +514,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
             
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig
+
 
 def getArch():
     """ Try and get something that is unique to this build environment for tagging built source """
