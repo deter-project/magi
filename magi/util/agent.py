@@ -96,7 +96,9 @@ class Agent(object):
         # 9/14 Changed testbed.nodename to self.hostname to support desktop daemons  
         self.messenger.trigger(event='AgentUnloadDone', agent=self.name, nodes=[self.hostname])
         self.done = True
-        #self.messenger.poisinPill()
+        #Currently poison pill is required only for NonBlockingDispatchAgent
+        #It does not affect other classes
+        self.messenger.poisinPill()
         log.info('Unload Complete.')
 
 
@@ -115,7 +117,7 @@ class DispatchAgent(Agent):
         log.info('In run of the root DispatchAgent')
         while not self.done:
             try:
-                msg = self.messenger.next(True)
+                msg = self.messenger.next(block=True)
                 if isinstance(msg, MAGIMessage):
                     doMessageAction(self, msg, self.messenger)
             except Queue.Empty:
@@ -137,9 +139,10 @@ class NonBlockingDispatchAgent(Agent):
         log.debug('In run of the root NonBlockingDispatchAgent')
         while not self.done:
             try:
-                msg = self.messenger.next(True)
+                msg = self.messenger.next(block=True)
                 if isinstance(msg, MAGIMessage):
-                    thr = threading.Thread(target=doMessageAction, args=(self, msg, self.messenger))
+                    thr = threading.Thread(target=doMessageAction, 
+                                           args=(self, msg, self.messenger))
                     thr.start()
             except Queue.Empty:
                 pass

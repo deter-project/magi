@@ -25,10 +25,12 @@ isDBSharded         = dbConfig.get('isDBSharded', True)
 configHost          = dbConfig.get('configHost')
 sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap', {})
 
-collector = sensorToCollectorMap.get(config.getNodeName(), sensorToCollectorMap.get('__ALL__'))
+collector = sensorToCollectorMap.get(config.getNodeName(), 
+                                     sensorToCollectorMap.get(helpers.ALL))
 isConfigHost = (config.getNodeName() == configHost)
 isCollector = (config.getNodeName() in sensorToCollectorMap.values())
-isSensor = (config.getNodeName() in sensorToCollectorMap.keys() or '__ALL__' in sensorToCollectorMap.keys())
+isSensor = (config.getNodeName() in sensorToCollectorMap.keys() 
+            or helpers.ALL in sensorToCollectorMap.keys())
 
 if 'collectionHosts' not in locals():
     collectionHosts = defaultdict(set)
@@ -37,28 +39,27 @@ def startConfigServer(timeout=TIMEOUT):
     """
         Function to start a database config server on the node
     """
-    return Server.startConfigServer(port=CONFIG_SERVER_PORT, 
-                             dbPath=os.path.join(config.getDbDir(), "configdb"), 
-                             logPath=os.path.join(config.getLogDir(), "mongoc.log"), 
-                             timeout=timeout)
+    return Server.startConfigServer(
+                    port=CONFIG_SERVER_PORT, 
+                    dbPath=os.path.join(config.getDbDir(), "configdb"), 
+                    logPath=os.path.join(config.getLogDir(), "mongoc.log"), 
+                    timeout=timeout)
 
 def setBalancerState(state):
     """
         Function to turn on/off data balancer
     """
     Server.setBalancerState(state=state, 
-                            configHost=configHost, 
-                            configPort=CONFIG_SERVER_PORT)
+                        configHost=helpers.toControlPlaneNodeName(configHost), 
+                        configPort=CONFIG_SERVER_PORT)
     
 def startShardServer(configHost=configHost, timeout=TIMEOUT):
     """
         Function to start a database config server on the node
     """
-    configHost = helpers.toControlPlaneNodeName(configHost)
-    
     return Server.startShardServer(port=ROUTER_SERVER_PORT, 
                             logPath=os.path.join(config.getLogDir(), "mongos.log"), 
-                            configHost=configHost, 
+                            configHost=helpers.toControlPlaneNodeName(configHost), 
                             configPort=CONFIG_SERVER_PORT, 
                             timeout=timeout)
 
@@ -74,9 +75,11 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
                          logPath=os.path.join(config.getLogDir(), "mongodb.log"), 
                          timeout=timeout)
 
-def registerShard(mongod=config.getNodeName(), mongos=config.getServer(), timeout=TIMEOUT):
+def registerShard(mongod=config.getNodeName(), mongos=config.getDbConfigHost(), 
+                  timeout=TIMEOUT):
     """
-        Function to register a database server as a shard in the database cluster
+        Function to register a database server as a shard 
+        in the database cluster
     """
     functionName = registerShard.__name__
     helpers.entrylog(log, functionName, locals())
@@ -98,15 +101,13 @@ def isShardRegistered(dbHost=None, configHost=configHost, block=False):
     if dbHost == None:
         dbHost = getCollector()
         
-    dbHost = helpers.toControlPlaneNodeName(dbHost)
-    configHost = helpers.toControlPlaneNodeName(configHost)
-        
     helpers.exitlog(log, functionName)
-    return Server.isShardRegistered(dbHost=dbHost, 
-                                    configHost=configHost, 
-                                    dbPort=DATABASE_SERVER_PORT, 
-                                    configPort=CONFIG_SERVER_PORT, 
-                                    block=block)
+    return Server.isShardRegistered(
+                        dbHost=helpers.toControlPlaneNodeName(dbHost), 
+                        configHost=helpers.toControlPlaneNodeName(configHost), 
+                        dbPort=DATABASE_SERVER_PORT, 
+                        configPort=CONFIG_SERVER_PORT, 
+                        block=block)
     
 def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     """
@@ -118,17 +119,16 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     if collector == None:
         collector = host
     
-    collector = helpers.toControlPlaneNodeName(collector)
-        
     Server.moveChunk(db=DB_NAME, collection=collectionname, 
                      host=host, 
-                     collector=collector, 
-                     configHost=config.getServer(), 
+                     collector=helpers.toControlPlaneNodeName(collector), 
+                     configHost=helpers.toControlPlaneNodeName(configHost), 
                      configPort=ROUTER_SERVER_PORT)
             
     helpers.exitlog(log, functionName)
         
-def getConnection(host=None, port=DATABASE_SERVER_PORT, block=True, timeout=TIMEOUT):
+def getConnection(host=None, port=DATABASE_SERVER_PORT, block=True, 
+                  timeout=TIMEOUT):
     """
         Function to get connection to a database server
     """
@@ -138,13 +138,13 @@ def getConnection(host=None, port=DATABASE_SERVER_PORT, block=True, timeout=TIME
     if host == None:
         host = getCollector()
         
-    if host == config.getNodeName(): #In case of a single node experiment /etc/hosts does not get populated
+    #In case of a single node experiment /etc/hosts does not get populated
+    if host == config.getNodeName(): 
         host = 'localhost'
-    else:
-        host = helpers.toControlPlaneNodeName(host)
     
     helpers.exitlog(log, functionName)
-    return Connection.getConnection(host, port, block, timeout)
+    return Connection.getConnection(host=helpers.toControlPlaneNodeName(host), 
+                                    port=port, block=block, timeout=timeout)
             
 def getCollection(agentName, dbHost=None, dbPort=DATABASE_SERVER_PORT):
     """
@@ -159,18 +159,28 @@ def getCollection(agentName, dbHost=None, dbPort=DATABASE_SERVER_PORT):
     global collectionHosts
     collectionHosts[agentName].add(dbHost)
     
+    connection = getConnection(host=dbHost, port=dbPort, block=False)
+    
     helpers.exitlog(log, functionName)
-    return Collection.getCollection(agentName, config.getNodeName(), dbHost, dbPort)
+    return Collection.getCollection(agentName=agentName, 
+                                    hostName=config.getNodeName(),
+                                    connection=connection)
 
 def isDBRunning(host='localhost', port=DATABASE_SERVER_PORT):
     """
         Check if a database server is running on a given host and port
     """
-    return Server.isDBRunning(host=host, port=port)
+    #In case of a single node experiment /etc/hosts does not get populated
+    if host == config.getNodeName(): 
+        host = 'localhost'
+    return Server.isDBRunning(host=helpers.toControlPlaneNodeName(host), 
+                              port=port)
 
-def getData(agentName, filters=None, timestampRange=None, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
+def getData(agentName, filters=None, timestampRange=None,
+             dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
     """
-        Function to retrieve data from the local database, based on a given query
+        Function to retrieve data from the local database, 
+        based on a given query
     """
     functionName = getData.__name__
     helpers.entrylog(log, functionName, locals())
@@ -184,7 +194,9 @@ def getData(agentName, filters=None, timestampRange=None, dbHost='localhost', db
         ts_start, ts_end = timestampRange
         filters_copy['created'] = {'$gte': ts_start, '$lte': ts_end}
     
-    collection = Collection.getCollection(agentName, config.getNodeName(), dbHost, dbPort)
+    collection = getCollection(agentName=agentName, 
+                               dbHost=dbHost, 
+                               dbPort=dbPort)
     cursor = collection.findAll(filters_copy)
     
     result = []

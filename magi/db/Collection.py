@@ -1,23 +1,27 @@
 import logging 
 import time
 
+from Connection import Connection
+from magi.db import DATABASE_SERVER_PORT
 from magi.util import helpers
 import pymongo
 
 from Connection import getConnection
-from magi.db import DATABASE_SERVER_PORT
 
 
 log = logging.getLogger(__name__)
 
 DB_NAME = 'magi'
 COLLECTION_NAME = 'experiment_data'
-AGENT_FIELD = 'agent'
+HOST_FIELD_KEY = 'host'
+CREATED_TS_FIELD_KEY = 'created'
+AGENT_FIELD_KEY = 'agent'
+
 
 if 'collectionCache' not in locals():
     collectionCache = dict()
     
-def getCollection(agentName, hostName, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
+def getCollection(agentName, hostName, connection=None, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
     """
         Function to get a pointer to a given agent data collection
     """
@@ -25,9 +29,19 @@ def getCollection(agentName, hostName, dbHost='localhost', dbPort=DATABASE_SERVE
     helpers.entrylog(log, functionName, locals())
     
     global collectionCache
-    
+
+    if connection:
+        if not isinstance(connection, Connection):
+            raise TypeError("Invalid connection instance")    
+        dbHost = connection.host
+        dbPort = connection.port
+        
     if (agentName, dbHost, dbPort) not in collectionCache:
-        collectionCache[(agentName, hostName, dbHost, dbPort)] = Collection(agentName, hostName, dbHost, dbPort)
+        collectionCache[(agentName, hostName, dbHost, dbPort)] = Collection(agentName=agentName, 
+                                                                            hostName=hostName, 
+                                                                            connection=connection,
+                                                                            dbHost=dbHost, 
+                                                                            dbPort=dbPort)
     
     helpers.exitlog(log, functionName)
     return collectionCache[(agentName, hostName, dbHost, dbPort)]
@@ -35,10 +49,11 @@ def getCollection(agentName, hostName, dbHost='localhost', dbPort=DATABASE_SERVE
 class Collection(pymongo.collection.Collection):
     """Library to use for data collection"""
     
-    INTERNAL_KEYS = ['host', 'created', AGENT_FIELD]
+    INTERNAL_KEYS = [HOST_FIELD_KEY, CREATED_TS_FIELD_KEY, AGENT_FIELD_KEY]
 
-    def __init__(self, agentName, hostName, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
-        connection = getConnection(host=dbHost, port=dbPort, block=False)
+    def __init__(self, agentName, hostName, connection=None, dbHost='localhost', dbPort=DATABASE_SERVER_PORT):
+        if not connection:
+            connection = getConnection(host=dbHost, port=dbPort, block=False)
         pymongo.collection.Collection.__init__(self, connection[DB_NAME], COLLECTION_NAME)
         self.agentName = agentName
         self.hostName = hostName
@@ -47,6 +62,9 @@ class Collection(pymongo.collection.Collection):
         """
             Insert data. Add the default fields before insertion.
         """
+        if (not isinstance(doc_or_docs, dict)) and (not isinstance(doc_or_docs, list)):
+            raise TypeError("document(s) must be an instance of dict or a list of dicts")
+            
         if isinstance(doc_or_docs, dict):
             docs = [doc_or_docs]
             
@@ -55,9 +73,9 @@ class Collection(pymongo.collection.Collection):
                 raise TypeError("each document must be an instance of dict")
             if len(set(Collection.INTERNAL_KEYS) & set(doc.keys())) > 0:
                 raise RuntimeError("The following keys are restricted for internal use: %s" %(Collection.INTERNAL_KEYS))
-            doc['host'] = self.hostName
-            doc['created'] = time.time()
-            doc[AGENT_FIELD] = self.agentName
+            doc[HOST_FIELD_KEY] = self.hostName
+            doc[CREATED_TS_FIELD_KEY] = time.time()
+            doc[AGENT_FIELD_KEY] = self.agentName
             
         return pymongo.collection.Collection.insert(self, docs, *args, **kwargs)
         
@@ -71,8 +89,8 @@ class Collection(pymongo.collection.Collection):
         if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict")
         
-        spec['host'] = self.hostName
-        spec[AGENT_FIELD] = self.agentName
+        spec[HOST_FIELD_KEY] = self.hostName
+        spec[AGENT_FIELD_KEY] = self.agentName
         
         return pymongo.collection.Collection.find(self, *args, **kwargs)
     
@@ -86,7 +104,7 @@ class Collection(pymongo.collection.Collection):
         if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict")
         
-        spec[AGENT_FIELD] = self.agentName
+        spec[AGENT_FIELD_KEY] = self.agentName
         
         return pymongo.collection.Collection.find(self, *args, **kwargs)
     
@@ -102,8 +120,8 @@ class Collection(pymongo.collection.Collection):
         else:
             spec = spec_or_id
             
-        spec['host'] = self.hostName
-        spec[AGENT_FIELD] = self.agentName
+        spec[HOST_FIELD_KEY] = self.hostName
+        spec[AGENT_FIELD_KEY] = self.agentName
         return pymongo.collection.Collection.remove(self, spec_or_id, safe, **kwargs)
 
     def removeAll(self, spec_or_id=None, safe=None, **kwargs):
@@ -118,11 +136,11 @@ class Collection(pymongo.collection.Collection):
         else:
             spec = spec_or_id
             
-        spec[AGENT_FIELD] = self.agentName
+        spec[AGENT_FIELD_KEY] = self.agentName
         return pymongo.collection.Collection.remove(self, spec_or_id, safe, **kwargs)
 
         
 #    def removeAll(self):
 #        kwargs = dict()
-#        kwargs[AGENT_FIELD] = self.type
+#        kwargs[AGENT_FIELD_KEY] = self.type
 #        self.collection.remove(kwargs)

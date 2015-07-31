@@ -199,7 +199,7 @@ if __name__ == '__main__':
             except:
                     log.exception("MAGI configuration failed, things probably aren't going to run")
                                 
-            if (config.getNodeName() == config.getServer()):
+            if (config.getNodeName() == config.getServer(config.getMagiNodes())):
                 import shutil
                 log.info("Copying experiment.conf to testbed experiment directory %s" %(config.getExperimentDir()))
                 shutil.copy(config.getExperimentConfFile(), config.getExperimentDir())
@@ -286,6 +286,7 @@ if __name__ == '__main__':
     
             log.info("Starting daemon")
             daemon = ['/usr/local/bin/magi_daemon.py']
+            daemon += ['--expconf', config.getExperimentConfFile()]
             daemon += ['--nodeconf', config.getNodeConfFile()]
     
             if options.verbose:

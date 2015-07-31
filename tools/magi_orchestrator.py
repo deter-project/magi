@@ -3,6 +3,8 @@
 from magi.messaging import api
 from magi.orchestrator import AAL, Orchestrator
 from magi.orchestrator.parse import AALParseError
+from magi.db import ROUTER_SERVER_PORT
+
 from magi.util import helpers
 from socket import gaierror # this should really be wrapped in daemon lib.
 from sys import exit
@@ -166,7 +168,6 @@ if __name__ == '__main__':
 
     try:
         aal = AAL(options.events, dagdisplay=options.display, groupBuildTimeout=options.groupBuildTimeout)
-        #aal = AAL(options.events, groupBuildTimeout=options.groupBuildTimeout)
     except AALParseError as e:
         logging.critical('Unable to parse events file: %s', str(e))
         exit(2)
@@ -179,21 +180,50 @@ if __name__ == '__main__':
         bridgeNode = options.bridge
         bridgePort = options.port
     elif options.config or (options.project and options.experiment):
-        (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config, 
-                                                     project=options.project, 
-                                                     experiment=options.experiment)
+        while True:
+            try:
+                (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config, 
+                                                             project=options.project, 
+                                                             experiment=options.experiment)
+                break
+            except IOError:
+                log.info("Config file might still be in the process of being created.")
+                time.sleep(5)
+            
     else:
         optparser.print_help()
         optparser.error("Missing bridge information and "
                         "experiment configuration information")
         
     try:   
+        dbPort = ROUTER_SERVER_PORT
         tunnel_cmd = None
+        db_tunnel_cmd = None
         if options.tunnel:
+            dbPort = 27020
             tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', bridgePort, bridgeNode, bridgePort, options.username)
+            db_tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', dbPort, bridgeNode, ROUTER_SERVER_PORT, options.username)
             bridgeNode = '127.0.0.1'
             logging.info('Tunnel setup done')
                 
+        from magi_status import getStatus
+        nodeSet = helpers.getNodesFromAAL(options.events)
+        log.info("Making sure Magi daemons are up and listening")
+        while True:
+            try:
+                status = getStatus(bridgeNode=bridgeNode, 
+                                   bridgePort=bridgePort, 
+                                   nodeSet=nodeSet,
+                                   timeout=10)
+                if status[0]:
+                    break
+                log.info("Magi daemon on one or more nodes not up")
+            except:
+                log.info("Magi daemon on one or more nodes not up")
+                time.sleep(5)
+        
+        log.info("All magi daemons are up and listening")
+        
         try:
             messaging = api.ClientConnection(options.name, bridgeNode, bridgePort)
         except gaierror as e:
@@ -204,12 +234,14 @@ if __name__ == '__main__':
     
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
-                            useColor=(not options.nocolor), dbHost=bridgeNode, dbPort=27017)
+                            useColor=(not options.nocolor), dbHost=bridgeNode, dbPort=dbPort)
         orch.run()
         
     finally:
         if tunnel_cmd:
             helpers.terminateProcess(tunnel_cmd)
+        if db_tunnel_cmd:
+            helpers.terminateProcess(db_tunnel_cmd)
             
     # GTL - we need to determine the outcome and return the
     # appropriate value here.

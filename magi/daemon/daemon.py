@@ -6,6 +6,7 @@
 
 import base64
 import cStringIO
+import datetime
 import errno
 import glob
 import json
@@ -229,7 +230,7 @@ class Daemon(threading.Thread):
 		else:
 			raise OSError(errno.ENOENT, "Invalid path to agent implementation: %s" % code)
 
-		self.startAgent(cachepath, name, dock, execargs, idl)
+		return self.startAgent(cachepath, name, dock, execargs, idl)
 		
 	
 	@agentmethod()
@@ -378,7 +379,7 @@ class Daemon(threading.Thread):
 		helpers.exitlog(log, functionName)
 		
 	@agentmethod()
-	def archive(self, msg):
+	def getLogsArchive(self, msg):
 		""" 
             Tars the log directory and sends it to the requester as a message" 
         """ 
@@ -393,6 +394,21 @@ class Daemon(threading.Thread):
 		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))
 		helpers.exitlog(log, functionName)
 	
+	@agentmethod()
+	def archive(self, msg, destinationDir=config.getTempDir()):
+		""" 
+            Tars the log directory" 
+        """ 
+		functionName = self.archive.__name__
+		helpers.entrylog(log, functionName, locals())
+		logDir = config.getLogDir()
+		logTar = tarfile.open(name=os.path.join(destinationDir, 
+											   "logs_%s"%(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))), 
+							  mode='w:gz')
+		logTar.add(logDir, arcname=os.path.basename(logDir))
+		logTar.close()
+		helpers.exitlog(log, functionName)
+		
 	@agentmethod()
 	def reboot(self, msg, distributionDir=None, noUpdate=False, noInstall=False, expConf=None, nodeConf=None):
 		"""
@@ -505,14 +521,16 @@ class Daemon(threading.Thread):
 				
 				if execstyle == 'pipe':
 					args.append('execute=pipe')
-					log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
-					agent = Popen([mainfile, name, dock] + args, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
+					cmdList = [mainfile, name, dock, config.getNodeConfFile(), config.getExperimentConfFile()] + args
+					log.debug('running: %s', ' '.join(cmdList))
+					agent = Popen(cmdList, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
 					self.extAgentsThread.fromNetwork.put(PipeTuple([dock], InputPipe(fileobj=agent.stdout), OutputPipe(fileobj=agent.stdin)))
 	
 				elif execstyle == 'socket':
 					args.append('execute=socket')
-					log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
-					agent = Popen([mainfile, name, dock] + args, close_fds=True, stderr=stderr)
+					cmdList = [mainfile, name, dock, config.getNodeConfFile(), config.getExperimentConfFile()] + args
+					log.debug('running: %s', ' '.join(cmdList))
+					agent = Popen(cmdList, close_fds=True, stderr=stderr)
 	
 				else:
 					log.critical("unknown launch style '%s'", interface['execute'])
@@ -528,9 +546,13 @@ class Daemon(threading.Thread):
 				exc_type, exc_value, exc_tb = sys.exc_info()
 				filename, line_num, func_name, text = traceback.extract_tb(exc_tb)[-1]
 				filename = basename(filename)
-				self.messaging.trigger(event='RuntimeException', func_name=func_name, agent=self.name, 
-								   nodes=[self.hostname], filename=filename, line_num=line_num, error=str(e))
+				self.messaging.trigger(event='RuntimeException', type=exc_type.__name__, error=str(e), nodes=[self.hostname], 
+									agent=self.name, func_name=func_name, filename=filename, line_num=line_num)
+				return False
+		
+		return True
 
+		
 	def extractTarPath(self, cachepath, path):
 		"""
 			Internal function to extract a tar file

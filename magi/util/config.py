@@ -89,7 +89,7 @@ NODE_DIR = "/var/log/magi"
 EXPERIMENT_DIR = testbed.getExperimentDir()
 
 NODE_CONFIG = dict()
-#experimentConfig = dict()
+EXP_CONFIG = dict()
 
 log = logging.getLogger(__name__)
 
@@ -101,18 +101,20 @@ def setExperimentDir(experimentDir):
     global EXPERIMENT_DIR
     EXPERIMENT_DIR = experimentDir
      
-#def getExperimentConfig():
-#    """ Fetch the experiment-wide configuration"""
-#    global experimentConfig
-#    if not experimentConfig:
-#        experimentConfig = loadExperimentConfig()
-#    return experimentConfig
+def getExperimentConfig():
+    """ Fetch the experiment-wide configuration"""
+    global EXP_CONFIG
+    if not EXP_CONFIG:
+        EXP_CONFIG = loadExperimentConfig(experimentConfig=
+                                          getExperimentConfFile())
+    return EXP_CONFIG
 
 def getNodeConfig():
     """ Fetch node specific configuration """
     global NODE_CONFIG
     if not NODE_CONFIG:
-        NODE_CONFIG = loadNodeConfig()
+        NODE_CONFIG = loadNodeConfig(nodeConfig=getNodeConfFile(),
+                                     experimentConfig=getExperimentConfig())
     return NODE_CONFIG
 
 def getConfig():
@@ -122,8 +124,8 @@ def getConfig():
 def getNodeName():
     return getNodeConfig()['localInfo']['nodename']
 
-def getServer():
-    return getNodeConfig()['localInfo']['server']
+def getDbConfigHost():
+    return getNodeConfig()['database'].get('configHost')
 
 def getConfigDir():
     try:
@@ -170,7 +172,12 @@ def getExperimentDir():
 def getTopoGraph():
     return json_graph.node_link_graph(getNodeConfig()['topoGraph'])
 
-    
+def getMagiNodes():
+    try:
+        return EXP_CONFIG['expdl']['magiNodeList']
+    except:
+        return testbed.getTopoGraph().nodes()
+
 ## EXPERIMENT CONFIGURATION ##
 
 def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, isDBEnabled=DEFAULT_DB_ENABLED):
@@ -179,6 +186,7 @@ def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, isDBEnabled=DEFAUL
 
 def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled=None):
     """ Load the experiment-wide configuration data from file, filename can be overriden """
+    global EXP_CONFIG
     try:
         if (type(experimentConfig) == str):
             log.info("Loading given experiment configuration from %s" %(experimentConfig))
@@ -186,7 +194,9 @@ def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled
     except:
         log.error("Error loading given experiment configuration file. Loading default.")
         experimentConfig = dict()
-    experimentConfig = validateExperimentConfig(experimentConfig=experimentConfig, distributionPath=distributionPath, isDBEnabled=isDBEnabled)
+    EXP_CONFIG = validateExperimentConfig(experimentConfig=experimentConfig, 
+                                          distributionPath=distributionPath, 
+                                          isDBEnabled=isDBEnabled)
     
 #    #write experiment config file
 #    expConfFile = getExperimentConfFile()
@@ -195,19 +205,22 @@ def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled
 #    fp.write(yaml.safe_dump(experimentConfig))
 #    fp.close()
     
-    return experimentConfig
+    return EXP_CONFIG
 
 def validateExperimentConfig(experimentConfig, distributionPath=None, isDBEnabled=None):
     if not experimentConfig:
         experimentConfig = dict()
         
+    expdl = experimentConfig.get('expdl', {})
     mesdl = experimentConfig.get('mesdl', {})
     dbdl = experimentConfig.get('dbdl', {})
-    expdl = experimentConfig.get('expdl', {})
     
-    experimentConfig['mesdl'] = validateMesDL(mesdl)
-    experimentConfig['dbdl'] = validateDBDL(dbdl, isDBEnabled)
-    experimentConfig['expdl'] = validateExpDL(expdl, distributionPath)
+    experimentConfig['expdl'] = validateExpDL(expdl=expdl, 
+                                            distributionPath=distributionPath)
+    experimentConfig['mesdl'] = validateMesDL(mesdl=mesdl, 
+                        magiNodeList=experimentConfig['expdl']['magiNodeList'])
+    experimentConfig['dbdl'] = validateDBDL(dbdl=dbdl, isDBEnabled=isDBEnabled, 
+                        magiNodeList=experimentConfig['expdl']['magiNodeList'])
 
     return experimentConfig
     
@@ -216,26 +229,34 @@ def getDefaultMESDL():
     log.info("Creating default mesdl") 
     return validateMesDL()
 
-def validateMesDL(mesdl={}):
+def validateMesDL(mesdl={}, magiNodeList=testbed.getTopoGraph().nodes()):
     """ Validate messaging description """
+    server = helpers.toControlPlaneNodeName(getServer(magiNodeList))
     if not mesdl:
         mesdl = dict()
-        controlNode = testbed.getServer(FQDN=True) 
-        log.info("Using %s as control node", controlNode) 
+        log.info("Using %s as server node", server) 
         mesdl['bridges'] = list()
         mesdl['overlay'] = list()
-        mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 18808 })
+        mesdl['bridges'].append({'type': 'TCPServer', 
+                                 'server': server, 'port': 18808})
         transportClass = 'Multicast'
         if transportClass == 'TCP':
-            mesdl['bridges'].append({ 'type': 'TCPServer', 'server':controlNode, 'port': 28808 })
-            mesdl['overlay'].append({ 'type': 'TCPTransport', 'members': ['__ALL__'], 'server':controlNode, 'port': 28808 })
+            mesdl['bridges'].append({'type': 'TCPServer', 
+                                     'server': server, 'port': 28808})
+            mesdl['overlay'].append({'type': 'TCPTransport', 
+                                     'members': ['__ALL__'], 
+                                     'server': server, 'port': 28808})
         elif transportClass == 'Multicast':
-            mesdl['overlay'].append({ 'type': 'MulticastTransport', 'members': ['__ALL__'], 'address': testbed.getMulticastAddress(), 'port': 28808 })
+            mesdl['overlay'].append({'type': 'MulticastTransport', 
+                                     'members': ['__ALL__'], 
+                                     'address': testbed.getMulticastAddress(), 
+                                     'port': 28808})
     else:
         bridges = mesdl.get('bridges', {})
         if not bridges:
             log.error('At least one bridge is required for external connections')
-            bridges.append({ 'type': 'TCPServer', 'server':testbed.getServer(), 'port': 18808 })
+            bridges.append({'type': 'TCPServer', 
+                            'server': server, 'port': 18808})
     return mesdl
 
 def getDefaultDBDL(isDBEnabled=True):
@@ -243,7 +264,7 @@ def getDefaultDBDL(isDBEnabled=True):
     log.info("Creating default dbdl") 
     return validateDBDL(isDBEnabled=isDBEnabled)
 
-def validateDBDL(dbdl={}, isDBEnabled=None):
+def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=testbed.getTopoGraph().nodes()):
     """ Validate database description """
     if not dbdl:
         dbdl = dict()
@@ -254,22 +275,14 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         isDBEnabled = dbdl.setdefault('isDBEnabled', DEFAULT_DB_ENABLED)
         
     if isDBEnabled:
-        topoGraph = testbed.getTopoGraph()
-        experimentNodes = topoGraph.nodes()
-        isDBSharded = dbdl.setdefault('isDBSharded', False if len(experimentNodes) == 1 else DEFAULT_DB_SHARDED)
-        if not dbdl.get('sensorToCollectorMap'):
-            dbdl['sensorToCollectorMap'] = dict()
-            for node in experimentNodes:
-                dbdl['sensorToCollectorMap'][node] = node
-        else:
-            for (sensor, collector) in dbdl['sensorToCollectorMap'].iteritems():
-                if sensor not in experimentNodes:
-                    del dbdl['sensorToCollectorMap'][sensor]
-                elif collector not in experimentNodes:
-                    dbdl['sensorToCollectorMap'][sensor] = sensor
+        isDBSharded = dbdl.setdefault('isDBSharded', 
+                                      False if len(magiNodeList) == 1 
+                                      else DEFAULT_DB_SHARDED)
+        sensorToCollectorMap = dbdl.setdefault('sensorToCollectorMap', {})
+        validateSensorToColletorMap(sensorToCollectorMap, magiNodeList)
         if isDBSharded:
-            if dbdl.get('configHost') not in experimentNodes:
-                dbdl['configHost'] = testbed.getServer()
+            if dbdl.get('configHost') not in magiNodeList:
+                dbdl['configHost'] = getServer(magiNodeList)
         else:
             dbdl.pop('configHost', None)
     else:
@@ -277,6 +290,31 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         dbdl['isDBEnabled'] = False
         
     return dbdl
+
+def validateSensorToColletorMap(sensorToCollectorMap, magiNodes):
+    if not isinstance(sensorToCollectorMap, dict):
+        sensorToCollectorMap = dict()
+        for node in magiNodes:
+            sensorToCollectorMap[node] = node
+    else:
+        # Cleaning up existing sensorToCollectorMap
+        # Removing non-existing experiment nodes
+        for (sensor, collector) in sensorToCollectorMap.iteritems():
+            if sensor not in magiNodes + [helpers.ALL]:
+                del sensorToCollectorMap[sensor]
+            elif collector not in magiNodes:
+                # Invalid default collector
+                if sensor == helpers.ALL:
+                    del sensorToCollectorMap[sensor]
+                else:
+                    sensorToCollectorMap[sensor] = sensor
+        
+        # Validate that all nodes have a valid collector
+        if helpers.ALL not in sensorToCollectorMap:
+            for node in magiNodes:
+                if node not in sensorToCollectorMap:
+                    sensorToCollectorMap[node] = node
+
 
 def getDefaultExpDL(distributionPath=DEFAULT_DIST_DIR):
     """ Create a default experiment description """
@@ -291,7 +329,8 @@ def validateExpDL(expdl={}, distributionPath=None):
     expdl.setdefault('topoGraph', json_graph.node_link_data(testbed.getTopoGraph()))
     nodeList = testbed.getTopoGraph().nodes()
     nodeList.sort()
-    expdl.setdefault('nodeList', nodeList)
+    expdl['nodeList'] = nodeList
+    expdl.setdefault('magiNodeList', nodeList)
     if distributionPath:
         expdl['distributionPath'] = distributionPath
     else:
@@ -319,7 +358,7 @@ def createNodeConfig(experimentConfig={}):
     log.info("Creating default node configuration") 
     return loadNodeConfig(experimentConfig=experimentConfig)
 
-def loadNodeConfig(nodeConfig={}, experimentConfig={}):
+def loadNodeConfig(nodeConfig={}, experimentConfig=None):
     global NODE_CONFIG
     try:
         if (type(nodeConfig) == str):
@@ -329,13 +368,16 @@ def loadNodeConfig(nodeConfig={}, experimentConfig={}):
         log.error("Error loading given node configuration file. Loading default.")
         nodeConfig = dict()
         
-    try:
-        if (type(experimentConfig) == str):
-            log.info("Loading given experiment configuration from %s" %(experimentConfig))
-            experimentConfig = helpers.loadYaml(experimentConfig)
-    except:
-        log.info("No valid experiment configuration found. Creating default.")
-        experimentConfig = dict()
+    if experimentConfig == None:
+        experimentConfig = getExperimentConfig()
+    else:        
+        try:
+            if (type(experimentConfig) == str):
+                log.info("Loading given experiment configuration from %s" %(experimentConfig))
+                experimentConfig = helpers.loadYaml(experimentConfig)
+        except:
+            log.info("Error loading given experiment configuration file. Creating default.")
+            experimentConfig = dict()
         
     NODE_CONFIG = validateNodeConfig(nodeConfig=nodeConfig, experimentConfig=experimentConfig)
     
@@ -368,7 +410,6 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     localInfo = nodeConfig.setdefault('localInfo', {})
     
     localInfo.setdefault('nodename', testbed.nodename)
-    localInfo.setdefault('server', testbed.server)
     localInfo['hostname'] = platform.uname()[1]
     localInfo['distribution'] = "%s %s (%s)" %(platform.dist()[0], platform.dist()[1], platform.dist()[2])
     localInfo['architecture'] = platform.architecture()[0]
@@ -483,10 +524,15 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     dbdl = experimentConfig.get('dbdl')
     log.debug("Dbdl from experiment wide configuration: %s", dbdl)
     
+    if localInfo['nodename'] not in experimentConfig['expdl']['magiNodeList']:
+        databaseConfig['isDBEnabled'] = False
     isDBEnabled = databaseConfig.setdefault('isDBEnabled', dbdl.get('isDBEnabled'))
     if isDBEnabled:
         isDBSharded = databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
         databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
+        sensorToCollectorMap = databaseConfig['sensorToCollectorMap']
+        validateSensorToColletorMap(sensorToCollectorMap, 
+                                    experimentConfig['expdl']['magiNodeList'])
         if isDBSharded:
             databaseConfig.setdefault('configHost', dbdl['configHost'])
         else:
@@ -494,6 +540,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
             
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig
+
 
 def getArch():
     """ Try and get something that is unique to this build environment for tagging built source """
@@ -506,6 +553,20 @@ def getArch():
     arch = "%s-%s-%s" % (name, ver, machine)  # arch string to use for cached software lookup/saving
     return arch.replace('/', '')
 
+def getServer(nodeList):
+    # returns control if  it finds a node named "control" 
+    # in the given node list otherwise it returns the
+    # first node in the alpha-numerically sorted list
+    if not isinstance(nodeList, list):
+        raise TypeError("node list should be a list")
+    nodeList.sort()
+    host = nodeList[0]
+    for node in nodeList:
+        if 'control' == node.lower():
+            host = 'control'
+            break
+    return host    
+        
 #def keysExist(project=None, experiment=None, keydir=None):
 #    """
 #        Simple check to see if the specific keys exist before creating them

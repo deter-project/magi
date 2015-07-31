@@ -54,7 +54,7 @@ def reboot(bridgeNode, bridgePort, nodeSet, magiDistDir=None, noUpdate=False, no
     
     recieveMessages(messaging, nodeSet, timeout=5)
             
-def getLogs(bridgeNode, bridgePort, nodeSet=set(), outputdir='/tmp', timeout=30):
+def getLogsArchive(bridgeNode, bridgePort, nodeSet=set(), outputdir='/tmp', timeout=30):
     
     if not nodeSet:
         log.info("Empty node set. Would query for just the bridge node.")
@@ -62,7 +62,7 @@ def getLogs(bridgeNode, bridgePort, nodeSet=set(), outputdir='/tmp', timeout=30)
     
     log.info("Node Set: %s" %(nodeSet))
         
-    messaging = sendMessage(bridgeNode, bridgePort, list(nodeSet), 'daemon', 'archive', {})
+    messaging = sendMessage(bridgeNode, bridgePort, list(nodeSet), 'daemon', 'getLogsArchive', {})
 
     result = recieveMessages(messaging, nodeSet, timeout)
 
@@ -107,6 +107,7 @@ def sendMessage(bridgeNode, bridgePort, nodes, docks, method, args):
 def recieveMessages(messaging, nodeSet, timeout=30):
     
     result = dict()
+    nodes = helpers.toSet(value=nodeSet.copy())
     
     # Wait for timeout seconds before stopping 
     start = time.time()
@@ -122,11 +123,11 @@ def recieveMessages(messaging, nodeSet, timeout=30):
             if msg.src is not CLIENT_NAME:
                 log.info('Node %s' %(msg.src))
                 result[msg.src] = yaml.load(msg.data)
-                nodeSet.discard(msg.src)
+                nodes.discard(msg.src)
         # If there are no messages in the Queue, just wait some more 
         except Queue.Empty:
             #check if there is need to wait any more
-            if len(nodeSet) == 0:
+            if len(nodes) == 0:
                 break
             
     return result
@@ -199,13 +200,13 @@ if __name__ == '__main__':
     if options.aal:
         nodeSet.update(helpers.getNodesFromAAL(options.aal))
     if not nodeSet and options.config:
-        nodeSet.update(helpers.getExperimentNodeList(experimentConfigFile=options.config))
+        nodeSet.update(helpers.getMagiNodeList(experimentConfigFile=options.config))
         
     if options.logs:
-        (status, result) = getLogs(bridgeNode=bridgeNode, 
-                                   bridgePort=bridgePort, 
-                                   nodeSet=nodeSet, 
-                                   outputdir=options.logoutdir)
+        (status, result) = getLogsArchive(bridgeNode=bridgeNode, 
+                                          bridgePort=bridgePort, 
+                                          nodeSet=nodeSet, 
+                                          outputdir=options.logoutdir)
         log.info("Received logs stored under %s" %(options.logoutdir))
         exit(0)
         

@@ -98,17 +98,17 @@ def toDirected(graph, root):
             
     return d
 
-def entrylog(log, functionName, arguments=None):
+def entrylog(log, functionName, arguments=None, level=logging.DEBUG):
     if arguments == None:
-        log.debug("Entering function %s", functionName)
+        log.log(level, "Entering function %s", functionName)
     else:
-        log.debug("Entering function %s with arguments: %s", functionName, arguments)
+        log.log(level, "Entering function %s with arguments: %s", functionName, arguments)
 
-def exitlog(log, functionName, returnValue=None):
+def exitlog(log, functionName, returnValue=None, level=logging.DEBUG):
     if returnValue == None:
-        log.debug("Exiting function %s", functionName)
+        log.log(level, "Exiting function %s", functionName)
     else:
-        log.debug("Exiting function %s with return value: %s", functionName, returnValue)
+        log.log(level, "Exiting function %s with return value: %s", functionName, returnValue)
 
 def is_os_64bit():
         return platform.machine().endswith('64')
@@ -196,9 +196,8 @@ def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
     
     experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
     dbdl = experimentConfig['dbdl']
-    expdl = experimentConfig['expdl']
     
-    return "%s.%s.%s" % (dbdl['configHost'], expdl['experimentName'], expdl['projectName'])
+    return toControlPlaneNodeName(dbdl['configHost'])
 
 def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=None):
     if not experimentConfigFile:
@@ -209,6 +208,16 @@ def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=No
     expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
     
     return expdl['nodeList']
+    
+def getMagiNodeList(experimentConfigFile=None, project=None, experiment=None):
+    if not experimentConfigFile:
+        if not project or not experiment:
+            raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
+        experimentConfigFile = getExperimentConfigFile(project, experiment)
+        
+    expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
+    
+    return expdl['magiNodeList']    
     
 def printDBfields(agentidl):
             agentname = agentidl.get('display', 'Agent')

@@ -12,7 +12,7 @@ from magi.util.agent import NonBlockingDispatchAgent, agentmethod
 import pymongo
 import yaml
 
-from magi.db.Collection import AGENT_FIELD
+from magi.db.Collection import AGENT_FIELD_KEY
 
 
 log = logging.getLogger(__name__)
@@ -47,13 +47,16 @@ class DataManAgent(NonBlockingDispatchAgent):
             if database.isConfigHost:
                 log.info("Starting mongo config server")
                 cp = database.startConfigServer()
-                self.dbProcesses.add(cp)
+                if cp: #if a database server was started with this call
+                    self.dbProcesses.add(cp)
                 log.info("Starting mongo shard server")
                 sp = database.startShardServer()
-                self.dbProcesses.add(sp)
+                if sp: #if a database server was started with this call
+                    self.dbProcesses.add(sp)
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
-                self.dbProcesses.add(dp)
+                if dp: #if a database server was started with this call
+                    self.dbProcesses.add(dp)
                 log.info("Stopping balancer")
                 database.setBalancerState(False)
                 log.info("Configuring database cluster")
@@ -61,7 +64,8 @@ class DataManAgent(NonBlockingDispatchAgent):
             elif database.isCollector:
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
-                self.dbProcesses.add(dp)
+                if dp: #if a database server was started with this call
+                    self.dbProcesses.add(dp)
             
             log.info("Waiting for collector database to be added as a shard")
             database.isShardRegistered(dbHost=database.getCollector(), block=True)
@@ -72,7 +76,8 @@ class DataManAgent(NonBlockingDispatchAgent):
             if database.isCollector:
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
-                self.dbProcesses.add(dp)
+                if dp: #if a database server was started with this call
+                    self.dbProcesses.add(dp)
                 
         helpers.exitlog(log, functionName)
          
@@ -112,11 +117,12 @@ class DataManAgent(NonBlockingDispatchAgent):
                                database.sensorToCollectorMap[helpers.ALL], 
                                database.LOG_COLLECTION_NAME)
         
-        log.info('Creating index on field: %s' %(AGENT_FIELD))
-        configConn = database.getConnection(host=config.getServer(), 
+        log.info("Creating index for %s.%s on key '%s'" %(database.DB_NAME, 
+                                                          database.COLLECTION_NAME, 
+                                                          AGENT_FIELD_KEY))
+        configConn = database.getConnection(host=config.getDbConfigHost(), 
                                             port=database.ROUTER_SERVER_PORT)
-        configConn[database.DB_NAME][database.COLLECTION_NAME].ensure_index([(AGENT_FIELD, 
-                                                                              pymongo.ASCENDING)])
+        configConn[database.DB_NAME][database.COLLECTION_NAME].create_index(AGENT_FIELD_KEY)
         
         helpers.exitlog(log, functionName)
        

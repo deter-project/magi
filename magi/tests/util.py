@@ -154,7 +154,8 @@ class AgentFixture(threading.Thread):
 		return self.messenger.txqueue.get(block, timeout)
 
 	def run(self):
-		self.agent.run(self.messenger, self.args)
+		self.agent.messenger = self.messenger
+		self.agent.run()
 
 	def stop(self):
 		self.agent.stop()
