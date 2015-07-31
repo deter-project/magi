@@ -120,7 +120,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         log.info("Creating index for %s.%s on key '%s'" %(database.DB_NAME, 
                                                           database.COLLECTION_NAME, 
                                                           AGENT_FIELD_KEY))
-        configConn = database.getConnection(host=config.getServer(), 
+        configConn = database.getConnection(host=config.getDbConfigHost(), 
                                             port=database.ROUTER_SERVER_PORT)
         configConn[database.DB_NAME][database.COLLECTION_NAME].create_index(AGENT_FIELD_KEY)
         

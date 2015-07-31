@@ -209,6 +209,16 @@ def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=No
     
     return expdl['nodeList']
     
+def getMagiNodeList(experimentConfigFile=None, project=None, experiment=None):
+    if not experimentConfigFile:
+        if not project or not experiment:
+            raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
+        experimentConfigFile = getExperimentConfigFile(project, experiment)
+        
+    expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
+    
+    return expdl['magiNodeList']    
+    
 def printDBfields(agentidl):
             agentname = agentidl.get('display', 'Agent')
             desc = agentidl.get('description', 'No description Available')

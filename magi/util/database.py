@@ -75,7 +75,7 @@ def startDBServer(configfile=None, timeout=TIMEOUT):
                          logPath=os.path.join(config.getLogDir(), "mongodb.log"), 
                          timeout=timeout)
 
-def registerShard(mongod=config.getNodeName(), mongos=config.getServer(), 
+def registerShard(mongod=config.getNodeName(), mongos=config.getDbConfigHost(), 
                   timeout=TIMEOUT):
     """
         Function to register a database server as a shard 
