@@ -272,7 +272,7 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
 
 def validateSensorToColletorMap(sensorToCollectorMap):
     experimentNodes = testbed.getTopoGraph().nodes()
-    if not sensorToCollectorMap or not isinstance(sensorToCollectorMap, dict):
+    if not isinstance(sensorToCollectorMap, dict):
         sensorToCollectorMap = dict()
         for node in experimentNodes:
             sensorToCollectorMap[node] = node
