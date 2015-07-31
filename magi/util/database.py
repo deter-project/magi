@@ -26,11 +26,11 @@ configHost          = dbConfig.get('configHost')
 sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap', {})
 
 collector = sensorToCollectorMap.get(config.getNodeName(), 
-                                     sensorToCollectorMap.get('__ALL__'))
+                                     sensorToCollectorMap.get(helpers.ALL))
 isConfigHost = (config.getNodeName() == configHost)
 isCollector = (config.getNodeName() in sensorToCollectorMap.values())
 isSensor = (config.getNodeName() in sensorToCollectorMap.keys() 
-            or '__ALL__' in sensorToCollectorMap.keys())
+            or helpers.ALL in sensorToCollectorMap.keys())
 
 if 'collectionHosts' not in locals():
     collectionHosts = defaultdict(set)

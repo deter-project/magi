@@ -257,16 +257,30 @@ def validateDBDL(dbdl={}, isDBEnabled=None):
         topoGraph = testbed.getTopoGraph()
         experimentNodes = topoGraph.nodes()
         isDBSharded = dbdl.setdefault('isDBSharded', False if len(experimentNodes) == 1 else DEFAULT_DB_SHARDED)
-        if not dbdl.get('sensorToCollectorMap'):
+        sensorToCollectorMap = dbdl.get('sensorToCollectorMap')
+        if not sensorToCollectorMap or not isinstance(sensorToCollectorMap, dict):
             dbdl['sensorToCollectorMap'] = dict()
             for node in experimentNodes:
                 dbdl['sensorToCollectorMap'][node] = node
         else:
-            for (sensor, collector) in dbdl['sensorToCollectorMap'].iteritems():
-                if sensor not in experimentNodes:
-                    del dbdl['sensorToCollectorMap'][sensor]
+            # Cleaning up existing sensorToCollectorMap
+            # Removing non-existing experiment nodes
+            for (sensor, collector) in sensorToCollectorMap.iteritems():
+                if sensor not in experimentNodes + helpers.ALL:
+                    del sensorToCollectorMap[sensor]
                 elif collector not in experimentNodes:
-                    dbdl['sensorToCollectorMap'][sensor] = sensor
+                    # Invalid default collector
+                    if sensor == helpers.ALL:
+                        del sensorToCollectorMap[sensor]
+                    else:
+                        sensorToCollectorMap[sensor] = sensor
+            
+            # Validate that all nodes have a valid collector
+            if helpers.ALL not in sensorToCollectorMap:
+                for node in experimentNodes:
+                    if node not in experimentNodes:
+                        sensorToCollectorMap[node] = node
+                
         if isDBSharded:
             if dbdl.get('configHost') not in experimentNodes:
                 dbdl['configHost'] = testbed.getServer()
