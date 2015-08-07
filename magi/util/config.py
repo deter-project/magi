@@ -71,14 +71,18 @@ software:
 
 """
 
-from magi.testbed import testbed
-from socket import gethostbyname, gaierror
-from networkx.readwrite import json_graph
-import helpers
 import logging
 import os
 import platform
+from socket import gethostbyname, gaierror
 import sys
+
+from magi.db.Server import DATABASE_SERVER_PORT, ROUTER_SERVER_PORT
+from magi.testbed import testbed
+from networkx.readwrite import json_graph
+
+import helpers
+
 
 DEFAULT_DIST_DIR  = "/share/magi/current/"
 DEFAULT_DB_ENABLED = True
@@ -280,11 +284,21 @@ def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=testbed.getTopoGraph().
                                       else DEFAULT_DB_SHARDED)
         sensorToCollectorMap = dbdl.setdefault('sensorToCollectorMap', {})
         validateSensorToColletorMap(sensorToCollectorMap, magiNodeList)
+        # if sensorToCollectorMap is empty
+        if not sensorToCollectorMap:
+            dbdl = {}
+            dbdl['isDBEnabled'] = False
+            return dbdl
+            
+        collectors = sensorToCollectorMap.values()
+        if dbdl.get('configHost') not in collectors:
+            dbdl['configHost'] = getServer(collectors)
+        dbdl['configHost'] = helpers.toControlPlaneNodeName(dbdl['configHost'])
+            
         if isDBSharded:
-            if dbdl.get('configHost') not in magiNodeList:
-                dbdl['configHost'] = getServer(magiNodeList)
+            dbdl['configPort'] = ROUTER_SERVER_PORT
         else:
-            dbdl.pop('configHost', None)
+            dbdl['configPort'] = DATABASE_SERVER_PORT
     else:
         dbdl = {}
         dbdl['isDBEnabled'] = False
@@ -533,11 +547,9 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
         sensorToCollectorMap = databaseConfig['sensorToCollectorMap']
         validateSensorToColletorMap(sensorToCollectorMap, 
                                     experimentConfig['expdl']['magiNodeList'])
-        if isDBSharded:
-            databaseConfig.setdefault('configHost', dbdl['configHost'])
-        else:
-            databaseConfig.pop('configHost', None)
-            
+        databaseConfig.setdefault('configHost', dbdl['configHost'])
+        databaseConfig.setdefault('configPort', dbdl['configPort'])
+        
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig
 

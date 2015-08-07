@@ -16,17 +16,25 @@ import signal
 import time
 
 lastSignalRcvd = 0
+orch = None
 
 def signal_handler(signum, frame):
     '''Set the flag in the Orchestrator module that causes current
     state to be printed to stdout when we get signal SIGINT.'''
     global lastSignalRcvd
+    global orch
     if time.time() - lastSignalRcvd < 2:
-        exit(0)
+        if orch:
+            print 'Cleaning up and exiting'
+            orch.stop(doTearDown=True)
+        else:
+            print 'Exiting'
+            exit(0)
+    else:
+        Orchestrator.show_state = True
+        print "Send SIGINT signal (ctrl+c) again within next 2 seconds to quit"
     lastSignalRcvd = time.time()
-    Orchestrator.show_state = True
-    print "Send SIGINT signal (ctrl+c) again within next 2 seconds to quit"
-
+    
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
     optparser.add_option("-b", "--bridge",
@@ -43,6 +51,14 @@ if __name__ == '__main__':
     optparser.add_option("-r", "--port",
                          dest="port", type="int", default=18808,
                          help="The port to connect to on the bridge node.")
+    
+    optparser.add_option("--dbhost",
+                         dest="dbhost",
+                         help="Address of the host running the database")
+    
+    optparser.add_option("--dbport",
+                         dest="dbport", type="int", default=ROUTER_SERVER_PORT,
+                         help="The port to connect to the database.")
     
     optparser.add_option("-i", "--config", dest="config", help="Experiment configuration file location")
     
@@ -176,34 +192,50 @@ if __name__ == '__main__':
     if options.justparse:
         exit(0)
     
+    bridgeNode = None
+    bridgePort = options.port
+    dbHost = None
+    dbPort = options.dbport
+    
     if options.bridge:
         bridgeNode = options.bridge
-        bridgePort = options.port
-    elif options.config or (options.project and options.experiment):
-        while True:
-            try:
-                (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config, 
-                                                             project=options.project, 
-                                                             experiment=options.experiment)
-                break
-            except IOError:
-                log.info("Config file might still be in the process of being created.")
-                time.sleep(5)
-            
-    else:
-        optparser.print_help()
-        optparser.error("Missing bridge information and "
-                        "experiment configuration information")
+        dbHost = options.bridge
+        
+    if options.dbhost:
+        dbHost = options.dbhost
+    
+    if not bridgeNode or not dbHost:  
+        if options.config or (options.project and options.experiment):
+            while True:
+                try:
+                    (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config, 
+                                                                 project=options.project, 
+                                                                 experiment=options.experiment)
+                    
+                    (dbHost, dbPort) = helpers.getDBConfigHost(experimentConfigFile=options.config, 
+                                                               project=options.project, 
+                                                               experiment=options.experiment)
+                    
+                    break
+                except IOError:
+                    log.info("Config file might still be in the process of being created.")
+                    time.sleep(5)
+                
+        else:
+            optparser.print_help()
+            optparser.error("Missing bridge information and "
+                            "experiment configuration information")
         
     try:   
-        dbPort = ROUTER_SERVER_PORT
         tunnel_cmd = None
         db_tunnel_cmd = None
         if options.tunnel:
-            dbPort = 27020
+            localDbPort = 27020
             tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', bridgePort, bridgeNode, bridgePort, options.username)
-            db_tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', dbPort, bridgeNode, ROUTER_SERVER_PORT, options.username)
+            db_tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', localDbPort, dbHost, dbPort, options.username)
             bridgeNode = '127.0.0.1'
+            dbHost = '127.0.0.1'
+            dbPort = localDbPort
             logging.info('Tunnel setup done')
                 
         from magi_status import getStatus
@@ -234,7 +266,7 @@ if __name__ == '__main__':
     
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
-                            useColor=(not options.nocolor), dbHost=bridgeNode, dbPort=dbPort)
+                            useColor=(not options.nocolor), dbHost=dbHost, dbPort=dbPort)
         orch.run()
         
     finally:

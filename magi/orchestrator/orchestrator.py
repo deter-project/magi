@@ -162,7 +162,8 @@ class Orchestrator(object):
             log.error('Cannot initialize database: %s' %str(e))
         
         try:  
-            self.collection.insert({'aalSvg' : self.aal.cgraph.createSvg()})
+            if self.collection:
+                self.collection.insert({'aalSvg' : self.aal.cgraph.createSvg()})
         except Exception, e:
             log.error('Error creating/storing AAL SVG: %s' %str(e))
             
@@ -287,7 +288,6 @@ class Orchestrator(object):
         
         helpers.exitlog(log, functionName)
         
-        
     def _triggerCausesExitCondition(self, trigger):
         ''' 
             Check the trigger for an exit condition. Return True if it does,
@@ -308,8 +308,17 @@ class Orchestrator(object):
             if (trigger.event == 'RuntimeException'):
                 log.critical('Got a runtime exception from an agent. Jumping '
                              'to exit target.')
-                self.display.exitRunTimeException(trigger)
-                return True
+                exceptionType = trigger.args.get('type')
+                
+                if exceptionType in ['MagiWarning']:
+                    self.display.exitRunTimeException(trigger)
+                    return False
+                elif exceptionType in ['MagiError']:
+                    self.display.exitRunTimeException(trigger)
+                    return False
+                else: #Critical or default
+                    self.display.exitRunTimeException(trigger)
+                    return True
 
         return False    
 
@@ -485,8 +494,9 @@ class Orchestrator(object):
             del self.activeStreams[streamIter.getName()]
             if trigger.target == 'exit':
                 self.display.streamJump(streamIter, trigger.target)
-                self.stopStreams = True  # stop current streams
-                self.doTearDown = True   # attempt a clean teardown before exit
+                # stop current streams
+                # attempt a clean teardown before exit
+                self.stop(doTearDown=True)  
                 if self.record and self.collection:
                     self.collection.insert({'streamName' : streamIter.getName(), 
                                     'eventItr' : streamIter.dbIndex, 
