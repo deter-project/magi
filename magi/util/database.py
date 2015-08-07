@@ -27,7 +27,8 @@ sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap', {})
 
 collector = sensorToCollectorMap.get(config.getNodeName(), 
                                      sensorToCollectorMap.get(helpers.ALL))
-isConfigHost = (config.getNodeName() == configHost)
+isConfigHost = (config.getNodeName() == configHost or 
+                helpers.toControlPlaneNodeName(config.getNodeName()) == configHost)
 isCollector = (config.getNodeName() in sensorToCollectorMap.values())
 isSensor = (config.getNodeName() in sensorToCollectorMap.keys() 
             or helpers.ALL in sensorToCollectorMap.keys())
