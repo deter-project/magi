@@ -45,7 +45,7 @@ def startConfigServer(port=CONFIG_SERVER_PORT,
             raise
 
         log.info("Trying to start mongo config server")
-        mongod = ['mongod', '--configsvr', 
+        mongod = ['/usr/local/bin/mongod', '--configsvr', 
                   '--dbpath', dbPath, 
                   '--port', str(port), 
                   '--logpath', logPath]
@@ -99,7 +99,7 @@ def startShardServer(port=ROUTER_SERVER_PORT,
         getConnection(configHost, port=configPort, block=block, timeout=timeout)
         
         log.info("Trying to start mongo shard server")
-        mongos = ['mongos', '--configdb', '%s:%d'%(configHost, configPort), 
+        mongos = ['/usr/local/bin/mongos', '--configdb', '%s:%d'%(configHost, configPort), 
                   '--port', str(port), 
                   '--noAutoSplit', 
                   '--logpath', logPath]
@@ -164,7 +164,7 @@ def startDBServer(port=DATABASE_SERVER_PORT,
             raise
 
         log.info("Trying to start mongo database server")
-        mongod = ['mongod', 
+        mongod = ['/usr/local/bin/mongod', 
                   '--config', configfile, 
                   '--port', str(port), 
                   '--shardsvr', 
@@ -233,7 +233,7 @@ def registerShard(dbHost, configHost, dbPort=DATABASE_SERVER_PORT, configPort=RO
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
-        if connection.config.shards.find({HOST_FIELD_KEY: "%s:%d" % (dbHost, dbPort)}).count() == 0:
+        if connection.config.shards.find({"host": "%s:%d" % (dbHost, dbPort)}).count() == 0:
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
@@ -256,7 +256,7 @@ def isShardRegistered(dbHost, configHost, dbPort=DATABASE_SERVER_PORT, configPor
     log.info("Checking if database server is registered as a shard")
     while True:
         try:
-            if connection.config.shards.find({HOST_FIELD_KEY: "%s:%d" %(dbHost, dbPort)}).count() != 0:
+            if connection.config.shards.find({"host": "%s:%d" %(dbHost, dbPort)}).count() != 0:
                 helpers.exitlog(log, functionName)
                 return True
         except:
