@@ -79,13 +79,21 @@ class NeighborGroupList(object):
 	def add(self, count, checksum, groupset):
 		ret = groupset - self.nodeGroups  # return only what gets added, ignore doubles
 		self.nodeGroups |= ret
-		self._verify(count, checksum)
+		try:
+			self._verify(count, checksum)
+		except:
+			#Reset to original state
+			self.nodeGroups -= ret
 		return ret
 
 	def remove(self, count, checksum, groupset):
 		ret = groupset & self.nodeGroups # return only what gets removed, i.e. we don't remove what isn't already there
 		self.nodeGroups -= ret
-		self._verify(count, checksum)
+		try:
+			self._verify(count, checksum)
+		except:
+			#Reset to original state
+			self.nodeGroups |= ret
 		return ret
 
 	def newlist(self, count, checksum, groupset):
@@ -283,6 +291,7 @@ class GroupRouter(BlankRouter):
 
 
 	def groupRouterMessage(self, msg):
+		log.debug("Processing group router msg: %s", msg)
 		try:
 			tgl = self.transportGroupLists[msg._receivedon.fileno()]
 			request = yaml.load(msg.data)
@@ -389,6 +398,7 @@ class GroupRouter(BlankRouter):
 
 	def routeMessage(self, msg):
 		""" Return a list of all the transport filenos this message should be sent out based on group names """
+		log.debug("Routing message to destination groups: %s", msg.dstnodes)
 		if GroupRouter.ALLNODES in msg.dstgroups:
 			return set(self.transports.keys())
 
@@ -403,6 +413,8 @@ class GroupRouter(BlankRouter):
 			for dgroup in msg.dstgroups:
 				if dgroup in tgl.txGroups:
 					ret.add(fileno)
+					
+		log.debug("Message routed on transports: %s", ret)
 		return ret
 
 
@@ -423,12 +435,12 @@ class GroupRouter(BlankRouter):
 		log.info("Sending transport add message %s", resend)
 		self.msgintf.send(resend)
 
-		if len(newtgl.rxGroups) > 0:
-			log.debug("Sending a group list out new transport as it initialized to nonzero")
-			response = { 'set': list(newtgl.rxGroups), 'count': len(newtgl.rxGroups), 'checksum': listChecksum(newtgl.rxGroups) }
-			listmsg = MAGIMessage(contenttype=MAGIMessage.YAML, groups=[GroupRouter.ONEHOPNODES], docks=[GroupRouter.DOCK], data=yaml.safe_dump(response))
-			listmsg._routed = [transport.fileno()]
-			self.msgintf.send(listmsg)
+		#if len(newtgl.rxGroups) > 0: #Always send out a group list, as neighbors might have a stale copy
+		log.info("Sending a group list out for the newly initialized transport")
+		response = { 'set': list(newtgl.rxGroups), 'count': len(newtgl.rxGroups), 'checksum': listChecksum(newtgl.rxGroups) }
+		listmsg = MAGIMessage(contenttype=MAGIMessage.YAML, groups=[GroupRouter.ONEHOPNODES], docks=[GroupRouter.DOCK], data=yaml.safe_dump(response))
+		listmsg._routed = [transport.fileno()]
+		self.msgintf.send(listmsg)
 
 
 	def transportRemoved(self, fd, ignored):
