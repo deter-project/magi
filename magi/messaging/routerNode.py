@@ -75,6 +75,7 @@ class NodeRouter(BlankRouter):
 		"""
 			Process a response from a node for its location
 		"""
+		log.debug("Processing response from '%s' for its location", msg.src)
 		if msg.src == self.nodename:
 			# As we allow loopback, this can happen, just ignore it
 			return
@@ -90,6 +91,7 @@ class NodeRouter(BlankRouter):
 		if msg._receivedon is None:
 			log.error("Can't process response from %s, no received on interface", msg.src)
 		else:
+			log.debug("Adding route to cache: %s -> %s", msg.src, msg._receivedon.fileno())
 			self.nodeRouteCache[msg.src] = NodeEntry(msg._receivedon.fileno())
 
 		# Check for messages waiting for route and queue
@@ -113,6 +115,7 @@ class NodeRouter(BlankRouter):
 			Process a request for a node route
 		"""
 		# TODO: Should we cache src now?
+		log.debug("Processing route request")
 		if nodename.strip() == self.nodename:
 			resp = MAGIMessage(contenttype=MAGIMessage.YAML, docks=[NodeRouter.DOCK], groups=[GroupRouter.ALLNODES], data=yaml.safe_dump({'response':True}))
 			self.msgintf.send(resp)
@@ -122,6 +125,7 @@ class NodeRouter(BlankRouter):
 		"""
 			Need a route, see if we should sent a request and if so, do it
 		"""
+		log.debug("Requesting route for %s", node)
 		reqt = self.inProcessRequests.get(node, 0)
 		now = time.time()
 		if reqt + 10 > now:
@@ -131,13 +135,14 @@ class NodeRouter(BlankRouter):
 		self.inProcessRequests[node] = now
 		# Send a request out all interfaces except local and receiving interface
 		req = MAGIMessage(contenttype=MAGIMessage.BLOB, docks=[NodeRouter.DOCK], groups=[GroupRouter.ALLNODES], data=yaml.safe_dump({'request':node}))
-		req._routed = set(self.transports.keys()) - set([0, intransport.fileno()])
+		req._routed = set(self.transports.keys()) - set([0])
 		self.msgintf.send(req)
 
 
 	def routeMessage(self, msg):
 		""" Return a list of all the transport filenos this message should be sent out based on node names """
 		ret = set()
+		log.debug("Routing message to destination nodes: %s", msg.dstnodes)
 		for node in msg.dstnodes:
 			if node == self.nodename:
 				ret.add(0)
@@ -150,6 +155,6 @@ class NodeRouter(BlankRouter):
 			# Need to send RouteRequest and pause message for this node
 			self.pausedMessages[node].append(msg)
 			self.requestRoute(msg._receivedon, node)
-
+		log.debug("Message routed on transports: %s", ret)
 		return ret
 
