@@ -32,7 +32,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             self.dbProcesses = set()
             self.dbLogHandler = None
             self.setupDatabase()
-            self.setupDBLogHandler()
+            #self.setupDBLogHandler()
         except:
             log.exception('Exception while initializing data manager')
             self.stop(None)
@@ -66,7 +66,7 @@ class DataManAgent(NonBlockingDispatchAgent):
                 dp = database.startDBServer()
                 if dp: #if a database server was started with this call
                     self.dbProcesses.add(dp)
-            
+                    
             log.info("Waiting for collector database to be added as a shard")
             database.isShardRegistered(dbHost=database.getCollector(), block=True)
             log.info("Collector database has been added as a shard")
@@ -78,6 +78,10 @@ class DataManAgent(NonBlockingDispatchAgent):
                 dp = database.startDBServer()
                 if dp: #if a database server was started with this call
                     self.dbProcesses.add(dp)
+            
+            log.info("Waiting for collector database to be up and running")        
+            database.getConnection()
+            log.info("Collector database up")
                 
         helpers.exitlog(log, functionName)
          
