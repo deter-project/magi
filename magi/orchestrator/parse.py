@@ -397,7 +397,7 @@ class UnloadAgentCall(LoadUnloadAgentCall):
         LoadUnloadAgentCall.__init__(self, False, name, **kwargs)
 
 
-# TODO: add intellegence to build and destroy groups as they are used or unused
+# TODO: add intelligence to build and destroy groups as they are used or unused
 class GroupCall(BaseMethodCall):
     """" Base class for joinGroup, leaveGroup calls. """
     def __init__(self, load, name, nodes):
@@ -511,10 +511,12 @@ class AAL(object):
             if self.startup: 
             # Stand up the experiemnt, load agents, build groups.
                 for name, nodes in self.rawAAL['groups'].iteritems():
+                    if name == '__ALL__': continue # all nodes by default receive messages sent to the '__ALL__' group
                     self.setupStream.append(BuildGroupCall(name, nodes))
     
                 # Add triggers for the BuildGroup calls 
                 for name, nodes in self.rawAAL['groups'].iteritems():
+                    if name == '__ALL__': continue # no GroupBuild message sent for '__ALL__' group
                     self.setupStream.append(
                         TriggerList([
                             {'event': 'GroupBuildDone', 'group': name, 
@@ -560,35 +562,39 @@ class AAL(object):
             # We always define a teardown stream as jumping to target exit 
             # activates this stream 
             # tear down the experiment, unload agents, leave groups.
-            unloadAgentStream = Stream()
-    
+            
+            # Add unload agent events
             for name, agent in self.rawAAL['agents'].iteritems():
                 if 'path' in agent:
                     self.teardownStream.append(UnloadAgentCall(name, **agent))
-                
-                    # Add triggers to ensure the agents are unloaded correctly 
-                    # However, add them only after all the unload agent events
-                    # Use the same timeouts as setup stream
-                    timeout = agent.get('loadTimeout', self.agentLoadTimeout)
-                    unloadAgentStream.append(
-                        TriggerList([
-                                {'event': 'AgentUnloadDone',
-                                'agent': name,
-                                'nodes': self.rawAAL['groups'][agent['group']]},
-                                {'timeout': int(timeout), 'target': 'exit'} 
-                                 ]))
     
-            # Now, add the unload agent triggers
-            self.teardownStream.extend(unloadAgentStream)
-                
+            # Add triggers to ensure the agents are unloaded correctly 
+            # However, add them only after all the unload agent events
+            # Use the same timeouts as setup stream
+            for name, agent in self.rawAAL['agents'].iteritems():
+                if 'path' in agent:
+                    timeout = agent.get('loadTimeout', self.agentLoadTimeout)
+                    self.teardownStream.append(
+                        TriggerList([
+                                {'event': 'AgentUnloadDone', 'agent': name,
+                                'nodes': self.rawAAL['groups'][agent['group']]},
+                                {'timeout': int(timeout)}
+                                ]))
+            
+            # Add leave group events
             for name, nodes in self.rawAAL['groups'].iteritems():
+                if name == '__ALL__': continue # no GroupBuild message sent for '__ALL__' group    
                 self.teardownStream.append(LeaveGroupCall(name, nodes))
+                
+            # Add triggers to ensure groups are left correctly
             for name, nodes in self.rawAAL['groups'].iteritems():
+                if name == '__ALL__': continue # no LeaveGroup message sent for '__ALL__' group
                 self.teardownStream.append(
                     TriggerList([
                         {'event': 'GroupTeardownDone', 'group': name, 
                          'nodes': nodes},
-                        {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
+                        {'timeout': int(groupBuildTimeout)}
+                        ]))
     
     
             ##### EVENT STREAMS #####
