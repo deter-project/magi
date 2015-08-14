@@ -129,7 +129,7 @@ class NodeRouter(BlankRouter):
 		reqt = self.inProcessRequests.get(node, 0)
 		now = time.time()
 		if reqt + 10 > now:
-			log.info("Squelch route request for %s as there is one in process", node)
+			log.debug("Squelch route request for %s as there is one in process", node)
 			return
 			
 		self.inProcessRequests[node] = now
@@ -142,7 +142,8 @@ class NodeRouter(BlankRouter):
 	def routeMessage(self, msg):
 		""" Return a list of all the transport filenos this message should be sent out based on node names """
 		ret = set()
-		log.debug("Routing message to destination nodes: %s", msg.dstnodes)
+		log.debug("Message to be routed: %s", msg)
+		#log.debug("Routing message to destination nodes: %s", msg.dstnodes)
 		for node in msg.dstnodes:
 			if node == self.nodename:
 				ret.add(0)

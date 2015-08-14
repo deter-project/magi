@@ -82,8 +82,9 @@ class NeighborGroupList(object):
 		try:
 			self._verify(count, checksum)
 		except:
-			#Reset to original state
+			#Reset nodeGroups to original state before sending back exception
 			self.nodeGroups -= ret
+			raise
 		return ret
 
 	def remove(self, count, checksum, groupset):
@@ -92,18 +93,25 @@ class NeighborGroupList(object):
 		try:
 			self._verify(count, checksum)
 		except:
-			#Reset to original state
+			#Reset nodeGroups to original state before sending back exception
 			self.nodeGroups |= ret
+			raise
 		return ret
 
 	def newlist(self, count, checksum, groupset):
+		nodeGroupsCopy = set(self.nodeGroups) #to reset in case verification fails
+		add = groupset - self.nodeGroups # All entries that are new to the list
+		remove = self.nodeGroups - groupset # All entries that are no longer in the new list
 		self.nodeGroups = groupset
 		try:
 			self._verify(count, checksum)
-		except GroupStateError, e:
+		except GroupStateError:
 			# this is really bad if the checksum fails here, it means we are not calculating correctly
-			log.severe("Recevied a new list but checks failed.  Stopping loop here, groups will be out of sync: %s", e)
-			return
+			log.severe("Received a new list but checks failed.")
+			#Reset nodeGroups to original state before sending back exception
+			self.nodeGroups = nodeGroupsCopy
+			raise
+		return (add, remove)
 
 
 
@@ -159,18 +167,11 @@ class TransportGroupList(object):
 				else:
 					if request['count'] == len(nentry.nodeGroups) and request['checksum'] == nentry.checksum: 
 						return ([], []) # Nothing actually changed according to our list, shortcut it here
+					
+					(added, removed) = nentry.newlist(request['count'], request['checksum'], set(request['set']))
+					tadded = self.txGroups.incGroup(added)
+					tremoved = self.txGroups.decGroup(removed)
 	
-					namelist = set(request['set'])
-					for value in nentry.nodeGroups - namelist:  # All entries that are no longer in the new list
-						if self.txGroups.dec(value):
-							tremoved.append(value)
-					for value in namelist - nentry.nodeGroups: # All entries that are new to the list
-						if self.txGroups.inc(value):
-							tadded.append(value)
-		
-					# Actually apply the change to the neighbor entry
-					nentry.newlist(request['count'], request['checksum'], namelist)
-
 		except GroupStateError:
 			msg = MAGIMessage(contenttype=MAGIMessage.YAML, nodes=[src], docks=[GroupRouter.DOCK], data=yaml.safe_dump({'resend':True}))
 			msg._routed = [self.fileno]
@@ -211,6 +212,7 @@ class TransportGroupList(object):
 			request['count'] = len(self.rxGroups)
 			request['checksum'] = listChecksum(self.rxGroups)
 			msg = MAGIMessage(contenttype=MAGIMessage.YAML, groups=[GroupRouter.ONEHOPNODES], docks=[GroupRouter.DOCK], data=yaml.safe_dump(request))
+			log.debug("Sending request for group changes to neighbors: %s", msg)
 			msg._routed = [self.fileno]
 			self.msgintf.send(msg)
 
@@ -248,12 +250,12 @@ class GroupRouter(BlankRouter):
 			TransportGroup addressed by fd==0.  The request consists of a type (join, leave), the group name,
 			and a string value that indicates the process/thread/object that requested the join
 		"""
-		log.debug("received request %s", req)
+		log.debug("Received group request from user process: %s", req)
 		if req.type == 'join':
 			# Filter out repeated calls with same group,caller when already active
 			if req.caller in self.localGroupFlags[req.group]: return 
 			self.localGroupFlags[req.group].add(req.caller)
-
+			
 			# TransportGroupList takes care of calls from different callers 
 			if self.transportGroupLists[0].join(req.group):
 				# the join actually changed state, update info and send message
@@ -394,11 +396,10 @@ class GroupRouter(BlankRouter):
 		msg.data = ','.join(ackdata[1:2] + ackgroups)
 
 
-
-
 	def routeMessage(self, msg):
 		""" Return a list of all the transport filenos this message should be sent out based on group names """
-		log.debug("Routing message to destination groups: %s", msg.dstnodes)
+		log.debug("Message to be routed: %s", msg)
+		#log.debug("Routing message to destination groups: %s", msg.dstnodes)
 		if GroupRouter.ALLNODES in msg.dstgroups:
 			return set(self.transports.keys())
 
@@ -436,7 +437,7 @@ class GroupRouter(BlankRouter):
 		self.msgintf.send(resend)
 
 		#if len(newtgl.rxGroups) > 0: #Always send out a group list, as neighbors might have a stale copy
-		log.info("Sending a group list out for the newly initialized transport")
+		log.debug("Sending a group list out for the newly initialized transport")
 		response = { 'set': list(newtgl.rxGroups), 'count': len(newtgl.rxGroups), 'checksum': listChecksum(newtgl.rxGroups) }
 		listmsg = MAGIMessage(contenttype=MAGIMessage.YAML, groups=[GroupRouter.ONEHOPNODES], docks=[GroupRouter.DOCK], data=yaml.safe_dump(response))
 		listmsg._routed = [transport.fileno()]
