@@ -443,6 +443,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     localInfo.setdefault('dbDir', expNodePaths['db'])
     localInfo.setdefault('tempDir', expNodePaths['temp'])
     localInfo.setdefault('distributionPath', experimentConfig['expdl']['distributionPath'])
+    localInfo.setdefault('processAgentsCommPort', 18809)
     
     testbedPaths = experimentConfig['expdl']['testbedPaths']
     localInfo.setdefault('experimentDir', testbedPaths['experimentDir'])
@@ -464,7 +465,6 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
                                                             'peernodes': peerNodes}
     
     localInfo['interfaceInfo'] = interfaceInfo
-    #config['processAgentsCommPort'] = None
     
     nodeConfig.setdefault('topoGraph', experimentConfig['expdl']['topoGraph'])
     

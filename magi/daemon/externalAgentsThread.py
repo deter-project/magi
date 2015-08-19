@@ -44,7 +44,7 @@ class ExternalAgentsThread(threading.Thread):
 		self.fromNetwork = Queue.Queue()
 		self.messaging = messaging
 
-		self.commPort = config.getConfig().get('processAgentsCommPort')
+		self.commPort = config.getConfig()['localInfo'].get('processAgentsCommPort')
 		if not self.commPort:
 			self.commPort = 18809
 			
