@@ -79,9 +79,9 @@ class DataManAgent(NonBlockingDispatchAgent):
                 if dp: #if a database server was started with this call
                     self.dbProcesses.add(dp)
             
-            log.info("Waiting for collector database to be up and running")        
-            database.getConnection()
-            log.info("Collector database up")
+        log.info("Waiting for collector database to be up and running")        
+        database.getConnection()
+        log.info("Collector database up")
                 
         helpers.exitlog(log, functionName)
          
