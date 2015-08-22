@@ -68,9 +68,13 @@ def installC(base, check, rpath="/share/magi/current"):
             
         log.info("Successfully installed %s", base)
 
-def installPreBuilt(base, rpath="/share/magi/current"):
+def installPreBuilt(base, check, rpath="/share/magi/current"):
     log.info("Installing %s", base)
     
+    if os.path.exists(check):
+            log.info("%s already installed, found file %s", base, check)
+            return
+            
     extractDistribution(base, '/tmp', rpath)
             
     distDir = glob.glob(os.path.join("/tmp", base+'*'))[0] # Need glob as os.chdir doesn't expand

@@ -217,9 +217,9 @@ if __name__ == '__main__':
                                         #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
                                         #Copying prebuilt binaries for mongodb
                                         if is_os_64bit():
-                                                installPreBuilt('mongodb-linux-x86_64', rpath)
+                                                installPreBuilt('mongodb-linux-x86_64', '/usr/local/bin/mongo', rpath)
                                         else:
-                                                installPreBuilt('mongodb-linux-i686', rpath)
+                                                installPreBuilt('mongodb-linux-i686', '/usr/local/bin/mongo', rpath)
                         else:
                                 log.info("Database server is not required on this node")
                                 
