@@ -131,7 +131,11 @@ class Orchestrator(object):
         """
         # If true, stop the current streams
         self.stopStreams = False
-        # If true, attempt to run teardownStreams when shutting down
+        
+        # If true, attempt to run setup streams when starting up
+        self.doSetup = True
+        
+        # If true, attempt to run teardown streams when shutting down
         self.doTearDown = False
 
         self.messaging = messenger
@@ -191,17 +195,19 @@ class Orchestrator(object):
         self.messaging.join("control", "orchestrator")
         time.sleep(0.1)  # poor man's thread.yield
 
-        log.info("Running Initialization Stream")
-        self.activeStreams = {'initialization' : 
-                        StreamIterator('initialization', 
-                                       self.aal.getSetupStream())}
-        self.runStreams()
+        if self.doSetup:
+            log.info("Running Initialization Streams")
+            for setupStream in self.aal.getSetupStreams():
+                sn = setupStream.name
+                self.activeStreams = { sn : StreamIterator(sn, setupStream) }
+                self.runStreams()
 
-        log.info("Running Event Stream")
+        log.info("Running Event Streams")
         self.activeStreams = { k : StreamIterator(k, self.aal.getStream(k)) 
                               for k in self.aal.getStartKeys() }
-        if self.aal.getTotalStreams() > 1:
-            log.debug("TotalStreams: %d", self.aal.getTotalStreams())
+        
+        log.debug("Total Streams: %d", self.aal.getTotalStreams())
+        log.debug("Start Streams: %d", self.aal.getTotalStartStreams())
 
         self.record = True
         self.overWriteCachedTriggers = True
@@ -212,13 +218,14 @@ class Orchestrator(object):
         self.overWriteCachedTriggers = False
 
         if self.doTearDown:
-            log.info("Running Exit Stream")
-            self.activeStreams = {'exit' : 
-                            StreamIterator('exit', 
-                                           self.aal.getTeardownStream())}
-            self.stopStreams = False
+            log.info("Running Exit Streams")
             self.exitOnFailure = False
-            self.runStreams()
+            for teardownStream in self.aal.getTeardownStreams():
+                sn = teardownStream.name
+                self.activeStreams = { sn : StreamIterator(sn, teardownStream) }
+                self.stopStreams = False
+                self.runStreams()
+                
 
         self.messaging.leave("control", "orchestrator")
         time.sleep(1) # TODO: some way of confirming that everything has been sent
