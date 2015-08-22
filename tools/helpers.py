@@ -6,7 +6,7 @@ import logging
 from os import path
 import os
 import signal
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import time
 
 
@@ -23,8 +23,10 @@ def call(*popenargs, **kwargs):
         log.info("Calling %s" % (popenargs))
         if "shell" not in kwargs:
                 kwargs["shell"] = True
-        process = Popen(*popenargs, **kwargs)
-        process.wait()
+        process = Popen(*popenargs, stdout=PIPE, stderr=PIPE, **kwargs)
+        out, err = process.communicate()
+        if not process.returncode:
+            log.error(err)
         return process.returncode
 
 def installPython(base, check, commands, rpath="/share/magi/current"):
