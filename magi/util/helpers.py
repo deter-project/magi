@@ -218,7 +218,23 @@ def getMagiNodeList(experimentConfigFile=None, project=None, experiment=None):
     expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
     
     return expdl['magiNodeList']    
-    
+
+def getServer(nodeList):
+    # returns control if  it finds a node named "control" 
+    # in the given node list otherwise it returns the
+    # first node in the alpha-numerically sorted list
+    if isinstance(nodeList, set):
+        nodeList = list(nodeList)
+    if not isinstance(nodeList, list):
+        raise TypeError("node list should be a set or list")
+    nodeList.sort()
+    host = nodeList[0]
+    for node in nodeList:
+        if 'control' == node.lower():
+            host = 'control'
+            break
+    return host 
+
 def printDBfields(agentidl):
             agentname = agentidl.get('display', 'Agent')
             desc = agentidl.get('description', 'No description Available')
