@@ -341,7 +341,7 @@ def validateExpDL(expdl={}, distributionPath=None):
         expdl = dict()
         
     expdl.setdefault('topoGraph', json_graph.node_link_data(testbed.getTopoGraph()))
-    nodeList = testbed.getTopoGraph().nodes()
+    nodeList = json_graph.node_link_graph(expdl['topoGraph']).nodes()
     nodeList.sort()
     expdl['nodeList'] = nodeList
     expdl.setdefault('magiNodeList', nodeList)
@@ -472,15 +472,15 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     softwareConfig = nodeConfig.setdefault('software', [])
     
     if not softwareConfig:
-        osname = platform.uname()[0].lower()
-        dist = platform.dist()[0].lower()
-        rootdir = experimentConfig.get('expdl', {}).get('distributionPath', sys.path[0])
-    
-        # Try our local prebuilt software first, this gets around dist installers pointing outside the testbed and long timeouts
+        # Try our local prebuilt software first 
+        # this gets around dist installers pointing outside the testbed and long timeouts
+        rootdir = experimentConfig['expdl'].get('distributionPath', sys.path[0])
         softwareConfig.append({'type': 'rpmfile', 'dir': os.path.join(rootdir, getArch())})
         softwareConfig.append({'type': 'archive', 'dir': os.path.join(rootdir, getArch())})
     
         # then dist installer
+        osname = platform.uname()[0].lower()
+        dist = platform.dist()[0].lower()
         if dist in ('ubuntu', 'debian'):
             softwareConfig.append({ 'type': 'apt'})
         elif dist in ('redhat', 'fedora'):
