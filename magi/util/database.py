@@ -47,9 +47,11 @@ def isConfigHost():
             helpers.toControlPlaneNodeName(config.getNodeName()) == configHost)
     
 def isCollector():
+    sensorToCollectorMap = getSensorToCollectorMap()
     return (config.getNodeName() in sensorToCollectorMap.values())
 
 def isSensor():
+    sensorToCollectorMap = getSensorToCollectorMap()
     return (config.getNodeName() in sensorToCollectorMap.keys() 
             or helpers.ALL in sensorToCollectorMap.keys())
     
