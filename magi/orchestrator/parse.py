@@ -557,7 +557,7 @@ class AAL(object):
                 
                 for name, agent in self.rawAAL['agents'].iteritems():
                     # for agents that need to be installed
-                    if 'path' in agent:
+                    if 'path' in agent or 'tardata' in agent:
                         # create an internal agent dock using unique name of agent. 
                         # if specified in the AAL, do not do this. 
                         if not 'dock' in agent:
@@ -575,7 +575,7 @@ class AAL(object):
                 # Now, add the load agent triggers
                 for name, agent in self.rawAAL['agents'].iteritems():
                     # for agents that need to be installed
-                    if 'path' in agent:
+                    if 'path' in agent or 'tardata' in agent:
                         
                         # Add triggers to ensure the agents are loaded correctly 
                         # However, add them only after all the load agent events
@@ -599,14 +599,14 @@ class AAL(object):
                 
             # Add unload agent events
             for name, agent in self.rawAAL['agents'].iteritems():
-                if 'path' in agent:
+                if 'path' in agent or 'tardata' in agent:
                     unloadAgentStream.append(UnloadAgentCall(name, **agent))
     
             # Add triggers to ensure the agents are unloaded correctly 
             # However, add them only after all the unload agent events
             # Use the same timeouts as setup stream
             for name, agent in self.rawAAL['agents'].iteritems():
-                if 'path' in agent:
+                if 'path' in agent or 'tardata' in agent:
                     timeout = agent.get('loadTimeout', self.agentLoadTimeout)
                     unloadAgentStream.append(
                         TriggerList([
