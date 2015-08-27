@@ -306,6 +306,9 @@ def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=testbed.getTopoGraph().
     return dbdl
 
 def validateSensorToColletorMap(sensorToCollectorMap, magiNodes):
+    log.info('validateSensorToColletorMap')
+    log.info(sensorToCollectorMap)
+    log.info(magiNodes)
     if not isinstance(sensorToCollectorMap, dict):
         sensorToCollectorMap = dict()
         for node in magiNodes:
@@ -313,7 +316,7 @@ def validateSensorToColletorMap(sensorToCollectorMap, magiNodes):
     else:
         # Cleaning up existing sensorToCollectorMap
         # Removing non-existing experiment nodes
-        for (sensor, collector) in sensorToCollectorMap.iteritems():
+        for (sensor, collector) in sensorToCollectorMap.copy().iteritems():
             if sensor not in magiNodes + [helpers.ALL]:
                 del sensorToCollectorMap[sensor]
             elif collector not in magiNodes:
