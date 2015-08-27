@@ -56,7 +56,7 @@ class Daemon(threading.Thread):
 		self.extAgentsThread = ExternalAgentsThread(self.messaging)
 		self.extAgentsThread.start()
 
-		if database.isDBEnabled:
+		if database.isDBEnabled():
 			try:
 				log.info("Starting Data Manager Agent")
 				self.startAgent(code=magi.modules.dataman.__path__[0], 

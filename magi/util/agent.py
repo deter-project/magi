@@ -246,7 +246,8 @@ class TrafficClientAgent(Agent):
         """
         self.logfile = os.path.join(config.getLogDir(), '%s_%s.log' % (self.name, time.strftime("%Y-%m-%d_%H:%M:%S")))
         
-        if database.isDBEnabled:
+        if database.isDBEnabled():
+            log.info("Database enabled. Creating collection instance.")
             self.collection = database.getCollection(self.name)
             
         while not self.done:

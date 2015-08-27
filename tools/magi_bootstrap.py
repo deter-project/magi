@@ -211,8 +211,8 @@ if __name__ == '__main__':
                 # Now that the system is configured, import database library
                 from magi.util import database
                 
-                if database.isDBEnabled:
-                        if (database.isCollector or database.isConfigHost):
+                if database.isDBEnabled():
+                        if (database.isCollector() or database.isConfigHost()):
                                 if not options.noinstall:
                                         #installPackage('mongodb', 'mongodb') #Package installer starts mongodb with default configuration
                                         #Copying prebuilt binaries for mongodb

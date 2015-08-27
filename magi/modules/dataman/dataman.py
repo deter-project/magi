@@ -42,9 +42,9 @@ class DataManAgent(NonBlockingDispatchAgent):
         helpers.entrylog(log, functionName, locals())
         
         log.info("Setting up database")
-        if database.isDBSharded:
+        if database.isDBSharded():
             log.info("Setting up a distributed database")
-            if database.isConfigHost:
+            if database.isConfigHost():
                 log.info("Starting mongo config server")
                 cp = database.startConfigServer()
                 if cp: #if a database server was started with this call
@@ -61,7 +61,7 @@ class DataManAgent(NonBlockingDispatchAgent):
                 database.setBalancerState(False)
                 log.info("Configuring database cluster")
                 self.configureDBCluster()
-            elif database.isCollector:
+            elif database.isCollector():
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
                 if dp: #if a database server was started with this call
@@ -73,7 +73,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             
         else:
             log.info("Setting up a non-distributed database")
-            if database.isCollector:
+            if database.isCollector():
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
                 if dp: #if a database server was started with this call
@@ -93,14 +93,16 @@ class DataManAgent(NonBlockingDispatchAgent):
         functionName = self.configureDBCluster.__name__
         helpers.entrylog(log, functionName, locals())
         
+        sensorToCollectorMap = database.sensorToCollectorMap()
+        
         log.info("Registering collector database servers as shards")
-        cnodes = set(database.sensorToCollectorMap.values())
+        cnodes = set(sensorToCollectorMap.values())
         for collector in cnodes:
             database.registerShard(collector)
             
         log.info("Configuring database cluster according to the sensor:collector mapping")
-        snodes = set(database.sensorToCollectorMap.keys())
-        if helpers.ALL in database.sensorToCollectorMap:
+        snodes = set(sensorToCollectorMap.keys())
+        if helpers.ALL in sensorToCollectorMap:
             allnodes = set(config.getTopoGraph().nodes())
             snodes.remove(helpers.ALL)
             rnodes = allnodes - snodes
@@ -109,16 +111,16 @@ class DataManAgent(NonBlockingDispatchAgent):
             
         for sensor in snodes:
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[sensor])
+                               sensorToCollectorMap[sensor])
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[sensor], 
+                               sensorToCollectorMap[sensor], 
                                database.LOG_COLLECTION_NAME)
             
         for sensor in rnodes:
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[helpers.ALL])
+                               sensorToCollectorMap[helpers.ALL])
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[helpers.ALL], 
+                               sensorToCollectorMap[helpers.ALL], 
                                database.LOG_COLLECTION_NAME)
         
         log.info("Creating index for %s.%s on key '%s'" %(database.DB_NAME, 
@@ -199,7 +201,7 @@ class DataManAgent(NonBlockingDispatchAgent):
                     nodedata = nodedata + database.getData(agent, 
                                                            filters_copy, 
                                                            tsChunk, 
-                                                           database.configHost, 
+                                                           database.configHost(), 
                                                            database.ROUTER_SERVER_PORT)
                 data[agent][node] = nodedata
         
@@ -248,7 +250,8 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         node = node.split(".")[0]
         
-        result = database.sensorToCollectorMap.get(node, database.sensorToCollectorMap.get('__ALL__'))
+        sensorToCollectorMap = database.sensorToCollectorMap()
+        result = sensorToCollectorMap.get(node, sensorToCollectorMap.get('__ALL__'))
         helpers.exitlog(log, functionName, result)
         return result
         
