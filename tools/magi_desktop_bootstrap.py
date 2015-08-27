@@ -10,24 +10,33 @@ import time
 
 from magi import __version__
 from magi.util import helpers
+from magi.util import config
 
+import networkx as nx
+from networkx.readwrite import json_graph
 
 class BootstrapException(Exception): pass
 
 log = logging.getLogger()
 
-def createConfigFiles(nodeName, bridgeNode, externalAgentsCommPort=28809):
+def createConfigFiles(nodeName, topoGraph, externalAgentsCommPort=28809):
+	
+	config.setNodeDir("/tmp/%s" %(nodeName))
+	bridgeNode = helpers.getServer(topoGraph.nodes())
+	
+	expConf = dict()
+	expConf['expdl'] = dict()
+	expConf['expdl']['topoGraph'] = json_graph.node_link_data(topoGraph)
+	expConf = config.loadExperimentConfig(experimentConfig=expConf, 
+										  distributionPath='/tmp/magi', 
+										  isDBEnabled=True)
 	
 	localInfo = dict()
-	localInfo['configDir'] = "/tmp/%s/config" %(nodeName)
-	localInfo['logDir'] = "/tmp/%s/logs" %(nodeName)
-	localInfo['dbDir'] = "/tmp/%s/db" %(nodeName)
-	localInfo['tempDir'] = "/tmp/%s/tmp" %(nodeName)
 	localInfo['nodename'] = nodeName
 	localInfo['processAgentsCommPort'] = externalAgentsCommPort
 	
 	dbConfig = dict()
-	dbConfig['isDBEnabled'] = False
+	dbConfig['isDBEnabled'] = True
 	dbConfig['isDBSharded'] = False
 	dbConfig['sensorToCollectorMap'] = {nodeName: nodeName}
 	
@@ -38,21 +47,20 @@ def createConfigFiles(nodeName, bridgeNode, externalAgentsCommPort=28809):
 	else:
 	     transportsConfig.append({'class': 'TCPTransport', 'address': bridgeNode, 'port': 28808})
 	
-	nodeConfig = dict()
-	nodeConfig['localInfo'] = localInfo
-	nodeConfig['database'] = dbConfig
-	nodeConfig['transports'] = transportsConfig
+	nodeConf = dict()
+	nodeConf['localInfo'] = localInfo
+	nodeConf['database'] = dbConfig
+	nodeConf['transports'] = transportsConfig
 	
-	configDir = localInfo['configDir']
+	nodeConf = config.loadNodeConfig(nodeConf, expConf)
+	
+	configDir = config.getConfigDir()
 	helpers.makeDir(configDir)
 	
-	nodeConfFile = "%s/node.conf" %(configDir)
-	helpers.writeYaml(nodeConfig, nodeConfFile)
+	helpers.writeYaml(expConf, config.getExperimentConfFile())
+	helpers.writeYaml(nodeConf, config.getNodeConfFile())
 	
-	expConfFile = "%s/experiment.conf" %(configDir)
-	helpers.writeYaml({}, expConfFile)
-	
-	return (nodeConfFile, expConfFile)
+	return (config.getNodeConfFile(), config.getExperimentConfFile())
 	
 ETC_HOSTS_BEGIN = "#--MAGI DESKTOP CONFIGURATION BEGIN--#"
 ETC_HOSTS_END = "#--MAGI DESKTOP CONFIGURATION END--#"
@@ -136,17 +144,19 @@ if __name__ == '__main__':
 		bridgeNode = helpers.getServer(nodeSet)
 		externalAgentsCommPort = 18810
 		hostsConfigEntries = []
+		topoGraph = nx.Graph()
 		
 		for nodeName in nodeSet:
 			hostsConfigEntries.append("%s	%s" %('127.0.0.1', nodeName))
+			topoGraph.add_node(nodeName)
 			
 		addEtcHostsMininetConfig(hostsConfigEntries)
 		
 		for nodeName in nodeSet:
 			
 			(nodeConf, expConf) = createConfigFiles(nodeName=nodeName, 
-												bridgeNode=bridgeNode,
-												externalAgentsCommPort=externalAgentsCommPort)
+												    topoGraph=topoGraph,
+												    externalAgentsCommPort=externalAgentsCommPort)
 			externalAgentsCommPort += 1
 			
 			log.info("Starting daemon for node '%s'" %(nodeName))
