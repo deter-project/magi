@@ -93,7 +93,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         functionName = self.configureDBCluster.__name__
         helpers.entrylog(log, functionName, locals())
         
-        sensorToCollectorMap = database.sensorToCollectorMap()
+        sensorToCollectorMap = database.getSensorToCollectorMap()
         
         log.info("Registering collector database servers as shards")
         cnodes = set(sensorToCollectorMap.values())
@@ -250,7 +250,7 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         node = node.split(".")[0]
         
-        sensorToCollectorMap = database.sensorToCollectorMap()
+        sensorToCollectorMap = database.getSensorToCollectorMap()
         result = sensorToCollectorMap.get(node, sensorToCollectorMap.get('__ALL__'))
         helpers.exitlog(log, functionName, result)
         return result
