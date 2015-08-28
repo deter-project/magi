@@ -14,49 +14,46 @@ from magi.util import config
 
 import networkx as nx
 from networkx.readwrite import json_graph
+from magi.util.database import isDBEnabled
 
 class BootstrapException(Exception): pass
 
 log = logging.getLogger()
 
-def createConfigFiles(nodeName, topoGraph, externalAgentsCommPort=28809):
+def createConfigFiles(nodeName, topoGraph, externalAgentsCommPort=28809, isDBEnabled=True):
 	
 	config.setNodeDir("/tmp/%s" %(nodeName))
 	bridgeNode = helpers.getServer(topoGraph.nodes())
 	
+	expdl = dict()
+	expdl['topoGraph'] = json_graph.node_link_data(topoGraph)
+	
+	dbdl = dict()
+	if isDBEnabled:
+		dbdl['isDBEnabled'] = True
+		dbdl['isDBSharded'] = False
+		dbdl['sensorToCollectorMap'] = {'__ALL__': bridgeNode}
+	else:
+		dbdl['isDBEnabled'] = False
+		
 	expConf = dict()
-	expConf['expdl'] = dict()
-	expConf['expdl']['topoGraph'] = json_graph.node_link_data(topoGraph)
+	expConf['expdl'] = expdl
+	expConf['dbdl'] = dbdl
+	
 	expConf = config.loadExperimentConfig(experimentConfig=expConf, 
-										  distributionPath='/tmp/magi', 
-										  isDBEnabled=True)
+										  distributionPath='/tmp/magi',
+										  transportClass=helpers.TRANSPORT_TCP)
 	
 	localInfo = dict()
 	localInfo['nodename'] = nodeName
 	localInfo['processAgentsCommPort'] = externalAgentsCommPort
 	
-	dbConfig = dict()
-	dbConfig['isDBEnabled'] = True
-	dbConfig['isDBSharded'] = False
-	dbConfig['sensorToCollectorMap'] = {nodeName: nodeName}
-	
-	transportsConfig = []
-	if nodeName == bridgeNode:
-	     transportsConfig.append({'class': 'TCPServer', 'address': '0.0.0.0', 'port': 18808})
-	     transportsConfig.append({'class': 'TCPServer', 'address': '0.0.0.0', 'port': 28808})
-	else:
-	     transportsConfig.append({'class': 'TCPTransport', 'address': bridgeNode, 'port': 28808})
-	
 	nodeConf = dict()
 	nodeConf['localInfo'] = localInfo
-	nodeConf['database'] = dbConfig
-	nodeConf['transports'] = transportsConfig
 	
 	nodeConf = config.loadNodeConfig(nodeConf, expConf)
 	
-	configDir = config.getConfigDir()
-	helpers.makeDir(configDir)
-	
+	helpers.makeDir(config.getConfigDir())
 	helpers.writeYaml(expConf, config.getExperimentConfFile())
 	helpers.writeYaml(nodeConf, config.getNodeConfFile())
 	
@@ -104,11 +101,16 @@ if __name__ == '__main__':
 						callback=store_list, default=[], type="string", 
 						help="Comma-separated list of the node names")
 	#optparser.add_option("-f", "--file", dest="file", help="json topology FILE")
-	optparser.add_option("-o", "--logfile", dest="logfile", action='store', default='/tmp/bootstrap.log',  
-                         help="Log to specified file, ex: -f file.log. Default: %default")
+	optparser.add_option("-o", "--logfile", dest="logfile", action='store', 
+						default='/tmp/magi_bootstrap.log',  
+                        help="Log to specified file, ex: -f file.log. Default: %default")
 	optparser.add_option("-l", "--loglevel", dest="loglevel", default="INFO", 
-                         help="set logger to level ALL, DEBUG, INFO, " + 
-                         "WARNING, ERROR. Default: %default, ex: -l DEBUG")
+						help="set logger to level ALL, DEBUG, INFO, " + 
+                        "WARNING, ERROR. Default: %default, ex: -l DEBUG")
+	optparser.add_option("-D", "--nodataman", dest="nodataman", 
+						action="store_true", default=False, 
+						help="Do not install and setup data manager") 
+        
 
 	(options, args) = optparser.parse_args()
 
@@ -156,7 +158,8 @@ if __name__ == '__main__':
 			
 			(nodeConf, expConf) = createConfigFiles(nodeName=nodeName, 
 												    topoGraph=topoGraph,
-												    externalAgentsCommPort=externalAgentsCommPort)
+												    externalAgentsCommPort=externalAgentsCommPort,
+												    isDBEnabled=(not options.nodataman))
 			externalAgentsCommPort += 1
 			
 			log.info("Starting daemon for node '%s'" %(nodeName))
