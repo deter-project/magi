@@ -24,6 +24,9 @@ LOG_FORMAT = '%(asctime)s %(name)-30s %(levelname)-8s %(message)s'
 LOG_FORMAT_MSECS = '%(asctime)s.%(msecs)03d %(name)-30s %(levelname)-8s %(message)s'
 LOG_DATEFMT = '%m-%d %H:%M:%S'
 
+TRANSPORT_TCP = 'TCP'
+TRANSPORT_MULTICAST = 'Multicast'
+
 ALL = '__ALL__'
 
 def makeDir(name):

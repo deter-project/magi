@@ -89,6 +89,7 @@ DEFAULT_DIST_DIR  = "/share/magi/current/"
 DEFAULT_DB_ENABLED = True
 DEFAULT_DB_SHARDED = True
 DEFAULT_TEMP_DIR  = "/tmp"
+DEFAULT_TRANSPORT_CLASS = helpers.TRANSPORT_MULTICAST
 
 NODE_DIR = "/var/log/magi"
 EXPERIMENT_DIR = testbed.getExperimentDir()
@@ -185,11 +186,16 @@ def getMagiNodes():
 
 ## EXPERIMENT CONFIGURATION ##
 
-def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, isDBEnabled=DEFAULT_DB_ENABLED):
+def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, 
+                           isDBEnabled=DEFAULT_DB_ENABLED,
+                           transportClass=DEFAULT_TRANSPORT_CLASS):
     log.info("Creating default experiment configuration") 
-    return loadExperimentConfig(distributionPath=distributionPath, isDBEnabled=isDBEnabled)
+    return loadExperimentConfig(distributionPath=distributionPath, 
+                                isDBEnabled=isDBEnabled, 
+                                transportClass=transportClass)
 
-def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled=None):
+def loadExperimentConfig(experimentConfig={}, distributionPath=None, 
+                         isDBEnabled=None, transportClass=DEFAULT_TRANSPORT_CLASS):
     """ Load the experiment-wide configuration data from file, filename can be overriden """
     # Do not modify the input object
     experimentConfig = copy.deepcopy(experimentConfig)
@@ -204,7 +210,8 @@ def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled
         
     experimentConfig = validateExperimentConfig(experimentConfig=experimentConfig, 
                                                 distributionPath=distributionPath, 
-                                                isDBEnabled=isDBEnabled)
+                                                isDBEnabled=isDBEnabled,
+                                                transportClass=transportClass)
     
     #setting global experiment configuration variable
     global EXP_CONFIG
@@ -212,7 +219,10 @@ def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled
     
     return experimentConfig
 
-def validateExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled=None):
+def validateExperimentConfig(experimentConfig={}, 
+                             distributionPath=None, 
+                             isDBEnabled=None, 
+                             transportClass=DEFAULT_TRANSPORT_CLASS):
     """ 
         Validate an experiment wide configuration 
     """
@@ -228,7 +238,8 @@ def validateExperimentConfig(experimentConfig={}, distributionPath=None, isDBEna
     expdl = validateExpDL(expdl=experimentConfig.get('expdl'), 
                           distributionPath=distributionPath)
     mesdl = validateMesDL(mesdl=experimentConfig.get('mesdl'), 
-                          magiNodeList=expdl['magiNodeList'])
+                          magiNodeList=expdl['magiNodeList'],
+                          transportClass=transportClass)
     dbdl = validateDBDL(dbdl=experimentConfig.get('dbdl'), 
                         isDBEnabled=isDBEnabled, 
                         magiNodeList=expdl['magiNodeList'])
@@ -244,7 +255,8 @@ def getDefaultMESDL():
     log.info("Creating default mesdl") 
     return validateMesDL()
 
-def validateMesDL(mesdl={}, magiNodeList=getMagiNodes()):
+def validateMesDL(mesdl={}, magiNodeList=getMagiNodes(), 
+                  transportClass=DEFAULT_TRANSPORT_CLASS):
     """ Validate messaging description """
     # Do not modify the input object
     mesdl = copy.deepcopy(mesdl)
@@ -263,18 +275,20 @@ def validateMesDL(mesdl={}, magiNodeList=getMagiNodes()):
         mesdl['overlay'] = list()
         mesdl['bridges'].append({'type': 'TCPServer', 
                                  'server': server, 'port': 18808})
-        transportClass = 'Multicast'
-        if transportClass == 'TCP':
+        if transportClass == helpers.TRANSPORT_TCP:
             mesdl['bridges'].append({'type': 'TCPServer', 
                                      'server': server, 'port': 28808})
             mesdl['overlay'].append({'type': 'TCPTransport', 
                                      'members': ['__ALL__'], 
                                      'server': server, 'port': 28808})
-        elif transportClass == 'Multicast':
+        elif transportClass == helpers.TRANSPORT_MULTICAST:
             mesdl['overlay'].append({'type': 'MulticastTransport', 
                                      'members': ['__ALL__'], 
                                      'address': testbed.getMulticastAddress(), 
                                      'port': 28808})
+        else:
+            raise TypeError("Invalid transport type. Should be one of %s" 
+                        %[helpers.TRANSPORT_TCP, helpers.TRANSPORT_MULTICAST])
     else:
         bridges = mesdl.get('bridges', {})
         if not bridges:
@@ -551,11 +565,11 @@ def validateNodeConfig(nodeConfig={}, experimentConfig={}):
     log.debug("Mesdl from experiment wide configuration: %s", mesdl)
     
     if not transportsConfig:
-        nodename_control = testbed.fqdn
+        nodename = helpers.toControlPlaneNodeName(localInfo['nodename'])
         # For each external connection, add a TCPServer transport    
         for bridge in mesdl['bridges']:
             log.debug("Bridge: %s", bridge)
-            if nodename_control == bridge['server']:
+            if nodename == bridge['server']:
                 # A transport server is added on the node  
                 # This is used to provide an external facing connection to the magi messaging network on port extport (typically 18808)  
                 transportsConfig.append({ 'class': bridge['type'], 'address': '0.0.0.0', 'port': bridge['port']})
@@ -565,7 +579,7 @@ def validateNodeConfig(nodeConfig={}, experimentConfig={}):
         # NOTE: We are just adding TCPTransports currently 
         for t in mesdl['overlay']:
             log.debug("Control Plane Overlay: %s", t)
-            if t['type'] == 'TCPTransport' and nodename_control != t['server'] and (nodename_control in t['members'] or '__ALL__' in t['members']):
+            if t['type'] == 'TCPTransport' and nodename != t['server'] and (nodename in t['members'] or '__ALL__' in t['members']):
                 server_name = t['server']
                 # DETER/emulab DNS will resolves FQDNs to the control network address, 
                 # A FQDN or IP address would be required for connecting with the external world 
@@ -577,7 +591,7 @@ def validateNodeConfig(nodeConfig={}, experimentConfig={}):
                         
                 transportsConfig.append({ 'class': 'TCPTransport', 'address': server_addr, 'port': t['port'] })
                 
-            elif t['type'] == 'MulticastTransport' and (nodename_control in t['members'] or '__ALL__' in t['members']):
+            elif t['type'] == 'MulticastTransport' and (nodename in t['members'] or '__ALL__' in t['members']):
                 transportsConfig.append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
 
 
