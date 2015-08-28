@@ -20,6 +20,9 @@ log = logging.getLogger(__name__)
 TIMEOUT=900
 TEMP_DIR = tempfile.gettempdir()
 
+#Mongo DB might be installed here
+sys.path.append('/usr/local/bin')
+
 def startConfigServer(port=CONFIG_SERVER_PORT, 
                       dbPath=os.path.join(TEMP_DIR, "configdb"), 
                       logPath=os.path.join(TEMP_DIR, "mongoc.log"),
@@ -45,7 +48,7 @@ def startConfigServer(port=CONFIG_SERVER_PORT,
             raise
 
         log.info("Trying to start mongo config server")
-        mongod = ['/usr/local/bin/mongod', '--configsvr', 
+        mongod = ['mongod', '--configsvr', 
                   '--dbpath', dbPath, 
                   '--port', str(port), 
                   '--logpath', logPath]
@@ -99,7 +102,7 @@ def startShardServer(port=ROUTER_SERVER_PORT,
         getConnection(configHost, port=configPort, block=block, timeout=timeout)
         
         log.info("Trying to start mongo shard server")
-        mongos = ['/usr/local/bin/mongos', '--configdb', '%s:%d'%(configHost, configPort), 
+        mongos = ['mongos', '--configdb', '%s:%d'%(configHost, configPort), 
                   '--port', str(port), 
                   '--noAutoSplit', 
                   '--logpath', logPath]
@@ -164,7 +167,7 @@ def startDBServer(port=DATABASE_SERVER_PORT,
             raise
 
         log.info("Trying to start mongo database server")
-        mongod = ['/usr/local/bin/mongod', 
+        mongod = ['mongod', 
                   '--config', configfile, 
                   '--port', str(port), 
                   '--shardsvr', 
@@ -229,7 +232,7 @@ def registerShard(dbHost, configHost, dbPort=DATABASE_SERVER_PORT, configPort=RO
     getConnection(host=dbHost, port=DATABASE_SERVER_PORT, timeout=timeout) #check if mongod is up
     
     while time.time() < stop:
-        if call("""/usr/local/bin/mongo --host %s --eval "sh.addShard('%s:%d')" """ %(configHost, dbHost, dbPort), shell=True):
+        if call("""mongo --host %s --eval "sh.addShard('%s:%d')" """ %(configHost, dbHost, dbPort), shell=True):
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
