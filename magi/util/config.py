@@ -87,7 +87,7 @@ import helpers
 
 DEFAULT_DIST_DIR  = "/share/magi/current/"
 DEFAULT_DB_ENABLED = True
-DEFAULT_DB_SHARDED = True
+DEFAULT_DB_SHARDED = False
 DEFAULT_TEMP_DIR  = "/tmp"
 DEFAULT_TRANSPORT_CLASS = helpers.TRANSPORT_MULTICAST
 
@@ -188,14 +188,17 @@ def getMagiNodes():
 
 def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, 
                            isDBEnabled=DEFAULT_DB_ENABLED,
+                           isDBSharded=DEFAULT_DB_SHARDED,
                            transportClass=DEFAULT_TRANSPORT_CLASS):
     log.info("Creating default experiment configuration") 
     return loadExperimentConfig(distributionPath=distributionPath, 
-                                isDBEnabled=isDBEnabled, 
+                                isDBEnabled=isDBEnabled,
+                                isDBSharded=isDBSharded,
                                 transportClass=transportClass)
 
 def loadExperimentConfig(experimentConfig={}, distributionPath=None, 
-                         isDBEnabled=None, transportClass=DEFAULT_TRANSPORT_CLASS):
+                         isDBEnabled=None, isDBSharded=None, 
+                         transportClass=DEFAULT_TRANSPORT_CLASS):
     """ Load the experiment-wide configuration data from file, filename can be overriden """
     # Do not modify the input object
     experimentConfig = copy.deepcopy(experimentConfig)
@@ -211,6 +214,7 @@ def loadExperimentConfig(experimentConfig={}, distributionPath=None,
     experimentConfig = validateExperimentConfig(experimentConfig=experimentConfig, 
                                                 distributionPath=distributionPath, 
                                                 isDBEnabled=isDBEnabled,
+                                                isDBSharded=isDBSharded,
                                                 transportClass=transportClass)
     
     #setting global experiment configuration variable
@@ -221,7 +225,8 @@ def loadExperimentConfig(experimentConfig={}, distributionPath=None,
 
 def validateExperimentConfig(experimentConfig={}, 
                              distributionPath=None, 
-                             isDBEnabled=None, 
+                             isDBEnabled=None,
+                             isDBSharded=None, 
                              transportClass=DEFAULT_TRANSPORT_CLASS):
     """ 
         Validate an experiment wide configuration 
@@ -242,6 +247,7 @@ def validateExperimentConfig(experimentConfig={},
                           transportClass=transportClass)
     dbdl = validateDBDL(dbdl=experimentConfig.get('dbdl'), 
                         isDBEnabled=isDBEnabled, 
+                        isDBSharded=isDBSharded,
                         magiNodeList=expdl['magiNodeList'])
     
     experimentConfig['expdl'] = expdl
@@ -298,12 +304,13 @@ def validateMesDL(mesdl={}, magiNodeList=getMagiNodes(),
             
     return mesdl
 
-def getDefaultDBDL(isDBEnabled=True):
+def getDefaultDBDL(isDBEnabled=DEFAULT_DB_ENABLED):
     """ Create a default database description """
     log.info("Creating default dbdl")
     return validateDBDL(dbdl=dbdl, isDBEnabled=isDBEnabled)
 
-def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=getMagiNodes()):
+def validateDBDL(dbdl={}, isDBEnabled=None, 
+                 isDBSharded=None, magiNodeList=getMagiNodes()):
     """ Validate database description """
     # Do not modify the input object
     dbdl = copy.deepcopy(dbdl)
@@ -320,9 +327,6 @@ def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=getMagiNodes()):
         isDBEnabled = dbdl.setdefault('isDBEnabled', DEFAULT_DB_ENABLED)
         
     if isDBEnabled:
-        isDBSharded = dbdl.setdefault('isDBSharded', 
-                                      False if len(magiNodeList) == 1 
-                                      else DEFAULT_DB_SHARDED)
         sensorToCollectorMap = validateSensorToColletorMap(
                         sensorToCollectorMap=dbdl.get('sensorToCollectorMap'), 
                         magiNodes=magiNodeList)
@@ -340,6 +344,13 @@ def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=getMagiNodes()):
         if dbdl.get('configHost') not in collectors:
             dbdl['configHost'] = getServer(collectors)
         dbdl['configHost'] = helpers.toControlPlaneNodeName(dbdl['configHost'])
+            
+        if isDBSharded is not None:
+            dbdl['isDBSharded'] = isDBSharded
+        else:
+            isDBSharded = dbdl.setdefault('isDBSharded', 
+                                          False if len(collectors) == 1 
+                                          else DEFAULT_DB_SHARDED)
             
         if isDBSharded:
             dbdl['configPort'] = ROUTER_SERVER_PORT
@@ -363,8 +374,7 @@ def validateSensorToColletorMap(sensorToCollectorMap={}, magiNodes=getMagiNodes(
         raise TypeError("sensorToCollectorMap should be a dictionary")
     
     if not sensorToCollectorMap:
-        for node in magiNodes:
-            sensorToCollectorMap[node] = node
+        sensorToCollectorMap = {helpers.ALL : getServer(magiNodes)}
     else:
         # Cleaning up existing sensorToCollectorMap
         # Removing non-existing experiment nodes
@@ -605,7 +615,7 @@ def validateNodeConfig(nodeConfig={}, experimentConfig={}):
         databaseConfig['isDBEnabled'] = False
     isDBEnabled = databaseConfig.setdefault('isDBEnabled', dbdl.get('isDBEnabled'))
     if isDBEnabled:
-        isDBSharded = databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
+        databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
         databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
         sensorToCollectorMap = databaseConfig['sensorToCollectorMap']
         validateSensorToColletorMap(sensorToCollectorMap, 

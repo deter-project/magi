@@ -33,6 +33,7 @@ if __name__ == '__main__':
         optparser.add_option("-c", "--nodeconf", dest="nodeconf", action="store", default=None, help="Path to the node specific configuration file. Cannot use along with -f (see below)")
         optparser.add_option("-n", "--nodedir", dest="nodedir", default="/var/log/magi", help="Directory to put MAGI daemon specific files") 
         optparser.add_option("-f", "--force", dest="force", action="store_true", default=False, help="Recreate node configuration file, even if present. Cannot use along with -c (see above)")
+        optparser.add_option("-s", "--distdb", dest="distdb", action="store_true", default=False, help="Setup a distributed database") 
         optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install and setup data manager") 
         optparser.add_option("-o", "--logfile", dest="logfile", action='store', default="/tmp/magi_bootstrap.log", help="Log file. Default: %default")
                 
@@ -151,7 +152,8 @@ if __name__ == '__main__':
                                         log.info("Found an experiment configuration file at %s. Using it.", experimentConfigFile) 
                                         experimentConfig = config.loadExperimentConfig(experimentConfig=experimentConfigFile, 
                                                                                        distributionPath=rpath, 
-                                                                                       isDBEnabled=not options.nodataman)
+                                                                                       isDBEnabled=not options.nodataman,
+                                                                                       isDBSharded=options.distdb)
                                 else:
                                         # Experiment configuration file does not exist
                                         log.info("No valid experiment configuration file found at %s. Need to create one.", experimentConfigFile)
@@ -159,11 +161,16 @@ if __name__ == '__main__':
     
                             if createExperimentConfig: 
                                     log.info("Creating a new experiment configuration file")
-                                    experimentConfig = config.createExperimentConfig(distributionPath=rpath, isDBEnabled=not options.nodataman)
+                                    experimentConfig = config.createExperimentConfig(distributionPath=rpath, 
+                                                                                     isDBEnabled=not options.nodataman,
+                                                                                     isDBSharded=options.distdb)
                                     
                     else:
                             log.info("Using experiment configuration file at %s", options.expconf)
-                            experimentConfig = config.loadExperimentConfig(options.expconf, distributionPath=rpath, isDBEnabled=not options.nodataman)
+                            experimentConfig = config.loadExperimentConfig(options.expconf, 
+                                                                           distributionPath=rpath, 
+                                                                           isDBEnabled=not options.nodataman,
+                                                                           isDBSharded=options.distdb)
                                                     
                     # create a MAGI node configuration file only if one is not explicitly specified 
                     if not options.nodeconf:
