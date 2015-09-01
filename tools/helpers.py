@@ -25,8 +25,9 @@ def call(*popenargs, **kwargs):
                 kwargs["shell"] = True
         process = Popen(*popenargs, stdout=PIPE, stderr=PIPE, **kwargs)
         out, err = process.communicate()
-        if not process.returncode:
-            log.error(err)
+        if process.returncode:
+            log.warning("Returncode: %d", process.returncode)
+            log.warning(err)
         return process.returncode
 
 def installPython(base, check, commands, rpath="/share/magi/current"):
