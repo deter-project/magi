@@ -25,7 +25,7 @@ if __name__ == '__main__':
         signal.signal(signal.SIGINT, signal.SIG_DFL)
 
         optparser = optparse.OptionParser(description="Bootstrap script that can be used to install, configure, and start MAGI")
-        optparser.add_option("-p", "--distpath", dest="rpath", default="/share/magi/current", help="Location of the distribution") 
+        optparser.add_option("-p", "--distpath", dest="rpath", default=os.path.dirname(os.path.realpath(__file__)), help="Location of the distribution") 
         optparser.add_option("-U", "--noupdate", dest="noupdate", action="store_true", default=False, help="Do not update the system before installing Magi")
         optparser.add_option("-N", "--noinstall", dest="noinstall", action="store_true", default=False, help="Do not install magi and the supporting libraries") 
         optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False, help="Include debugging information") 
