@@ -327,9 +327,13 @@ def validateDBDL(dbdl={}, isDBEnabled=None,
         isDBEnabled = dbdl.setdefault('isDBEnabled', DEFAULT_DB_ENABLED)
         
     if isDBEnabled:
+        if isDBSharded is None:
+            isDBSharded = dbdl.get('isDBSharded', DEFAULT_DB_SHARDED)
+            
         sensorToCollectorMap = validateSensorToColletorMap(
                         sensorToCollectorMap=dbdl.get('sensorToCollectorMap'), 
-                        magiNodes=magiNodeList)
+                        magiNodes=magiNodeList,
+                        isDBSharded=isDBSharded)
         
         # if sensorToCollectorMap is empty
         if not sensorToCollectorMap:
@@ -341,16 +345,15 @@ def validateDBDL(dbdl={}, isDBEnabled=None,
         
         collectors = sensorToCollectorMap.values()
         
+        # No need to setup a sharded setup in case of just one collector
+        if len(collectors) == 1:
+            isDBSharded = False
+            
+        dbdl['isDBSharded'] = isDBSharded
+        
         if dbdl.get('configHost') not in collectors:
             dbdl['configHost'] = getServer(collectors)
         dbdl['configHost'] = helpers.toControlPlaneNodeName(dbdl['configHost'])
-            
-        if isDBSharded is not None:
-            dbdl['isDBSharded'] = isDBSharded
-        else:
-            isDBSharded = dbdl.setdefault('isDBSharded', 
-                                          False if len(collectors) == 1 
-                                          else DEFAULT_DB_SHARDED)
             
         if isDBSharded:
             dbdl['configPort'] = ROUTER_SERVER_PORT
@@ -362,7 +365,9 @@ def validateDBDL(dbdl={}, isDBEnabled=None,
         
     return dbdl
 
-def validateSensorToColletorMap(sensorToCollectorMap={}, magiNodes=getMagiNodes()):
+def validateSensorToColletorMap(sensorToCollectorMap={}, 
+                                magiNodes=getMagiNodes(), 
+                                isDBSharded=DEFAULT_DB_SHARDED):
     """ Validate sensor to collector mappings """
     # Do not modify the input object
     sensorToCollectorMap = copy.deepcopy(sensorToCollectorMap)
@@ -374,7 +379,10 @@ def validateSensorToColletorMap(sensorToCollectorMap={}, magiNodes=getMagiNodes(
         raise TypeError("sensorToCollectorMap should be a dictionary")
     
     if not sensorToCollectorMap:
-        sensorToCollectorMap = {helpers.ALL : getServer(magiNodes)}
+        if isDBSharded:
+            sensorToCollectorMap = {nodeName:nodeName for nodeName in magiNodes}
+        else:
+            sensorToCollectorMap = {helpers.ALL : getServer(magiNodes)}
     else:
         # Cleaning up existing sensorToCollectorMap
         # Removing non-existing experiment nodes
