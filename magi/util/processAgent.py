@@ -34,7 +34,7 @@ def initializeProcessAgent(agent, argv):
                           'logfile' : os.path.join(config.getLogDir(), agent.name + '.log'), 
                           'loglevel': 'DEBUG', 
                           'commHost': 'localhost', 
-                          'commPort': config.getConfig().get('processAgentsCommPort', 18809), 
+                          'commPort': config.getConfig()['localInfo'].get('processAgentsCommPort', 18809), 
                           'commGroup': None}, 
                   args)
     

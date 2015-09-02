@@ -24,6 +24,9 @@ LOG_FORMAT = '%(asctime)s %(name)-30s %(levelname)-8s %(message)s'
 LOG_FORMAT_MSECS = '%(asctime)s.%(msecs)03d %(name)-30s %(levelname)-8s %(message)s'
 LOG_DATEFMT = '%m-%d %H:%M:%S'
 
+TRANSPORT_TCP = 'TCP'
+TRANSPORT_MULTICAST = 'Multicast'
+
 ALL = '__ALL__'
 
 def makeDir(name):
@@ -197,7 +200,7 @@ def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
     experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
     dbdl = experimentConfig['dbdl']
     
-    return toControlPlaneNodeName(dbdl['configHost'])
+    return (toControlPlaneNodeName(dbdl['configHost']), dbdl['configPort'])
 
 def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=None):
     if not experimentConfigFile:
@@ -218,7 +221,23 @@ def getMagiNodeList(experimentConfigFile=None, project=None, experiment=None):
     expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
     
     return expdl['magiNodeList']    
-    
+
+def getServer(nodeList):
+    # returns control if  it finds a node named "control" 
+    # in the given node list otherwise it returns the
+    # first node in the alpha-numerically sorted list
+    if isinstance(nodeList, set):
+        nodeList = list(nodeList)
+    if not isinstance(nodeList, list):
+        raise TypeError("node list should be a set or list")
+    nodeList.sort()
+    host = nodeList[0]
+    for node in nodeList:
+        if 'control' == node.lower():
+            host = 'control'
+            break
+    return host 
+
 def printDBfields(agentidl):
             agentname = agentidl.get('display', 'Agent')
             desc = agentidl.get('description', 'No description Available')

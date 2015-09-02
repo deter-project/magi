@@ -18,22 +18,42 @@ LOG_COLLECTION_NAME = 'logs'
 # TODO: timeout should be dependent on machine type 
 TIMEOUT = 900
 
-dbConfig = config.getConfig().get('database', {})
-
-isDBEnabled         = dbConfig.get('isDBEnabled', False)
-isDBSharded         = dbConfig.get('isDBSharded', True)
-configHost          = dbConfig.get('configHost')
-sensorToCollectorMap    = dbConfig.get('sensorToCollectorMap', {})
-
-collector = sensorToCollectorMap.get(config.getNodeName(), 
-                                     sensorToCollectorMap.get(helpers.ALL))
-isConfigHost = (config.getNodeName() == configHost)
-isCollector = (config.getNodeName() in sensorToCollectorMap.values())
-isSensor = (config.getNodeName() in sensorToCollectorMap.keys() 
-            or helpers.ALL in sensorToCollectorMap.keys())
-
 if 'collectionHosts' not in locals():
     collectionHosts = defaultdict(set)
+    
+def getDbConfig():
+    return config.getConfig().get('database', {})
+
+def isDBEnabled():
+    return getDbConfig().get('isDBEnabled', False)
+    
+def isDBSharded():
+    return getDbConfig().get('isDBSharded', True)
+    
+def getConfigHost():
+    return getDbConfig().get('configHost')
+    
+def getSensorToCollectorMap():
+    return getDbConfig().get('sensorToCollectorMap', {})
+    
+def getCollector():
+    sensorToCollectorMap = getSensorToCollectorMap()
+    return sensorToCollectorMap.get(config.getNodeName(), 
+                                    sensorToCollectorMap.get(helpers.ALL))
+    
+def isConfigHost():
+    configHost = getConfigHost()
+    return (config.getNodeName() == configHost or 
+            helpers.toControlPlaneNodeName(config.getNodeName()) == configHost)
+    
+def isCollector():
+    sensorToCollectorMap = getSensorToCollectorMap()
+    return (config.getNodeName() in sensorToCollectorMap.values())
+
+def isSensor():
+    sensorToCollectorMap = getSensorToCollectorMap()
+    return (config.getNodeName() in sensorToCollectorMap.keys() 
+            or helpers.ALL in sensorToCollectorMap.keys())
     
 def startConfigServer(timeout=TIMEOUT):
     """
@@ -50,10 +70,10 @@ def setBalancerState(state):
         Function to turn on/off data balancer
     """
     Server.setBalancerState(state=state, 
-                        configHost=helpers.toControlPlaneNodeName(configHost), 
+                        configHost=helpers.toControlPlaneNodeName(getConfigHost()), 
                         configPort=CONFIG_SERVER_PORT)
     
-def startShardServer(configHost=configHost, timeout=TIMEOUT):
+def startShardServer(configHost=getConfigHost(), timeout=TIMEOUT):
     """
         Function to start a database config server on the node
     """
@@ -91,7 +111,7 @@ def registerShard(mongod=config.getNodeName(), mongos=config.getDbConfigHost(),
 
     helpers.exitlog(log, functionName)
 
-def isShardRegistered(dbHost=None, configHost=configHost, block=False):
+def isShardRegistered(dbHost=None, configHost=getConfigHost(), block=False):
     """
         Check if given mongo db host is registered as a shard
     """
@@ -122,7 +142,7 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     Server.moveChunk(db=DB_NAME, collection=collectionname, 
                      host=host, 
                      collector=helpers.toControlPlaneNodeName(collector), 
-                     configHost=helpers.toControlPlaneNodeName(configHost), 
+                     configHost=helpers.toControlPlaneNodeName(getConfigHost()), 
                      configPort=ROUTER_SERVER_PORT)
             
     helpers.exitlog(log, functionName)
@@ -210,5 +230,3 @@ def getData(agentName, filters=None, timestampRange=None,
     helpers.exitlog(log, functionName)
     return result
 
-def getCollector():
-    return collector

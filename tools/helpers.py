@@ -6,7 +6,7 @@ import logging
 from os import path
 import os
 import signal
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import time
 
 
@@ -23,8 +23,11 @@ def call(*popenargs, **kwargs):
         log.info("Calling %s" % (popenargs))
         if "shell" not in kwargs:
                 kwargs["shell"] = True
-        process = Popen(*popenargs, **kwargs)
-        process.wait()
+        process = Popen(*popenargs, stdout=PIPE, stderr=PIPE, **kwargs)
+        out, err = process.communicate()
+        if process.returncode:
+            log.warning("Returncode: %d", process.returncode)
+            log.warning(err)
         return process.returncode
 
 def installPython(base, check, commands, rpath="/share/magi/current"):
@@ -68,9 +71,13 @@ def installC(base, check, rpath="/share/magi/current"):
             
         log.info("Successfully installed %s", base)
 
-def installPreBuilt(base, rpath="/share/magi/current"):
+def installPreBuilt(base, check, rpath="/share/magi/current"):
     log.info("Installing %s", base)
     
+    if os.path.exists(check):
+            log.info("%s already installed, found file %s", base, check)
+            return
+            
     extractDistribution(base, '/tmp', rpath)
             
     distDir = glob.glob(os.path.join("/tmp", base+'*'))[0] # Need glob as os.chdir doesn't expand

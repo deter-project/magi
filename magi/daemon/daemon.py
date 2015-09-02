@@ -56,10 +56,11 @@ class Daemon(threading.Thread):
 		self.extAgentsThread = ExternalAgentsThread(self.messaging)
 		self.extAgentsThread.start()
 
-		if database.isDBEnabled:
+		if database.isDBEnabled():
 			try:
 				log.info("Starting Data Manager Agent")
-				self.startAgent(code=magi.modules.dataman.__path__[0], name="dataman", dock="dataman", static=True)
+				self.startAgent(code=magi.modules.dataman.__path__[0], 
+							    name="dataman", dock="dataman", static=True)
 				
 				#Inserting the topology information in the database
 				topo_collection = database.getCollection(agentName="topo_agent")
@@ -99,14 +100,15 @@ class Daemon(threading.Thread):
 #	
 #	def runX(self):
 		"""
-			Daemon thread loop.  Continual processing of incoming messages while monitoring for the
-			stop flag.
+			Daemon thread loop. Continual processing of incoming messages 
+			while monitoring for the stop flag.
 		"""
 		self.threadId = helpers.getThreadId()
 		log.info("Daemon started. Thread id: " + str(self.threadId))
 		
 		try:
-			for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
+			for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, 
+					    signal.SIGQUIT]:
 				signal.signal(sig, self.signalhandler)
 		except:
 			pass
@@ -336,9 +338,22 @@ class Daemon(threading.Thread):
 		"""
 		if self.hostname in nodes:
 			self.messaging.leave(group, "daemon")
-			# 9/14: Changed testbed.nodename to self.hostname to support desktop daemons  
-			self.messaging.trigger(event='GroupTeardownDone', group=group, nodes=[self.hostname])
+			# 9/14: Changed testbed.nodename to self.hostname 
+			# to support desktop daemons  
+			self.messaging.trigger(event='GroupTeardownDone', 
+								   group=group, nodes=[self.hostname])
 	
+	
+	@agentmethod()
+	def groupPing(self, msg, group):
+		"""
+			Method to check if messages sent to a group are reaching the node
+			This helps check if the groups have been built successfully
+			When a node joins/leaves a group, it may take a while for the 
+			information to propagate throughout the network
+		"""
+		self.messaging.trigger(event='GroupPong', 
+							   group=group, nodes=[self.hostname])
 	
 	@agentmethod()
 	def ping(self, msg):
@@ -348,14 +363,18 @@ class Daemon(threading.Thread):
 		res = {
 		        'pong': True
 		}
-		# Added a data part to the message otherwise it gets dropped by the local daemon itself 
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong', contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))
+		# Added a data part to the message otherwise it gets dropped 
+		# by the local daemon itself 
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong', 
+									    contenttype=MAGIMessage.YAML, 
+									    data=yaml.safe_dump(res)))
 	
 	
 	@agentmethod()
 	def getStatus(self, msg, groupMembership=False, agentInfo=False):
 		"""
-			gives the group membership and agent information: pid, agentname, threadId
+			gives the group membership and agent information: 
+			pid, agentname, threadId
         """ 
 		functionName = self.getStatus.__name__
 		helpers.entrylog(log, functionName, locals())
@@ -370,12 +389,17 @@ class Daemon(threading.Thread):
 			agentInfo = []
 			processId = os.getpid()
 			for tAgent in self.staticAgents + self.threadAgents:
-				agentInfo.append({"name": tAgent.agentname, "processId": processId, "threadId": tAgent.tid})
+				agentInfo.append({"name": tAgent.agentname, 
+								  "processId": processId, 
+								  "threadId": tAgent.tid})
 			for name in self.pAgentPids.keys():
-				agentInfo.append({"name": name, "processId": self.pAgentPids[name]})
+				agentInfo.append({"name": name, 
+								  "processId": self.pAgentPids[name]})
 			result['agentInfo'] = agentInfo
 		
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))	
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, 
+									    contenttype=MAGIMessage.YAML, 
+									    data=yaml.safe_dump(result)))	
 		helpers.exitlog(log, functionName)
 		
 	@agentmethod()
@@ -391,7 +415,9 @@ class Daemon(threading.Thread):
 		logTar.add(logDir, arcname=os.path.basename(logDir))
 		logTar.close()
 		result = base64.encodestring(store.getvalue())
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, 
+									    contenttype=MAGIMessage.YAML, 
+									    data=yaml.safe_dump(result)))
 		helpers.exitlog(log, functionName)
 	
 	@agentmethod()
@@ -403,7 +429,8 @@ class Daemon(threading.Thread):
 		helpers.entrylog(log, functionName, locals())
 		logDir = config.getLogDir()
 		logTar = tarfile.open(name=os.path.join(destinationDir, 
-											   "logs_%s"%(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))), 
+								"logs_%s.tar.gz"%(datetime.datetime.now()
+												.strftime("%Y%m%d_%H%M%S"))), 
 							  mode='w:gz')
 		logTar.add(logDir, arcname=os.path.basename(logDir))
 		logTar.close()

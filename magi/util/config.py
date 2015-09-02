@@ -71,19 +71,25 @@ software:
 
 """
 
-from magi.testbed import testbed
-from socket import gethostbyname, gaierror
-from networkx.readwrite import json_graph
-import helpers
+import copy
 import logging
 import os
 import platform
+from socket import gethostbyname, gaierror
 import sys
+
+from magi.db.Server import DATABASE_SERVER_PORT, ROUTER_SERVER_PORT
+from magi.testbed import testbed
+from networkx.readwrite import json_graph
+
+import helpers
+
 
 DEFAULT_DIST_DIR  = "/share/magi/current/"
 DEFAULT_DB_ENABLED = True
-DEFAULT_DB_SHARDED = True
+DEFAULT_DB_SHARDED = False
 DEFAULT_TEMP_DIR  = "/tmp"
+DEFAULT_TRANSPORT_CLASS = helpers.TRANSPORT_MULTICAST
 
 NODE_DIR = "/var/log/magi"
 EXPERIMENT_DIR = testbed.getExperimentDir()
@@ -180,13 +186,23 @@ def getMagiNodes():
 
 ## EXPERIMENT CONFIGURATION ##
 
-def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, isDBEnabled=DEFAULT_DB_ENABLED):
+def createExperimentConfig(distributionPath=DEFAULT_DIST_DIR, 
+                           isDBEnabled=DEFAULT_DB_ENABLED,
+                           isDBSharded=DEFAULT_DB_SHARDED,
+                           transportClass=DEFAULT_TRANSPORT_CLASS):
     log.info("Creating default experiment configuration") 
-    return loadExperimentConfig(distributionPath=distributionPath, isDBEnabled=isDBEnabled)
+    return loadExperimentConfig(distributionPath=distributionPath, 
+                                isDBEnabled=isDBEnabled,
+                                isDBSharded=isDBSharded,
+                                transportClass=transportClass)
 
-def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled=None):
+def loadExperimentConfig(experimentConfig={}, distributionPath=None, 
+                         isDBEnabled=None, isDBSharded=None, 
+                         transportClass=DEFAULT_TRANSPORT_CLASS):
     """ Load the experiment-wide configuration data from file, filename can be overriden """
-    global EXP_CONFIG
+    # Do not modify the input object
+    experimentConfig = copy.deepcopy(experimentConfig)
+    
     try:
         if (type(experimentConfig) == str):
             log.info("Loading given experiment configuration from %s" %(experimentConfig))
@@ -194,80 +210,116 @@ def loadExperimentConfig(experimentConfig={}, distributionPath=None, isDBEnabled
     except:
         log.error("Error loading given experiment configuration file. Loading default.")
         experimentConfig = dict()
-    EXP_CONFIG = validateExperimentConfig(experimentConfig=experimentConfig, 
-                                          distributionPath=distributionPath, 
-                                          isDBEnabled=isDBEnabled)
+        
+    experimentConfig = validateExperimentConfig(experimentConfig=experimentConfig, 
+                                                distributionPath=distributionPath, 
+                                                isDBEnabled=isDBEnabled,
+                                                isDBSharded=isDBSharded,
+                                                transportClass=transportClass)
     
-#    #write experiment config file
-#    expConfFile = getExperimentConfFile()
-#    helpers.makeDir(os.path.dirname(expConfFile))
-#    fp = open(expConfFile, 'w')
-#    fp.write(yaml.safe_dump(experimentConfig))
-#    fp.close()
+    #setting global experiment configuration variable
+    global EXP_CONFIG
+    EXP_CONFIG = experimentConfig
     
-    return EXP_CONFIG
+    return experimentConfig
 
-def validateExperimentConfig(experimentConfig, distributionPath=None, isDBEnabled=None):
+def validateExperimentConfig(experimentConfig={}, 
+                             distributionPath=None, 
+                             isDBEnabled=None,
+                             isDBSharded=None, 
+                             transportClass=DEFAULT_TRANSPORT_CLASS):
+    """ 
+        Validate an experiment wide configuration 
+    """
+    # Do not modify the input object
+    experimentConfig = copy.deepcopy(experimentConfig)
+    
     if not experimentConfig:
         experimentConfig = dict()
+    
+    if not isinstance(experimentConfig, dict):
+        raise TypeError("Experiment configuration should be a dictionary")
         
-    expdl = experimentConfig.get('expdl', {})
-    mesdl = experimentConfig.get('mesdl', {})
-    dbdl = experimentConfig.get('dbdl', {})
+    expdl = validateExpDL(expdl=experimentConfig.get('expdl'), 
+                          distributionPath=distributionPath)
+    mesdl = validateMesDL(mesdl=experimentConfig.get('mesdl'), 
+                          magiNodeList=expdl['magiNodeList'],
+                          transportClass=transportClass)
+    dbdl = validateDBDL(dbdl=experimentConfig.get('dbdl'), 
+                        isDBEnabled=isDBEnabled, 
+                        isDBSharded=isDBSharded,
+                        magiNodeList=expdl['magiNodeList'])
     
-    experimentConfig['expdl'] = validateExpDL(expdl=expdl, 
-                                            distributionPath=distributionPath)
-    experimentConfig['mesdl'] = validateMesDL(mesdl=mesdl, 
-                        magiNodeList=experimentConfig['expdl']['magiNodeList'])
-    experimentConfig['dbdl'] = validateDBDL(dbdl=dbdl, isDBEnabled=isDBEnabled, 
-                        magiNodeList=experimentConfig['expdl']['magiNodeList'])
-
+    experimentConfig['expdl'] = expdl
+    experimentConfig['mesdl'] = mesdl
+    experimentConfig['dbdl'] = dbdl
+    
     return experimentConfig
-    
+
 def getDefaultMESDL():
     """ Create a default mesdl for the control plane """
     log.info("Creating default mesdl") 
     return validateMesDL()
 
-def validateMesDL(mesdl={}, magiNodeList=testbed.getTopoGraph().nodes()):
+def validateMesDL(mesdl={}, magiNodeList=getMagiNodes(), 
+                  transportClass=DEFAULT_TRANSPORT_CLASS):
     """ Validate messaging description """
-    server = helpers.toControlPlaneNodeName(getServer(magiNodeList))
+    # Do not modify the input object
+    mesdl = copy.deepcopy(mesdl)
+    
     if not mesdl:
         mesdl = dict()
+        
+    if not isinstance(mesdl, dict):
+        raise TypeError("MesDL should be a dictionary")
+    
+    server = helpers.toControlPlaneNodeName(getServer(magiNodeList))
+    
+    if not mesdl:
         log.info("Using %s as server node", server) 
         mesdl['bridges'] = list()
         mesdl['overlay'] = list()
         mesdl['bridges'].append({'type': 'TCPServer', 
                                  'server': server, 'port': 18808})
-        transportClass = 'Multicast'
-        if transportClass == 'TCP':
+        if transportClass == helpers.TRANSPORT_TCP:
             mesdl['bridges'].append({'type': 'TCPServer', 
                                      'server': server, 'port': 28808})
             mesdl['overlay'].append({'type': 'TCPTransport', 
                                      'members': ['__ALL__'], 
                                      'server': server, 'port': 28808})
-        elif transportClass == 'Multicast':
+        elif transportClass == helpers.TRANSPORT_MULTICAST:
             mesdl['overlay'].append({'type': 'MulticastTransport', 
                                      'members': ['__ALL__'], 
                                      'address': testbed.getMulticastAddress(), 
                                      'port': 28808})
+        else:
+            raise TypeError("Invalid transport type. Should be one of %s" 
+                        %[helpers.TRANSPORT_TCP, helpers.TRANSPORT_MULTICAST])
     else:
         bridges = mesdl.get('bridges', {})
         if not bridges:
             log.error('At least one bridge is required for external connections')
             bridges.append({'type': 'TCPServer', 
                             'server': server, 'port': 18808})
+            
     return mesdl
 
-def getDefaultDBDL(isDBEnabled=True):
+def getDefaultDBDL(isDBEnabled=DEFAULT_DB_ENABLED):
     """ Create a default database description """
-    log.info("Creating default dbdl") 
-    return validateDBDL(isDBEnabled=isDBEnabled)
+    log.info("Creating default dbdl")
+    return validateDBDL(dbdl=dbdl, isDBEnabled=isDBEnabled)
 
-def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=testbed.getTopoGraph().nodes()):
+def validateDBDL(dbdl={}, isDBEnabled=None, 
+                 isDBSharded=None, magiNodeList=getMagiNodes()):
     """ Validate database description """
+    # Do not modify the input object
+    dbdl = copy.deepcopy(dbdl)
+    
     if not dbdl:
         dbdl = dict()
+    
+    if not isinstance(dbdl, dict):
+        raise TypeError("DBDL should be a dictionary")
     
     if isDBEnabled is not None:
         dbdl['isDBEnabled'] = isDBEnabled
@@ -275,31 +327,66 @@ def validateDBDL(dbdl={}, isDBEnabled=None, magiNodeList=testbed.getTopoGraph().
         isDBEnabled = dbdl.setdefault('isDBEnabled', DEFAULT_DB_ENABLED)
         
     if isDBEnabled:
-        isDBSharded = dbdl.setdefault('isDBSharded', 
-                                      False if len(magiNodeList) == 1 
-                                      else DEFAULT_DB_SHARDED)
-        sensorToCollectorMap = dbdl.setdefault('sensorToCollectorMap', {})
-        validateSensorToColletorMap(sensorToCollectorMap, magiNodeList)
+        if isDBSharded is None:
+            isDBSharded = dbdl.get('isDBSharded', DEFAULT_DB_SHARDED)
+            
+        sensorToCollectorMap = validateSensorToColletorMap(
+                        sensorToCollectorMap=dbdl.get('sensorToCollectorMap'), 
+                        magiNodes=magiNodeList,
+                        isDBSharded=isDBSharded)
+        
+        # if sensorToCollectorMap is empty
+        if not sensorToCollectorMap:
+            dbdl = {}
+            dbdl['isDBEnabled'] = False
+            return dbdl
+            
+        dbdl['sensorToCollectorMap'] = sensorToCollectorMap
+        
+        collectors = sensorToCollectorMap.values()
+        
+        # No need to setup a sharded setup in case of just one collector
+        if len(collectors) == 1:
+            isDBSharded = False
+            
+        dbdl['isDBSharded'] = isDBSharded
+        
+        if dbdl.get('configHost') not in collectors:
+            dbdl['configHost'] = getServer(collectors)
+        dbdl['configHost'] = helpers.toControlPlaneNodeName(dbdl['configHost'])
+            
         if isDBSharded:
-            if dbdl.get('configHost') not in magiNodeList:
-                dbdl['configHost'] = getServer(magiNodeList)
+            dbdl['configPort'] = ROUTER_SERVER_PORT
         else:
-            dbdl.pop('configHost', None)
+            dbdl['configPort'] = DATABASE_SERVER_PORT
     else:
         dbdl = {}
         dbdl['isDBEnabled'] = False
         
     return dbdl
 
-def validateSensorToColletorMap(sensorToCollectorMap, magiNodes):
-    if not isinstance(sensorToCollectorMap, dict):
+def validateSensorToColletorMap(sensorToCollectorMap={}, 
+                                magiNodes=getMagiNodes(), 
+                                isDBSharded=DEFAULT_DB_SHARDED):
+    """ Validate sensor to collector mappings """
+    # Do not modify the input object
+    sensorToCollectorMap = copy.deepcopy(sensorToCollectorMap)
+    
+    if not sensorToCollectorMap:
         sensorToCollectorMap = dict()
-        for node in magiNodes:
-            sensorToCollectorMap[node] = node
+    
+    if not isinstance(sensorToCollectorMap, dict):
+        raise TypeError("sensorToCollectorMap should be a dictionary")
+    
+    if not sensorToCollectorMap:
+        if isDBSharded:
+            sensorToCollectorMap = {nodeName:nodeName for nodeName in magiNodes}
+        else:
+            sensorToCollectorMap = {helpers.ALL : getServer(magiNodes)}
     else:
         # Cleaning up existing sensorToCollectorMap
         # Removing non-existing experiment nodes
-        for (sensor, collector) in sensorToCollectorMap.iteritems():
+        for (sensor, collector) in sensorToCollectorMap.copy().iteritems():
             if sensor not in magiNodes + [helpers.ALL]:
                 del sensorToCollectorMap[sensor]
             elif collector not in magiNodes:
@@ -314,20 +401,27 @@ def validateSensorToColletorMap(sensorToCollectorMap, magiNodes):
             for node in magiNodes:
                 if node not in sensorToCollectorMap:
                     sensorToCollectorMap[node] = node
-
+    
+    return sensorToCollectorMap
 
 def getDefaultExpDL(distributionPath=DEFAULT_DIST_DIR):
     """ Create a default experiment description """
     log.info("Creating default expdl") 
     return validateExpDL(distributionPath=distributionPath)
-    
+
 def validateExpDL(expdl={}, distributionPath=None):
     """ """
+    # Do not modify the input object
+    expdl = copy.deepcopy(expdl)
+    
     if not expdl:
         expdl = dict()
         
+    if not isinstance(expdl, dict):
+        raise TypeError("ExpDL should be a dictionary")
+    
     expdl.setdefault('topoGraph', json_graph.node_link_data(testbed.getTopoGraph()))
-    nodeList = testbed.getTopoGraph().nodes()
+    nodeList = json_graph.node_link_graph(expdl['topoGraph']).nodes()
     nodeList.sort()
     expdl['nodeList'] = nodeList
     expdl.setdefault('magiNodeList', nodeList)
@@ -351,7 +445,6 @@ def validateExpDL(expdl={}, distributionPath=None):
     
     return expdl
 
-
 ## NODE CONFIGURATION ##
 
 def createNodeConfig(experimentConfig={}):
@@ -359,7 +452,10 @@ def createNodeConfig(experimentConfig={}):
     return loadNodeConfig(experimentConfig=experimentConfig)
 
 def loadNodeConfig(nodeConfig={}, experimentConfig=None):
-    global NODE_CONFIG
+    # Do not modify the input object
+    nodeConfig = copy.deepcopy(nodeConfig)
+    experimentConfig = copy.deepcopy(experimentConfig)
+    
     try:
         if (type(nodeConfig) == str):
             log.info("Loading given node configuration from %s" %(nodeConfig))
@@ -379,31 +475,29 @@ def loadNodeConfig(nodeConfig={}, experimentConfig=None):
             log.info("Error loading given experiment configuration file. Creating default.")
             experimentConfig = dict()
         
-    NODE_CONFIG = validateNodeConfig(nodeConfig=nodeConfig, experimentConfig=experimentConfig)
+    nodeConfig = validateNodeConfig(nodeConfig=nodeConfig, experimentConfig=experimentConfig)
     
-#    #write experiment config file
-#    expConfFile = getExperimentConfFile()
-#    helpers.makeDir(os.path.dirname(expConfFile))
-#    fp = open(expConfFile, 'w')
-#    fp.write(yaml.safe_dump(experimentConfig))
-#    fp.close()
-#    
-#    #write node configuration to file
-#    nodeConfFile = getNodeConfFile()
-#    helpers.makeDir(os.path.dirname(nodeConfFile))
-#    fp = open(nodeConfFile, 'w')
-#    fp.write(yaml.safe_dump(NODE_CONFIG))
-#    fp.close()
+    #setting global node configuration variable
+    global NODE_CONFIG
+    NODE_CONFIG = nodeConfig
+    
+    return nodeConfig
 
-    return NODE_CONFIG
-
-def validateNodeConfig(nodeConfig, experimentConfig={}):
+def validateNodeConfig(nodeConfig={}, experimentConfig={}):
     """
         Validate a node specific configuration, based on experiment-wide configuration
     """
+    # Do not modify the input object
+    nodeConfig = copy.deepcopy(nodeConfig)
+    
     if not nodeConfig:
         nodeConfig = dict()
         
+    if not isinstance(nodeConfig, dict):
+        raise TypeError("Node configuration should be a dictionary")
+        
+    # Do not modify the input object
+    experimentConfig = copy.deepcopy(experimentConfig)
     experimentConfig = validateExperimentConfig(experimentConfig=experimentConfig)
     
     # Information about the local node for reference 
@@ -422,15 +516,17 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     if isinstance(testbed, magi.testbed.desktop.DesktopExperiment):
         testbed.setNodeName(localInfo['nodename'])
     
-    expNodePaths = experimentConfig['expdl']['nodePaths']
+    expdl = experimentConfig['expdl']
+    expNodePaths = expdl['nodePaths']
     localInfo.setdefault('rootDir', expNodePaths['root'])
     localInfo.setdefault('configDir', expNodePaths['config'])
     localInfo.setdefault('logDir', expNodePaths['logs'])
     localInfo.setdefault('dbDir', expNodePaths['db'])
     localInfo.setdefault('tempDir', expNodePaths['temp'])
-    localInfo.setdefault('distributionPath', experimentConfig['expdl']['distributionPath'])
+    localInfo.setdefault('distributionPath', expdl['distributionPath'])
+    localInfo.setdefault('processAgentsCommPort', 18809)
     
-    testbedPaths = experimentConfig['expdl']['testbedPaths']
+    testbedPaths = expdl['testbedPaths']
     localInfo.setdefault('experimentDir', testbedPaths['experimentDir'])
     
     interfaceInfo = dict()
@@ -450,23 +546,22 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
                                                             'peernodes': peerNodes}
     
     localInfo['interfaceInfo'] = interfaceInfo
-    #config['processAgentsCommPort'] = None
     
-    nodeConfig.setdefault('topoGraph', experimentConfig['expdl']['topoGraph'])
+    nodeConfig.setdefault('topoGraph', expdl['topoGraph'])
     
     # Information about the location of the software libraries 
     softwareConfig = nodeConfig.setdefault('software', [])
     
     if not softwareConfig:
-        osname = platform.uname()[0].lower()
-        dist = platform.dist()[0].lower()
-        rootdir = experimentConfig.get('expdl', {}).get('distributionPath', sys.path[0])
-    
-        # Try our local prebuilt software first, this gets around dist installers pointing outside the testbed and long timeouts
+        # Try our local prebuilt software first 
+        # this gets around dist installers pointing outside the testbed and long timeouts
+        rootdir = expdl.get('distributionPath', sys.path[0])
         softwareConfig.append({'type': 'rpmfile', 'dir': os.path.join(rootdir, getArch())})
         softwareConfig.append({'type': 'archive', 'dir': os.path.join(rootdir, getArch())})
     
         # then dist installer
+        osname = platform.uname()[0].lower()
+        dist = platform.dist()[0].lower()
         if dist in ('ubuntu', 'debian'):
             softwareConfig.append({ 'type': 'apt'})
         elif dist in ('redhat', 'fedora'):
@@ -484,15 +579,15 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
     # the required transports for this node
     transportsConfig = nodeConfig.setdefault('transports', [])
      
-    mesdl = experimentConfig.get('mesdl')
+    mesdl = experimentConfig['mesdl']
     log.debug("Mesdl from experiment wide configuration: %s", mesdl)
     
     if not transportsConfig:
-        nodename_control = testbed.fqdn
+        nodename = helpers.toControlPlaneNodeName(localInfo['nodename'])
         # For each external connection, add a TCPServer transport    
         for bridge in mesdl['bridges']:
             log.debug("Bridge: %s", bridge)
-            if nodename_control == bridge['server']:
+            if nodename == bridge['server']:
                 # A transport server is added on the node  
                 # This is used to provide an external facing connection to the magi messaging network on port extport (typically 18808)  
                 transportsConfig.append({ 'class': bridge['type'], 'address': '0.0.0.0', 'port': bridge['port']})
@@ -502,7 +597,7 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
         # NOTE: We are just adding TCPTransports currently 
         for t in mesdl['overlay']:
             log.debug("Control Plane Overlay: %s", t)
-            if t['type'] == 'TCPTransport' and nodename_control != t['server'] and (nodename_control in t['members'] or '__ALL__' in t['members']):
+            if t['type'] == 'TCPTransport' and nodename != t['server'] and (nodename in t['members'] or '__ALL__' in t['members']):
                 server_name = t['server']
                 # DETER/emulab DNS will resolves FQDNs to the control network address, 
                 # A FQDN or IP address would be required for connecting with the external world 
@@ -514,33 +609,30 @@ def validateNodeConfig(nodeConfig, experimentConfig={}):
                         
                 transportsConfig.append({ 'class': 'TCPTransport', 'address': server_addr, 'port': t['port'] })
                 
-            elif t['type'] == 'MulticastTransport' and (nodename_control in t['members'] or '__ALL__' in t['members']):
+            elif t['type'] == 'MulticastTransport' and (nodename in t['members'] or '__ALL__' in t['members']):
                 transportsConfig.append({ 'class': 'MulticastTransport', 'address': t['address'], 'localaddr': testbed.controlip, 'port': t['port'] })
 
 
     #Database Configuration
     databaseConfig = nodeConfig.setdefault('database', {})
     
-    dbdl = experimentConfig.get('dbdl')
+    dbdl = experimentConfig['dbdl']
     log.debug("Dbdl from experiment wide configuration: %s", dbdl)
     
-    if localInfo['nodename'] not in experimentConfig['expdl']['magiNodeList']:
+    if localInfo['nodename'] not in expdl['magiNodeList']:
         databaseConfig['isDBEnabled'] = False
     isDBEnabled = databaseConfig.setdefault('isDBEnabled', dbdl.get('isDBEnabled'))
     if isDBEnabled:
-        isDBSharded = databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
+        databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
         databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
         sensorToCollectorMap = databaseConfig['sensorToCollectorMap']
         validateSensorToColletorMap(sensorToCollectorMap, 
-                                    experimentConfig['expdl']['magiNodeList'])
-        if isDBSharded:
-            databaseConfig.setdefault('configHost', dbdl['configHost'])
-        else:
-            databaseConfig.pop('configHost', None)
-            
+                                    expdl['magiNodeList'])
+        databaseConfig.setdefault('configHost', dbdl['configHost'])
+        databaseConfig.setdefault('configPort', dbdl['configPort'])
+        
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig
-
 
 def getArch():
     """ Try and get something that is unique to this build environment for tagging built source """

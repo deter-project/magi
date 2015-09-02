@@ -20,6 +20,9 @@ log = logging.getLogger(__name__)
 TIMEOUT=900
 TEMP_DIR = tempfile.gettempdir()
 
+#Mongo DB might be installed here
+sys.path.append('/usr/local/bin')
+
 def startConfigServer(port=CONFIG_SERVER_PORT, 
                       dbPath=os.path.join(TEMP_DIR, "configdb"), 
                       logPath=os.path.join(TEMP_DIR, "mongoc.log"),
@@ -229,11 +232,11 @@ def registerShard(dbHost, configHost, dbPort=DATABASE_SERVER_PORT, configPort=RO
     getConnection(host=dbHost, port=DATABASE_SERVER_PORT, timeout=timeout) #check if mongod is up
     
     while time.time() < stop:
-        if call("""/usr/local/bin/mongo --host %s --eval "sh.addShard('%s:%d')" """ %(configHost, dbHost, dbPort), shell=True):
+        if call("""mongo --host %s --eval "sh.addShard('%s:%d')" """ %(configHost, dbHost, dbPort), shell=True):
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
-        if connection.config.shards.find({HOST_FIELD_KEY: "%s:%d" % (dbHost, dbPort)}).count() == 0:
+        if connection.config.shards.find({"host": "%s:%d" % (dbHost, dbPort)}).count() == 0:
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
@@ -256,7 +259,7 @@ def isShardRegistered(dbHost, configHost, dbPort=DATABASE_SERVER_PORT, configPor
     log.info("Checking if database server is registered as a shard")
     while True:
         try:
-            if connection.config.shards.find({HOST_FIELD_KEY: "%s:%d" %(dbHost, dbPort)}).count() != 0:
+            if connection.config.shards.find({"host": "%s:%d" %(dbHost, dbPort)}).count() != 0:
                 helpers.exitlog(log, functionName)
                 return True
         except:

@@ -54,17 +54,16 @@ if __name__ == '__main__':
      
         if options.dbhost:
             dbHost = options.dbhost
+            dbPort = options.dbport
         elif options.experimentConfig or (options.project and options.experiment):
             logging.info("Fetching database config host based on the experiment information")
-            dbHost = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig,
-                                             project=options.project, 
-                                             experiment=options.experiment)
+            (dbHost, dbPort) = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig,
+                                                       project=options.project, 
+                                                       experiment=options.experiment)
             logging.info("Fetched database config host: %s" %(dbHost))    
         else:
             optparser.print_help()
             optparser.error("Missing database host and experiment configuration information")
-            
-        dbPort = options.dbport
         
         logging.info("Attempting to load the graph configuration file")
         config = helpers.loadYaml(options.config)

@@ -397,7 +397,7 @@ class UnloadAgentCall(LoadUnloadAgentCall):
         LoadUnloadAgentCall.__init__(self, False, name, **kwargs)
 
 
-# TODO: add intellegence to build and destroy groups as they are used or unused
+# TODO: add intelligence to build and destroy groups as they are used or unused
 class GroupCall(BaseMethodCall):
     """" Base class for joinGroup, leaveGroup calls. """
     def __init__(self, load, name, nodes):
@@ -421,21 +421,25 @@ class LeaveGroupCall(GroupCall):
     def __init__(self, name, nodes):
         GroupCall.__init__(self, False, name, nodes)
 
-
+class GroupPingCall(BaseMethodCall):
+    """" Base class for ping, to check if groups have been built. """
+    def __init__(self, group):
+        args = {
+            "group": group,
+        }
+        BaseMethodCall.__init__(self, groups=group, docks='daemon',
+                                method='groupPing', args=args)
+        
 class Stream(list):
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, name, *args, **kwargs):
+        self.name = name
         list.__init__(self, *args, **kwargs)
         
-    def gettriggerToAgentMaps(self):
-        result = {}
-        for i in  range(0, len(self.wrapped)):
-            item = self[i]
-            if isinstance(item, EventObject):
-                if item.trigger:
-                    result[item.trigger] = item
-            
-
+    def __repr__(self):
+        return "%s:\n\n%s" %(self.name, list.__repr__(self))
+        
+        
 class AAL(object):
     """
         A parsed AAL File which an internal list that contains the
@@ -476,10 +480,14 @@ class AAL(object):
     
             self.rawAAL = yaml.load(yaml_file.getvalue())
             
-            self.setupStream = Stream()
-            self.teardownStream = Stream()
-            #Event Streams
-            self.streams = dict()
+            #Pointer to streams
+            self.setupStreams = []
+            self.teardownStreams = []
+            self.userEventStreams = []
+            
+            #Stream name to object map
+            self.streamMap = dict()
+            
             #Incoming event triggers keyed by stream name
             self.ieventtriggers = defaultdict(set) 
             #Outgoing event triggers keyed by stream name
@@ -509,24 +517,47 @@ class AAL(object):
             # Define startup stream 
             # By default we add a startup stream 
             if self.startup: 
-            # Stand up the experiemnt, load agents, build groups.
+            # Stand up the experiment, load agents, build groups.
+            
+                groupBuildStream = Stream('groupBuildStream')
+                self.setupStreams.append(groupBuildStream)
+                self.streamMap['groupBuildStream'] = groupBuildStream
+                
                 for name, nodes in self.rawAAL['groups'].iteritems():
-                    self.setupStream.append(BuildGroupCall(name, nodes))
+                    if name == '__ALL__': continue # all nodes by default receive messages sent to the '__ALL__' group
+                    groupBuildStream.append(BuildGroupCall(name, nodes))
     
                 # Add triggers for the BuildGroup calls 
                 for name, nodes in self.rawAAL['groups'].iteritems():
-                    self.setupStream.append(
+                    if name == '__ALL__': continue # no GroupBuild message sent for '__ALL__' group
+                    groupBuildStream.append(
                         TriggerList([
                             {'event': 'GroupBuildDone', 'group': name, 
                              'nodes': nodes},
                             {'timeout': int(groupBuildTimeout), 
                              'target': 'exit'}]))
-    
-                loadAgentStream = Stream()
+                
+                for name, nodes in self.rawAAL['groups'].iteritems():
+                    if name == '__ALL__': continue # all nodes by default receive messages sent to the '__ALL__' group
+                    groupBuildStream.append(GroupPingCall(name))
+                    
+                # Add triggers for the BuildGroup calls 
+                for name, nodes in self.rawAAL['groups'].iteritems():
+                    if name == '__ALL__': continue # no GroupBuild message sent for '__ALL__' group
+                    groupBuildStream.append(
+                        TriggerList([
+                            {'event': 'GroupPong', 'group': name, 
+                             'nodes': nodes},
+                            {'timeout': int(groupBuildTimeout), 
+                             'target': 'groupBuildStream'}]))
+                    
+                loadAgentStream = Stream('loadAgentStream')
+                self.setupStreams.append(loadAgentStream)
+                self.streamMap['loadAgentStream'] = loadAgentStream
                 
                 for name, agent in self.rawAAL['agents'].iteritems():
                     # for agents that need to be installed
-                    if 'path' in agent:
+                    if 'path' in agent or 'tardata' in agent:
                         # create an internal agent dock using unique name of agent. 
                         # if specified in the AAL, do not do this. 
                         if not 'dock' in agent:
@@ -535,7 +566,16 @@ class AAL(object):
                             agent['code'] = name + '_code' 
         
                         # Add event call to load agent
-                        self.setupStream.append(LoadAgentCall(name, **agent))
+                        loadAgentStream.append(LoadAgentCall(name, **agent))
+                        
+                    else:
+                        if not 'dock' in agent:
+                            agent['dock'] = 'daemon'
+                        
+                # Now, add the load agent triggers
+                for name, agent in self.rawAAL['agents'].iteritems():
+                    # for agents that need to be installed
+                    if 'path' in agent or 'tardata' in agent:
                         
                         # Add triggers to ensure the agents are loaded correctly 
                         # However, add them only after all the load agent events
@@ -547,55 +587,60 @@ class AAL(object):
                                 {'timeout': int(timeout), 'target': 'exit'} 
                                  ]))
     
-                    else:
-                        if not 'dock' in agent:
-                            agent['dock'] = 'daemon'
-    
-                # Now, add the load agent triggers
-                self.setupStream.extend(loadAgentStream)
-    
-    
             ##### TEARDOWN STREAM #####
             
             # We always define a teardown stream as jumping to target exit 
             # activates this stream 
             # tear down the experiment, unload agents, leave groups.
-            unloadAgentStream = Stream()
-    
-            for name, agent in self.rawAAL['agents'].iteritems():
-                if 'path' in agent:
-                    self.teardownStream.append(UnloadAgentCall(name, **agent))
+            
+            unloadAgentStream = Stream('unloadAgentStream')
+            self.teardownStreams.append(unloadAgentStream)
+            self.streamMap['unloadAgentStream'] = unloadAgentStream
                 
-                    # Add triggers to ensure the agents are unloaded correctly 
-                    # However, add them only after all the unload agent events
-                    # Use the same timeouts as setup stream
+            # Add unload agent events
+            for name, agent in self.rawAAL['agents'].iteritems():
+                if 'path' in agent or 'tardata' in agent:
+                    unloadAgentStream.append(UnloadAgentCall(name, **agent))
+    
+            # Add triggers to ensure the agents are unloaded correctly 
+            # However, add them only after all the unload agent events
+            # Use the same timeouts as setup stream
+            for name, agent in self.rawAAL['agents'].iteritems():
+                if 'path' in agent or 'tardata' in agent:
                     timeout = agent.get('loadTimeout', self.agentLoadTimeout)
                     unloadAgentStream.append(
                         TriggerList([
-                                {'event': 'AgentUnloadDone',
-                                'agent': name,
+                                {'event': 'AgentUnloadDone', 'agent': name,
                                 'nodes': self.rawAAL['groups'][agent['group']]},
-                                {'timeout': int(timeout), 'target': 'exit'} 
-                                 ]))
-    
-            # Now, add the unload agent triggers
-            self.teardownStream.extend(unloadAgentStream)
+                                {'timeout': int(timeout), 'target': 'exit'}
+                                ]))
+            
+            groupLeaveStream = Stream('groupLeaveStream')
+            self.teardownStreams.append(groupLeaveStream)
+            self.streamMap['groupLeaveStream'] = groupLeaveStream
                 
+            # Add leave group events
             for name, nodes in self.rawAAL['groups'].iteritems():
-                self.teardownStream.append(LeaveGroupCall(name, nodes))
+                if name == '__ALL__': continue # no GroupBuild message sent for '__ALL__' group    
+                groupLeaveStream.append(LeaveGroupCall(name, nodes))
+                
+            # Add triggers to ensure groups are left correctly
             for name, nodes in self.rawAAL['groups'].iteritems():
-                self.teardownStream.append(
+                if name == '__ALL__': continue # no LeaveGroup message sent for '__ALL__' group
+                groupLeaveStream.append(
                     TriggerList([
                         {'event': 'GroupTeardownDone', 'group': name, 
                          'nodes': nodes},
-                        {'timeout': int(groupBuildTimeout), 'target': 'exit'}]))
+                        {'timeout': int(groupBuildTimeout), 'target': 'exit'}
+                        ]))
     
     
             ##### EVENT STREAMS #####
     
             for streamName, estream in self.rawAAL['eventstreams'].iteritems():
-                newstream = Stream()
-                self.streams[streamName] = newstream
+                newstream = Stream(streamName)
+                self.userEventStreams.append(newstream)
+                self.streamMap[streamName] = newstream
                 for event in estream:
                     # The eventstream consists of triggers and events. 
                     # First we process the type trigger, then event. 
@@ -633,7 +678,8 @@ class AAL(object):
                 raise AALParseError('Incoming event triggers are not a subset of outgoing event triggers')
             
             self.cgraph = ControlGraph() 
-            for streamName, eventStream in self.streams.iteritems():
+            for eventStream in self.userEventStreams:
+                streamName = eventStream.name
                 cluster = self.cgraph.createCluster(streamName)
                 cluster.nodes.append({'type' : 'node',
                                       'id' : streamName,
@@ -659,19 +705,19 @@ class AAL(object):
             log.error(''.join(traceback.format_exception(exc_type, exc_value, exc_tb)))
             raise AALParseError("Exception while parsing AAL: %s" %str(e))
             
-    def getSetupStream(self):
-        return self.setupStream
+    def getSetupStreams(self):
+        return self.setupStreams
 
-    def getTeardownStream(self):
-        return self.teardownStream
+    def getTeardownStreams(self):
+        return self.teardownStreams
 
     def getStream(self, key):
         """ Get the event stream at a particular index """
-        return self.streams[key]
+        return self.streamMap[key]
 
     def hasStream(self, key):
         """ Return true if the event stream contains a particular stream """
-        return key in self.streams
+        return key in self.streamMap
 
     def getStartKeys(self):
         """ Get the stream keys that should be started in parallel """
@@ -764,16 +810,18 @@ class AAL(object):
                         updateTrigger(trigger)                
 
     def __repr__(self):
-        rstr = "Setup Stream\n\n" 
-        rstr += str(self.setupStream)
+        rstr = "Setup Streams\n\n" 
+        for stream in self.setupStreams:
+            rstr += str(stream)
+            rstr += "\n\n"
         rstr += "\n\nEvent Streams\n\n" 
-        for s in self.getStartKeys():
-            rstr += s 
+        for stream in self.userEventStreams:
+            rstr += str(stream)
             rstr += "\n\n"
-            rstr += str(self.streams[s])
+        rstr += "Teardown Streams\n\n" 
+        for stream in self.teardownStreams:
+            rstr += str(stream)
             rstr += "\n\n"
-        rstr += "Teardown Stream\n\n" 
-        rstr += str(self.teardownStream)
         return rstr
 
       
