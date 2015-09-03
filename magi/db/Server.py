@@ -20,9 +20,15 @@ log = logging.getLogger(__name__)
 TIMEOUT=900
 TEMP_DIR = tempfile.gettempdir()
 
-#Mongo DB might be installed here
-sys.path.append('/usr/local/bin')
-
+#mongodb in some cases gets intalled under /usr/local/bin
+#and in case of some setups /usr/local/bin 
+#is not part of the environment path
+env_path = os.environ['PATH']
+env_paths = env_path.split(':')
+if '/usr/local/bin' not in env_paths:
+    env_paths.append('/usr/local/bin') 
+os.environ['PATH'] = ":".join(env_paths)
+    
 def startConfigServer(port=CONFIG_SERVER_PORT, 
                       dbPath=os.path.join(TEMP_DIR, "configdb"), 
                       logPath=os.path.join(TEMP_DIR, "mongoc.log"),
