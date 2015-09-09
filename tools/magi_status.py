@@ -143,10 +143,14 @@ if __name__ == '__main__':
     optparser.add_option("-b", "--bridge", default=None, dest="bridge", 
                          help="Address of the bridge node to join the experiment overlay (ex: control.exp.proj)")
     
-    optparser.add_option("-p", "--port", dest="port", type="int", default=18808, 
+    optparser.add_option("-x", "--port", dest="port", type="int", default=18808, 
                          help="The port to connect to on the bridge node")
     
     optparser.add_option("-c", "--config", dest="config", help="Experiment configuration file location")
+    
+    optparser.add_option("-p", "--project", dest="project", help="Project name")
+    
+    optparser.add_option("-e", "--experiment", dest="experiment", help="Experiment name")
     
     optparser.add_option("-n", "--nodes", dest="nodes", action="callback", callback=store_list, default=[], type="string", 
                          help="Comma-separated list of the nodes to reboot MAGI daemon")
@@ -187,12 +191,15 @@ if __name__ == '__main__':
     if options.bridge:
         bridgeNode = options.bridge
         bridgePort = options.port
-    elif options.config:
-        (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config)
+    elif options.config or (options.project and options.experiment):
+        (bridgeNode, bridgePort) = helpers.getBridge(
+                                        experimentConfigFile=options.config, 
+                                        project=options.project, 
+                                        experiment=options.experiment)
     else:
         optparser.print_help()
-        optparser.error("Missing bridge and "
-                        "experiment configuration file")
+        optparser.error("Missing bridge information and "
+                            "experiment configuration information")
             
     nodeSet = set() 
     if options.nodes:
