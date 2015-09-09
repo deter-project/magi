@@ -64,8 +64,8 @@ if __name__ == '__main__':
 
         rpath = options.rpath 
 
-        if (sys.version_info[0] == 2) and (sys.version_info[1] < 5):
-                sys.exit("Only works with python 2.5 or greater")
+        if (sys.version_info[0] == 2) and (sys.version_info[1] < 7):
+                sys.exit("Only works with python 2.7 or greater")
 
         MAX_TRIES = 5
         trialItr = 1
