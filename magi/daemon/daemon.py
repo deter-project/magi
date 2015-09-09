@@ -525,7 +525,7 @@ class Daemon(threading.Thread):
 				from magi.daemon.threadInterface import ThreadedAgent
 				agent = ThreadedAgent(self.hostname, name, mainfile, dock, execargs, self.messaging)
 				agent.start()
-				log.debug("Started threaded agent %s", agent)
+				log.info("Started threaded agent %s", agent)
 				if static:
 					self.staticAgents.append(agent)
 				else:
@@ -544,19 +544,19 @@ class Daemon(threading.Thread):
 				os.chmod(mainfile, 00777)
 				stderrname = os.path.join(config.getLogDir(), name + '.stderr')
 				stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
-				log.debug("Starting %s, stderr sent to %s", name, stderrname)
+				log.info("Starting %s, stderr sent to %s", name, stderrname)
 				
 				if execstyle == 'pipe':
 					args.append('execute=pipe')
 					cmdList = [mainfile, name, dock, config.getNodeConfFile(), config.getExperimentConfFile()] + args
-					log.debug('running: %s', ' '.join(cmdList))
+					log.info('running: %s', ' '.join(cmdList))
 					agent = Popen(cmdList, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
 					self.extAgentsThread.fromNetwork.put(PipeTuple([dock], InputPipe(fileobj=agent.stdout), OutputPipe(fileobj=agent.stdin)))
 	
 				elif execstyle == 'socket':
 					args.append('execute=socket')
 					cmdList = [mainfile, name, dock, config.getNodeConfFile(), config.getExperimentConfFile()] + args
-					log.debug('running: %s', ' '.join(cmdList))
+					log.info('running: %s', ' '.join(cmdList))
 					agent = Popen(cmdList, close_fds=True, stderr=stderr)
 	
 				else:
