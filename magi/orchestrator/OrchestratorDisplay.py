@@ -173,11 +173,11 @@ class OrchestratorDisplayState(object):
     def exitOnFalse(self, trigger):
         now = self._timestamp()
         nodes = self._minstr(trigger.nodes) if trigger.nodes else 'unknown'
-        method = trigger.event
+        event = trigger.event
         group = trigger.args.get('group', 'unknown')
-        name = trigger.args.get('name', 'unknown')
-        print '%s : %s : (%s) method %s returned False on agent %s in group %s and on node(s): %s.' % (
-            self._name(None), self._red('exit'), now, method, name, group, nodes)
+        agent = trigger.args.get('agent', 'unknown')
+        print '%s : %s : (%s) trigger %s returned with False on agent %s in group %s and on node(s): %s.' % (
+            self._name(None), self._red('exit'), now, event, agent, group, nodes)
 
     def exitRunTimeException(self, trigger):
         now = self._timestamp()
