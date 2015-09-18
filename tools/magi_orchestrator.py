@@ -212,9 +212,9 @@ if __name__ == '__main__':
                                                                  project=options.project, 
                                                                  experiment=options.experiment)
                     
-                    (dbHost, dbPort) = helpers.getDBConfigHost(experimentConfigFile=options.config, 
-                                                               project=options.project, 
-                                                               experiment=options.experiment)
+                    (dbHost, dbPort) = helpers.getExperimentDBHost(experimentConfigFile=options.config, 
+                                                                   project=options.project, 
+                                                                   experiment=options.experiment)
                     
                     break
                 except IOError:
