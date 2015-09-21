@@ -56,11 +56,12 @@ if __name__ == '__main__':
             dbHost = options.dbhost
             dbPort = options.dbport
         elif options.experimentConfig or (options.project and options.experiment):
-            logging.info("Fetching database config host based on the experiment information")
-            (dbHost, dbPort) = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig,
+            logging.info("Fetching database host based on the experiment information")
+            (dbHost, dbPort) = helpers.getExperimentDBHost(experimentConfigFile=options.experimentConfig,
                                                        project=options.project, 
                                                        experiment=options.experiment)
-            logging.info("Fetched database config host: %s" %(dbHost))    
+            logging.info("Fetched database host: %s" %(dbHost)) 
+            logging.info("Fetched database port: %s" %(dbPort))    
         else:
             optparser.print_help()
             optparser.error("Missing database host and experiment configuration information")

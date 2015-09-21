@@ -28,6 +28,7 @@ TRANSPORT_TCP = 'TCP'
 TRANSPORT_MULTICAST = 'Multicast'
 
 ALL = '__ALL__'
+DEFAULT = '__DEFAULT__'
 
 def makeDir(name):
     try:
@@ -191,7 +192,7 @@ def getBridge(experimentConfigFile=None, project=None, experiment=None):
     
     return (bridges[0]['server'], bridges[0]['port'])
 
-def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
+def getExperimentDBHost(experimentConfigFile=None, project=None, experiment=None):
     if not experimentConfigFile:
         if not project or not experiment:
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
@@ -200,8 +201,14 @@ def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
     experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
     dbdl = experimentConfig['dbdl']
     
-    return (toControlPlaneNodeName(dbdl['configHost']), dbdl['configPort'])
-
+    isDBSharded = dbdl['isDBSharded']
+    
+    if isDBSharded:
+        return (toControlPlaneNodeName(dbdl['globalServerHost']), dbdl['globalServerPort'])
+    else:
+        sensorToCollectorMap = dbdl['sensorToCollectorMap']
+        return (toControlPlaneNodeName(dbdl['sensorToCollectorMap'][DEFAULT]), dbdl['collectorPort'])
+    
 def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=None):
     if not experimentConfigFile:
         if not project or not experiment:

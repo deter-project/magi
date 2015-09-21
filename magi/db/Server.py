@@ -20,9 +20,9 @@ log = logging.getLogger(__name__)
 TIMEOUT=900
 TEMP_DIR = tempfile.gettempdir()
 
-#mongodb in some cases gets intalled under /usr/local/bin
-#and in case of some setups /usr/local/bin 
-#is not part of the environment path
+#mongodb in some cases gets installed under /usr/local/bin,
+#and in case of some setups /usr/local/bin is not part of the environment path
+#hence, adding it
 env_path = os.environ['PATH']
 env_paths = env_path.split(':')
 if '/usr/local/bin' not in env_paths:

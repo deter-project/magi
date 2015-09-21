@@ -206,8 +206,11 @@ if __name__ == '__main__':
         nodeSet = helpers.toSet(options.nodes)
     if options.aal:
         nodeSet.update(helpers.getNodesFromAAL(options.aal))
-    if not nodeSet and options.config:
-        nodeSet.update(helpers.getMagiNodeList(experimentConfigFile=options.config))
+    if not nodeSet and (options.config or (options.project and options.experiment)):
+        nodeSet.update(helpers.getMagiNodeList(
+                                        experimentConfigFile=options.config, 
+                                        project=options.project, 
+                                        experiment=options.experiment))
         
     if options.logs:
         (status, result) = getLogsArchive(bridgeNode=bridgeNode, 

@@ -130,9 +130,6 @@ def getConfig():
 def getNodeName():
     return getNodeConfig()['localInfo']['nodename']
 
-def getDbConfigHost():
-    return getNodeConfig()['database'].get('configHost')
-
 def getConfigDir():
     try:
         return NODE_CONFIG['localInfo']['configDir']
@@ -273,7 +270,7 @@ def validateMesDL(mesdl={}, magiNodeList=getMagiNodes(),
     if not isinstance(mesdl, dict):
         raise TypeError("MesDL should be a dictionary")
     
-    server = helpers.toControlPlaneNodeName(getServer(magiNodeList))
+    server = helpers.toControlPlaneNodeName(helpers.getServer(magiNodeList))
     
     if not mesdl:
         log.info("Using %s as server node", server) 
@@ -342,8 +339,9 @@ def validateDBDL(dbdl={}, isDBEnabled=None,
             return dbdl
             
         dbdl['sensorToCollectorMap'] = sensorToCollectorMap
+        dbdl['collectorPort'] = DATABASE_SERVER_PORT
         
-        collectors = sensorToCollectorMap.values()
+        collectors = set(sensorToCollectorMap.values())
         
         # No need to setup a sharded setup in case of just one collector
         if len(collectors) == 1:
@@ -351,14 +349,15 @@ def validateDBDL(dbdl={}, isDBEnabled=None,
             
         dbdl['isDBSharded'] = isDBSharded
         
-        if dbdl.get('configHost') not in collectors:
-            dbdl['configHost'] = getServer(collectors)
-        dbdl['configHost'] = helpers.toControlPlaneNodeName(dbdl['configHost'])
-            
         if isDBSharded:
-            dbdl['configPort'] = ROUTER_SERVER_PORT
+            if dbdl.get('globalServerHost') not in magiNodeList:
+                dbdl['globalServerHost'] = helpers.getServer(magiNodeList)
+            dbdl['globalServerHost'] = helpers.toControlPlaneNodeName(dbdl['globalServerHost'])
+            dbdl['globalServerPort'] = ROUTER_SERVER_PORT
         else:
-            dbdl['configPort'] = DATABASE_SERVER_PORT
+            dbdl.pop('globalServerHost', None)
+            dbdl.pop('globalServerPort', None)
+            
     else:
         dbdl = {}
         dbdl['isDBEnabled'] = False
@@ -381,26 +380,32 @@ def validateSensorToColletorMap(sensorToCollectorMap={},
     if not sensorToCollectorMap:
         if isDBSharded:
             sensorToCollectorMap = {nodeName:nodeName for nodeName in magiNodes}
-        else:
-            sensorToCollectorMap = {helpers.ALL : getServer(magiNodes)}
     else:
         # Cleaning up existing sensorToCollectorMap
         # Removing non-existing experiment nodes
         for (sensor, collector) in sensorToCollectorMap.copy().iteritems():
-            if sensor not in magiNodes + [helpers.ALL]:
+            if sensor not in magiNodes + [helpers.DEFAULT]:
                 del sensorToCollectorMap[sensor]
             elif collector not in magiNodes:
                 # Invalid default collector
-                if sensor == helpers.ALL:
-                    del sensorToCollectorMap[sensor]
-                else:
-                    sensorToCollectorMap[sensor] = sensor
+                #if sensor == helpers.DEFAULT:
+                #    del sensorToCollectorMap[sensor]
+                #else:
+                #    sensorToCollectorMap[sensor] = sensor
+                #NOTE: if a sensor is not mapped to a valid collector
+                #it would collect at the default collector 
+                del sensorToCollectorMap[sensor]
         
         # Validate that all nodes have a valid collector
-        if helpers.ALL not in sensorToCollectorMap:
-            for node in magiNodes:
-                if node not in sensorToCollectorMap:
-                    sensorToCollectorMap[node] = node
+        ##if helpers.DEFAULT not in sensorToCollectorMap:
+        ##    for node in magiNodes:
+        ##        if node not in sensorToCollectorMap:
+        ##            sensorToCollectorMap[node] = node
+        #NOTE: if a sensor is not mapped to a valid collector
+        #it would collect at the default collector 
+    
+    #always configure a default collector
+    sensorToCollectorMap.setdefault(helpers.DEFAULT, helpers.getServer(magiNodes))
     
     return sensorToCollectorMap
 
@@ -623,14 +628,25 @@ def validateNodeConfig(nodeConfig={}, experimentConfig={}):
         databaseConfig['isDBEnabled'] = False
     isDBEnabled = databaseConfig.setdefault('isDBEnabled', dbdl.get('isDBEnabled'))
     if isDBEnabled:
-        databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
+        isDBSharded = databaseConfig.setdefault('isDBSharded', dbdl.get('isDBSharded'))
         databaseConfig.setdefault('sensorToCollectorMap', dbdl['sensorToCollectorMap'])
         sensorToCollectorMap = databaseConfig['sensorToCollectorMap']
         validateSensorToColletorMap(sensorToCollectorMap, 
                                     expdl['magiNodeList'])
-        databaseConfig.setdefault('configHost', dbdl['configHost'])
-        databaseConfig.setdefault('configPort', dbdl['configPort'])
-        
+        collectors = set(sensorToCollectorMap.values())
+        # No need to setup a sharded setup in case of just one collector
+        if len(collectors) == 1:
+            isDBSharded = False
+        databaseConfig['isDBSharded'] = isDBSharded
+        databaseConfig['collectorPort'] = dbdl['collectorPort']
+        if isDBSharded:
+            databaseConfig.setdefault('globalServerHost', dbdl['globalServerHost'])
+            databaseConfig['globalServerHost'] = helpers.toControlPlaneNodeName(databaseConfig['globalServerHost'])
+            databaseConfig['globalServerPort'] = dbdl['globalServerPort']
+        else:
+            databaseConfig.pop('globalServerHost', None)
+            databaseConfig.pop('globalServerPort', None)
+            
     log.debug("Node Configuration: %s", nodeConfig)
     return nodeConfig
 
@@ -645,20 +661,6 @@ def getArch():
     arch = "%s-%s-%s" % (name, ver, machine)  # arch string to use for cached software lookup/saving
     return arch.replace('/', '')
 
-def getServer(nodeList):
-    # returns control if  it finds a node named "control" 
-    # in the given node list otherwise it returns the
-    # first node in the alpha-numerically sorted list
-    if not isinstance(nodeList, list):
-        raise TypeError("node list should be a list")
-    nodeList.sort()
-    host = nodeList[0]
-    for node in nodeList:
-        if 'control' == node.lower():
-            host = 'control'
-            break
-    return host    
-        
 #def keysExist(project=None, experiment=None, keydir=None):
 #    """
 #        Simple check to see if the specific keys exist before creating them

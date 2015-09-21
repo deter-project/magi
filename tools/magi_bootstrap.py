@@ -63,9 +63,10 @@ if __name__ == '__main__':
         log.addHandler(handler)
 
         rpath = options.rpath 
-
-        if (sys.version_info[0] == 2) and (sys.version_info[1] < 7):
-                sys.exit("Only works with python 2.7 or greater")
+        
+        if sys.hexversion < 0x020700F0:
+                log.critical("Only works with python 2.7 or greater. Current python version: %s" %(sys.version))
+                sys.exit("Only works with python 2.7 or greater. Current python version: %s" %(sys.version))
 
         MAX_TRIES = 5
         trialItr = 1
@@ -210,7 +211,7 @@ if __name__ == '__main__':
                 except:
                         log.exception("MAGI configuration failed, things probably aren't going to run")
                                     
-                if (config.getNodeName() == config.getServer(config.getMagiNodes())):
+                if (config.getNodeName() == helpers.getServer(config.getMagiNodes())):
                     import shutil
                     log.info("Copying experiment.conf to testbed experiment directory %s" %(config.getExperimentDir()))
                     shutil.copy(config.getExperimentConfFile(), config.getExperimentDir())
@@ -319,6 +320,6 @@ if __name__ == '__main__':
                     log.info("Trying to bootstrap again")
                     trialItr += 1
                     continue
-                log.info("Done trying to bootstrap %d times" %(MAX_TRIES))
+                log.critical("Done trying to bootstrap %d times" %(MAX_TRIES))
                 sys.exit(e)
                 

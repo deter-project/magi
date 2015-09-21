@@ -4,11 +4,10 @@ from collections import defaultdict
 import logging
 import os
 
-from magi.util import config, helpers
-
+from magi.db import DATABASE_SERVER_PORT, ROUTER_SERVER_PORT, CONFIG_SERVER_PORT
 from magi.db import Server, Connection, Collection
 from magi.db.Collection import DB_NAME, COLLECTION_NAME
-from magi.db.Server import DATABASE_SERVER_PORT, ROUTER_SERVER_PORT, CONFIG_SERVER_PORT
+from magi.util import config, helpers
 
 
 log = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ def isDBSharded():
     return getDbConfig().get('isDBSharded', True)
     
 def getConfigHost():
-    return getDbConfig().get('configHost')
+    return getDbConfig().get('globalServerHost')
     
 def getSensorToCollectorMap():
     return getDbConfig().get('sensorToCollectorMap', {})
@@ -39,7 +38,7 @@ def getSensorToCollectorMap():
 def getCollector():
     sensorToCollectorMap = getSensorToCollectorMap()
     return sensorToCollectorMap.get(config.getNodeName(), 
-                                    sensorToCollectorMap.get(helpers.ALL))
+                                    sensorToCollectorMap.get(helpers.DEFAULT))
     
 def isConfigHost():
     configHost = getConfigHost()
@@ -53,14 +52,13 @@ def isCollector():
 def isSensor():
     sensorToCollectorMap = getSensorToCollectorMap()
     return (config.getNodeName() in sensorToCollectorMap.keys() 
-            or helpers.ALL in sensorToCollectorMap.keys())
+            or helpers.DEFAULT in sensorToCollectorMap.keys())
     
 def startConfigServer(timeout=TIMEOUT):
     """
         Function to start a database config server on the node
     """
     return Server.startConfigServer(
-                    port=CONFIG_SERVER_PORT, 
                     dbPath=os.path.join(config.getDbDir(), "configdb"), 
                     logPath=os.path.join(config.getLogDir(), "mongoc.log"), 
                     timeout=timeout)
@@ -70,32 +68,30 @@ def setBalancerState(state):
         Function to turn on/off data balancer
     """
     Server.setBalancerState(state=state, 
-                        configHost=helpers.toControlPlaneNodeName(getConfigHost()), 
-                        configPort=CONFIG_SERVER_PORT)
+                    configHost=helpers.toControlPlaneNodeName(getConfigHost()))
     
 def startShardServer(configHost=getConfigHost(), timeout=TIMEOUT):
     """
         Function to start a database config server on the node
     """
-    return Server.startShardServer(port=ROUTER_SERVER_PORT, 
-                            logPath=os.path.join(config.getLogDir(), "mongos.log"), 
-                            configHost=helpers.toControlPlaneNodeName(configHost), 
-                            configPort=CONFIG_SERVER_PORT, 
-                            timeout=timeout)
+    return Server.startShardServer(
+                        logPath=os.path.join(config.getLogDir(), "mongos.log"), 
+                        configHost=helpers.toControlPlaneNodeName(configHost), 
+                        timeout=timeout)
 
 def startDBServer(configfile=None, timeout=TIMEOUT):
     """
         Function to start a database server on the node
     """
     helpers.makeDir(config.getDbDir())
-    return Server.startDBServer(port=DATABASE_SERVER_PORT, 
-                         configfile=configfile,
-                         configDir=config.getConfigDir(), 
-                         dbPath=os.path.join(config.getDbDir(), "mongodb"), 
-                         logPath=os.path.join(config.getLogDir(), "mongodb.log"), 
-                         timeout=timeout)
+    return Server.startDBServer( 
+                        configfile=configfile,
+                        configDir=config.getConfigDir(), 
+                        dbPath=os.path.join(config.getDbDir(), "mongodb"), 
+                        logPath=os.path.join(config.getLogDir(), "mongodb.log"), 
+                        timeout=timeout)
 
-def registerShard(mongod=config.getNodeName(), mongos=config.getDbConfigHost(), 
+def registerShard(mongod=config.getNodeName(), mongos=getConfigHost(), 
                   timeout=TIMEOUT):
     """
         Function to register a database server as a shard 
@@ -125,8 +121,6 @@ def isShardRegistered(dbHost=None, configHost=getConfigHost(), block=False):
     return Server.isShardRegistered(
                         dbHost=helpers.toControlPlaneNodeName(dbHost), 
                         configHost=helpers.toControlPlaneNodeName(configHost), 
-                        dbPort=DATABASE_SERVER_PORT, 
-                        configPort=CONFIG_SERVER_PORT, 
                         block=block)
     
 def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
@@ -142,8 +136,7 @@ def moveChunk(host, collector=None, collectionname=COLLECTION_NAME):
     Server.moveChunk(db=DB_NAME, collection=collectionname, 
                      host=host, 
                      collector=helpers.toControlPlaneNodeName(collector), 
-                     configHost=helpers.toControlPlaneNodeName(getConfigHost()), 
-                     configPort=ROUTER_SERVER_PORT)
+                     configHost=helpers.toControlPlaneNodeName(getConfigHost()))
             
     helpers.exitlog(log, functionName)
         
