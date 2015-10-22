@@ -80,6 +80,18 @@ def toSet(value):
         return set()
     return set([value])
 
+def getFQCN(object):
+    return object.__module__ + "." + object.__class__.__name__
+    
+def createClassInstance(fqcn):
+    import importlib
+    moduleName = '.'.join(fqcn.split('.')[:-1])
+    className = fqcn.split(".")[-1]
+    module_ = importlib.import_module(moduleName)
+    class_ = getattr(module_, className)
+    instance = class_()
+    return instance
+    
 def toDirected(graph, root):
     """
         Convert an undirected graph to a directed graph

@@ -5,7 +5,7 @@ from magi.orchestrator import AAL, Orchestrator
 from magi.orchestrator.parse import AALParseError
 from magi.db import ROUTER_SERVER_PORT
 
-from magi.util import helpers
+from magi.util import helpers, config
 from socket import gaierror # this should really be wrapped in daemon lib.
 from sys import exit
 
@@ -263,7 +263,13 @@ if __name__ == '__main__':
             exit(3)
     
         signal.signal(signal.SIGINT, signal_handler)
-    
+        
+        # Set the context by loading the experiment configuration file
+        if not options.config:
+            options.config = helpers.getExperimentConfigFile(options.project, 
+                                                             options.experiment)
+        config.loadExperimentConfig(options.config)
+        
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
                             useColor=(not options.nocolor), dbHost=dbHost, dbPort=dbPort)
