@@ -448,6 +448,27 @@ def validateExpDL(expdl={}, distributionPath=None):
     
     expdl.setdefault('aal', os.path.join(testbed.getExperimentDir(), "procedure.aal"))
     
+    testbedClass = expdl.setdefault('testbedClass', testbed.getTestbedClassFQCN())
+    
+    # In case the experimenter specifies a testbed type that is different from
+    # the default type for the host machine, set the environment accordingly.
+    if testbedClass != testbed.getTestbedClassFQCN():
+        try:
+            testbed.setTestbedClass(testbedClass)
+        except Exception:
+            log.exception('Could not create instance of set testbed class')
+            log.info('Setting default testbed class.')
+            expdl['testbedClass'] = testbed.getTestbedClassFQCN()
+    
+    # Setting experiment name and project name
+    # testbed.toControlPlaneNodeName() uses them
+    from magi.testbed.emulab import EmulabTestbed
+    if isinstance(testbed.getTestbedClassInstance(), EmulabTestbed):
+        experimentName = expdl.setdefault('experimentName', testbed.getExperiment())
+        projectName = expdl.setdefault('projectName', testbed.getProject())
+        testbed.setEID(experiment=experimentName, 
+                       project=projectName)
+        
     return expdl
 
 ## NODE CONFIGURATION ##
@@ -515,10 +536,10 @@ def validateNodeConfig(nodeConfig={}, experimentConfig={}):
     localInfo.setdefault('controlip', testbed.controlip)
     localInfo.setdefault('controlif', testbed.controlif)
     
-    #TODO: Setting testbed.nodename for desktop mode
+    # Setting testbed.nodename for desktop mode
     # testbed.getTopoGraph() uses the nodename
-    import magi.testbed
-    if isinstance(testbed, magi.testbed.desktop.DesktopExperiment):
+    from magi.testbed.desktop import DesktopExperiment
+    if isinstance(testbed.getTestbedClassInstance(), DesktopExperiment):
         testbed.setNodeName(localInfo['nodename'])
     
     expdl = experimentConfig['expdl']

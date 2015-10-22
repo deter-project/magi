@@ -99,9 +99,21 @@ class EmulabTestbed(Testbed):
             self._store.update(node='?', experiment='?', project='?', eid='?')
             nickname = self.getNicknameData()
             p = nickname.split('.')
-            self._store.update(node=p[0], experiment=p[1], project=p[2], eid=p[2]+"/"+p[1])
+            self._store.update(node=p[0], experiment=p[1], project=p[2], 
+                               eid=p[2]+"/"+p[1])
         except:
             log.exception("Can't load my host info")
+            
+    def setEID(self, node=None, experiment=None, project=None):
+        """ Set the node, experiment, and project name """
+        if node:
+            self._store.update(node=node)
+        if experiment:
+            self._store.update(experiment=experiment)
+        if project:
+            self._store.update(project=project)   
+             
+        self._store.update(eid=self.project+"/"+self.experiment)
 
     def loadControlInfo(self):
         """ Load the control IP address and IF name files """
