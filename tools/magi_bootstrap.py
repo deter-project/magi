@@ -106,6 +106,7 @@ if __name__ == '__main__':
                         
                         installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
                         installPython('pymongo', 'pymongo', 'install', rpath)
+                        installC('mongo-c-driver', '/usr/local/lib/libmongoc-1.0.so', rpath)
                         
                         #updating sys.path with the installed packages
                         import site
