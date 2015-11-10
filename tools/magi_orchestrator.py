@@ -205,27 +205,26 @@ if __name__ == '__main__':
         dbHost = options.dbhost
     
     if not bridgeNode or not dbHost:  
-        if options.config or (options.project and options.experiment):
-            while True:
-                try:
-                    (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config, 
-                                                                 project=options.project, 
-                                                                 experiment=options.experiment)
-                    
-                    (dbHost, dbPort) = helpers.getExperimentDBHost(experimentConfigFile=options.config, 
-                                                                   project=options.project, 
-                                                                   experiment=options.experiment)
-                    
-                    break
-                except IOError:
-                    log.info("Config file might still be in the process of being created.")
-                    time.sleep(5)
+        if not options.config:
+            if not (options.project and options.experiment):
+                optparser.print_help()
+                optparser.error("Missing bridge information and "
+                                "experiment configuration information")
                 
-        else:
-            optparser.print_help()
-            optparser.error("Missing bridge information and "
-                            "experiment configuration information")
+            options.config = helpers.getExperimentConfigFile(options.project, 
+                                                             options.experiment)
         
+        while not os.path.isfile(options.config):
+            log.info("Config file might still be in the process of being created.")
+            time.sleep(5)
+        
+        # Set the context by loading the experiment configuration file
+        config.loadExperimentConfig(options.config)
+        
+        (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config)
+        
+        (dbHost, dbPort) = helpers.getExperimentDBHost(experimentConfigFile=options.config)
+                    
     try:   
         tunnel_cmd = None
         db_tunnel_cmd = None
@@ -263,12 +262,6 @@ if __name__ == '__main__':
             exit(3)
     
         signal.signal(signal.SIGINT, signal_handler)
-        
-        # Set the context by loading the experiment configuration file
-        if not options.config:
-            options.config = helpers.getExperimentConfigFile(options.project, 
-                                                             options.experiment)
-        config.loadExperimentConfig(options.config)
         
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
