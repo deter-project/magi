@@ -47,16 +47,24 @@ def makePipe(name):
         raise
         
 def loadYaml(filename):
-    """ Load the configuration data from file """
+    """ Load YAML-formatted data from file """
     fp = open(filename, 'r')
-    data = yaml.load(fp)
+    if hasattr (yaml, 'CLoader'):
+        Loader = yaml.CLoader
+    else:
+        Loader = yaml.Loader
+    data = yaml.load(fp, Loader=Loader)
     fp.close()
     return data
 
 def writeYaml(data, filename):
-    """ Load the configuration data from file """
+    """ Write YAML-formatted data to file """
     fp = open(filename, 'w')
-    stream = yaml.dump(data, fp)
+    if hasattr (yaml, 'CDumper'):
+        Dumper = yaml.CDumper
+    else:
+        Dumper = yaml.Dumper
+    stream = yaml.dump(data, fp, Dumper=Dumper)
     fp.close()
     return stream
 

@@ -65,7 +65,11 @@ def installC(base, check, rpath="/share/magi/current"):
         log.info("Changing directory to %s" %(distDir))
         os.chdir(distDir)
         
-        if call("./configure") or call("make") or call("make install"):
+        #if call("./configure") or call("make") or call("make install"):
+        # Modified code to install c libraries under /usr instead of the default /usr/local
+        # This was done as python does not look for libraries under /usr/local
+        # If this needs to be reversed, then system-wide library path needs to be configured appropriately
+        if call("./configure --prefix=/usr --libdir=/usr/lib") or call("make") or call("make install"):
                 log.error("Failed to install %s", base)
                 raise CBuildException("Unable to install %s" % base)
             
