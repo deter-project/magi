@@ -225,7 +225,7 @@ if __name__ == '__main__':
         if options.distpath:
             distributionPath = options.distpath
         elif options.config:
-            experimentConfig = yaml.load(open(options.config, 'r'))
+            experimentConfig = helpers.loadYaml(options.config)
             distributionPath = experimentConfig.get('expdl', {}).get('distributionPath')
         
         reboot(bridgeNode=bridgeNode, 
