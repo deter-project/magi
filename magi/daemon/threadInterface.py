@@ -102,13 +102,13 @@ class ThreadedAgent(threading.Thread):
 			
 			try:
 				# call the main run function
-				self.agent.name = self.name
+				self.agent.name = self.agentname
 				self.agent.hostname = self.hostname
 				self.agent.docklist = self.docklist
 				self.agent.messenger = MessagingWrapper(self.agentname, self.messaging, self.rxqueue, self.docklist)
 				self.agent.run()
 			except Exception, e:
-				log.error("Agent %s on %s threw an exception %s during main loop", self.name, self.hostname, e, exc_info=1)
+				log.error("Agent %s on %s threw an exception %s during main loop", self.agentname, self.hostname, e, exc_info=1)
 				# GTL TODO: do cleanup and useful things here!
 		finally:
 			log.info("Agent %s has finished", self)
