@@ -184,15 +184,14 @@ def loadIDL(agentName, expProcdureFile):
     for member in tar.getmembers():
         if member.name.endswith('.idl'):
             f = tar.extractfile(member)
-            content = f.read()
-            config = yaml.load(content)
+            config = loadYaml(f)
             return config
 
 def getNodesFromAAL(filenames):
     nodeSet = set()
     if filenames:
         for filename in toSet(filenames):
-            aaldata = yaml.load(open(filename, 'r')) 
+            aaldata = loadYaml(filename)
             for nodes in aaldata['groups'].values():
                 nodeSet.update(nodes)
     return nodeSet
@@ -207,7 +206,7 @@ def getBridge(experimentConfigFile=None, project=None, experiment=None):
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
         experimentConfigFile = getExperimentConfigFile(project, experiment)
     
-    mesdl = yaml.load(open(experimentConfigFile, 'r'))['mesdl']
+    mesdl = loadYaml(experimentConfigFile)['mesdl']
     bridges = mesdl['bridges']
     
     return (bridges[0]['server'], bridges[0]['port'])
@@ -218,8 +217,7 @@ def getExperimentDBHost(experimentConfigFile=None, project=None, experiment=None
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
         experimentConfigFile = getExperimentConfigFile(project, experiment)
     
-    experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
-    dbdl = experimentConfig['dbdl']
+    dbdl = loadYaml(experimentConfigFile)['dbdl']
     
     isDBSharded = dbdl['isDBSharded']
     
@@ -235,7 +233,7 @@ def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=No
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
         experimentConfigFile = getExperimentConfigFile(project, experiment)
         
-    expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
+    expdl = loadYaml(experimentConfigFile)['expdl']
     
     return expdl['nodeList']
     
@@ -245,8 +243,7 @@ def getMagiNodeList(experimentConfigFile=None, project=None, experiment=None):
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
         experimentConfigFile = getExperimentConfigFile(project, experiment)
         
-    expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
-    
+    expdl = loadYaml(experimentConfigFile)['expdl']
     return expdl['magiNodeList']    
 
 def getServer(nodeList):
