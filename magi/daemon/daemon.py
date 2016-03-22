@@ -209,7 +209,7 @@ class Daemon(threading.Thread):
 			# 9/14: changed testbed.nodename to self.hostname to support desktop daemons 
 			self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
 			return
-
+		
 		# Start by extracting the tardata into the appropriate modules directory if provided
 
 		# TODO: 5/28/2013 
@@ -220,6 +220,14 @@ class Daemon(threading.Thread):
 		# If code is not specified, then find out the code name from the idl. 
 		#
 		cachepath = os.path.join(magi.modules.__path__[0], os.path.basename(os.path.normpath(code)))
+		
+		# Different instances of MAGI daemon share the file system in desktop mode
+		# Differentiating module folders by concatenating MAGI daemon's hostname
+		from magi.testbed import testbed
+		from magi.testbed.desktop import DesktopExperiment
+		if isinstance(testbed.getTestbedClassInstance(), DesktopExperiment):
+			cachepath = cachepath + "_" + self.hostname
+		
 		if tardata is not None:
 			self.extractTarBuffer(cachepath, tardata)
 		elif path is not None:
@@ -517,6 +525,7 @@ class Daemon(threading.Thread):
 
 		log.info('Running agent from file %s' % mainfile)
 		
+		execargs['hostname'] = self.hostname
 		# GTL TODO: handle exceptions from threaded agents by removing
 		# the agents and freeing up the dock(s) for the agent.
 		try:
@@ -540,7 +549,6 @@ class Daemon(threading.Thread):
 				if execargs and type(execargs) == dict:
 					# I apologize for this abuse
 					args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
-				args.append('hostname='+self.hostname)
 				os.chmod(mainfile, 00777)
 				stderrname = os.path.join(config.getLogDir(), name + '.stderr')
 				stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
