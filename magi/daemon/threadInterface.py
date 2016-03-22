@@ -83,6 +83,8 @@ class ThreadedAgent(threading.Thread):
 		self.args = args
 		
 		self.args['name'] = self.agentname
+		self.args['hostname'] = self.hostname
+		
 		# create the agent here, it may install software which is time consuming
 		if self.args: 
 			self.agent = self.getAgent(**self.args)
