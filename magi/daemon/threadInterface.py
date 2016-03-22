@@ -82,6 +82,7 @@ class ThreadedAgent(threading.Thread):
 		self.messaging = messaging
 		self.args = args
 		
+		self.args['name'] = self.agentname
 		# create the agent here, it may install software which is time consuming
 		if self.args: 
 			self.agent = self.getAgent(**self.args)
@@ -102,8 +103,8 @@ class ThreadedAgent(threading.Thread):
 			
 			try:
 				# call the main run function
-				self.agent.name = self.agentname
-				self.agent.hostname = self.hostname
+				#self.agent.name = self.agentname
+				#self.agent.hostname = self.hostname
 				self.agent.docklist = self.docklist
 				self.agent.messenger = MessagingWrapper(self.agentname, self.messaging, self.rxqueue, self.docklist)
 				self.agent.run()
