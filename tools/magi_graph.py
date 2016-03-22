@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
-from magi.util import helpers, visualization
-from pymongo import MongoClient
 import logging
 import matplotlib
 matplotlib.use('Agg')
 import optparse
 import sys
+
+from magi.util import helpers, visualization
+from pymongo import MongoClient
+
 
 #cannot import from magi.util.database as it needs testbed specific information
 #that might not be available on all nodes from where magi_graph tool is run
