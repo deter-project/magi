@@ -82,14 +82,14 @@ class ThreadedAgent(threading.Thread):
 		self.messaging = messaging
 		self.args = args
 		
+		if not self.args:
+			self.args = dict()
+			
 		self.args['name'] = self.agentname
 		self.args['hostname'] = self.hostname
 		
 		# create the agent here, it may install software which is time consuming
-		if self.args: 
-			self.agent = self.getAgent(**self.args)
-		else:
-			self.agent = self.getAgent()
+		self.agent = self.getAgent(**self.args)
 
 		#send the load complete event to listeners
 		#9/16: Moved AgentLoadDone trigger to the daemon loadAgent call  
