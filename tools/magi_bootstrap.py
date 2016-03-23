@@ -35,6 +35,7 @@ if __name__ == '__main__':
         optparser.add_option("-f", "--force", dest="force", action="store_true", default=False, help="Recreate node configuration file, even if present. Cannot use along with -c (see above)")
         optparser.add_option("-s", "--distdb", dest="distdb", action="store_true", default=False, help="Setup a distributed database") 
         optparser.add_option("-D", "--nodataman", dest="nodataman", action="store_true", default=False, help="Do not install and setup data manager") 
+        optparser.add_option("-g", "--enablecagent", dest="enablecagent", action="store_true", default=False, help="Install C agents support libraries") 
         optparser.add_option("-o", "--logfile", dest="logfile", action='store', default="/tmp/magi_bootstrap.log", help="Log file. Default: %default")
                 
         (options, args) = optparser.parse_args()
@@ -106,7 +107,9 @@ if __name__ == '__main__':
                         
                         installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
                         installPython('pymongo', 'pymongo', 'install', rpath)
-                        installC('mongo-c-driver', '/usr/local/lib/libmongoc-1.0.so', rpath)
+                        
+                        if options.enablecagent:
+                            installC('mongo-c-driver', '/usr/local/lib/libmongoc-1.0.so', rpath)
                         
                         #updating sys.path with the installed packages
                         import site

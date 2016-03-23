@@ -525,7 +525,6 @@ class Daemon(threading.Thread):
 
 		log.info('Running agent from file %s' % mainfile)
 		
-		execargs['hostname'] = self.hostname
 		# GTL TODO: handle exceptions from threaded agents by removing
 		# the agents and freeing up the dock(s) for the agent.
 		try:
@@ -544,11 +543,15 @@ class Daemon(threading.Thread):
 				
 			else:
 				# Process agent, use the file as written to disk
-				# TODO Process agent need to know hostname 
-				args = []
-				if execargs and type(execargs) == dict:
-					# I apologize for this abuse
-					args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
+				if (not execargs) or (type(execargs) != dict):
+					execargs = dict()
+					
+				# Process agent need to know hostname 
+				execargs['hostname'] = self.hostname
+				
+				# I apologize for this abuse
+				args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
+				
 				os.chmod(mainfile, 00777)
 				stderrname = os.path.join(config.getLogDir(), name + '.stderr')
 				stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
