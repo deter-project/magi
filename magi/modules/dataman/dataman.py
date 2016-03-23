@@ -17,9 +17,10 @@ from magi.db.Collection import AGENT_FIELD_KEY
 
 log = logging.getLogger(__name__)
 
-def getAgent():
-        return DataManAgent()
-
+def getAgent(**kwargs):
+    agent = DataManAgent()
+    agent.setConfiguration(None, **kwargs)
+    return agent
 
 class DataManAgent(NonBlockingDispatchAgent):
     
