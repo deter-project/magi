@@ -17,12 +17,21 @@ if __name__ ==  '__main__':
 #    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     optparser = optparse.OptionParser(description="Script to start MAGI")
-    optparser.add_option("-f", "--logfile", dest="logfile", action='store', help="Log to specified file, Default: %default, ex: -f file.log")
-    optparser.add_option("-l", "--loglevel", dest="loglevel", default="INFO", help="set logger to level ALL, DEBUG, INFO, WARNING, ERROR. Default: %default, ex: -l DEBUG")
-    optparser.add_option("-c", "--nodeconf", dest="nodeconf", help="Specify location of the node configuration file, Default: %default, ex: -c localnode.conf ")
+    optparser.add_option("-f", "--logfile", dest="logfile", action='store', 
+                         help="Log to specified file, ex: -f file.log")
+    optparser.add_option("-l", "--loglevel", dest="loglevel", default="INFO", 
+                         help="set logger to level ALL, DEBUG, INFO, " + 
+                         "WARNING, ERROR. Default: %default, ex: -l DEBUG")
+    optparser.add_option("-e", "--expconf", dest="expconf", 
+                         help="Specify location of the experiment " +
+                         "configuration file, ex: -c experiment.conf ")
+    optparser.add_option("-c", "--nodeconf", dest="nodeconf", 
+                         help="Specify location of the node " +
+                         "configuration file, ex: -c localnode.conf ")
 
     (options, args) = optparser.parse_args()
     
+    expConfig = config.loadExperimentConfig(options.expconf)
     nodeConfig = config.loadNodeConfig(options.nodeconf)
     
     #import once the system is cofigured

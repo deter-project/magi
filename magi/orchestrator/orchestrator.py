@@ -131,7 +131,11 @@ class Orchestrator(object):
         """
         # If true, stop the current streams
         self.stopStreams = False
-        # If true, attempt to run teardownStreams when shutting down
+        
+        # If true, attempt to run setup streams when starting up
+        self.doSetup = True
+        
+        # If true, attempt to run teardown streams when shutting down
         self.doTearDown = False
 
         self.messaging = messenger
@@ -144,21 +148,28 @@ class Orchestrator(object):
         self.exitOnFailure = exitOnFailure
         self.verbose = verbose
 
-        self.display = OrchestratorDisplayState(color=useColor)
+        self.display = OrchestratorDisplayState(color=useColor, 
+                                                dbHost=dbHost, 
+                                                dbPort=dbPort)
         if dagdisplay:
             self.dagdisplay = DagDisplay()
 
         self.collection = None
         try:
-            self.collection = Collection.getCollection('orchestrator', 
-                                                       gethostname(),
-                                                       dbHost,
-                                                       dbPort)
+            self.collection = Collection.getCollection(agentName='orchestrator', 
+                                                       hostName=gethostname(),
+                                                       dbHost=dbHost,
+                                                       dbPort=dbPort)
             self.collection.remove({})
-            self.collection.insert({'aalSvg' : self.aal.cgraph.createSvg()})
-            
-        except:
-            log.error('Cannot initialize database')
+            log.info('Database collection initialized')
+        except Exception, e:
+            log.error('Cannot initialize database: %s' %str(e))
+        
+        try:  
+            if self.collection:
+                self.collection.insert({'aalSvg' : self.aal.cgraph.createSvg()})
+        except Exception, e:
+            log.error('Error creating/storing AAL SVG: %s' %str(e))
             
         self.record = False
         self.overWriteCachedTriggers = False
@@ -184,17 +195,19 @@ class Orchestrator(object):
         self.messaging.join("control", "orchestrator")
         time.sleep(0.1)  # poor man's thread.yield
 
-        log.info("Running Initialization Stream")
-        self.activeStreams = {'initialization' : 
-                        StreamIterator('initialization', 
-                                       self.aal.getSetupStream())}
-        self.runStreams()
+        if self.doSetup:
+            log.info("Running Initialization Streams")
+            for setupStream in self.aal.getSetupStreams():
+                sn = setupStream.name
+                self.activeStreams = { sn : StreamIterator(sn, setupStream) }
+                self.runStreams()
 
-        log.info("Running Event Stream")
-        self.activeStreams = { k : StreamIterator(k, self.aal.getStream(k))
-                        for k in self.aal.getStartKeys()}
-        if self.aal.getTotalStreams() > 1:
-            log.debug("TotalStreams: %d", self.aal.getTotalStreams())
+        log.info("Running Event Streams")
+        self.activeStreams = { k : StreamIterator(k, self.aal.getStream(k)) 
+                              for k in self.aal.getStartKeys() }
+        
+        log.debug("Total Streams: %d", self.aal.getTotalStreams())
+        log.debug("Start Streams: %d", self.aal.getTotalStartStreams())
 
         self.record = True
         self.overWriteCachedTriggers = True
@@ -205,13 +218,14 @@ class Orchestrator(object):
         self.overWriteCachedTriggers = False
 
         if self.doTearDown:
-            log.info("Running Exit Stream")
-            self.activeStreams = {'exit' : 
-                            StreamIterator('exit', 
-                                           self.aal.getTeardownStream())}
-            self.stopStreams = False
+            log.info("Running Exit Streams")
             self.exitOnFailure = False
-            self.runStreams()
+            for teardownStream in self.aal.getTeardownStreams():
+                sn = teardownStream.name
+                self.activeStreams = { sn : StreamIterator(sn, teardownStream) }
+                self.stopStreams = False
+                self.runStreams()
+                
 
         self.messaging.leave("control", "orchestrator")
         time.sleep(1) # TODO: some way of confirming that everything has been sent
@@ -281,7 +295,6 @@ class Orchestrator(object):
         
         helpers.exitlog(log, functionName)
         
-        
     def _triggerCausesExitCondition(self, trigger):
         ''' 
             Check the trigger for an exit condition. Return True if it does,
@@ -302,8 +315,17 @@ class Orchestrator(object):
             if (trigger.event == 'RuntimeException'):
                 log.critical('Got a runtime exception from an agent. Jumping '
                              'to exit target.')
-                self.display.exitRunTimeException(trigger)
-                return True
+                exceptionType = trigger.args.get('type')
+                
+                if exceptionType in ['MagiWarning']:
+                    self.display.exitRunTimeException(trigger)
+                    return False
+                elif exceptionType in ['MagiError']:
+                    self.display.exitRunTimeException(trigger)
+                    return False
+                else: #Critical or default
+                    self.display.exitRunTimeException(trigger)
+                    return True
 
         return False    
 
@@ -479,8 +501,9 @@ class Orchestrator(object):
             del self.activeStreams[streamIter.getName()]
             if trigger.target == 'exit':
                 self.display.streamJump(streamIter, trigger.target)
-                self.stopStreams = True  # stop current streams
-                self.doTearDown = True   # attempt a clean teardown before exit
+                # stop current streams
+                # attempt a clean teardown before exit
+                self.stop(doTearDown=True)  
                 if self.record and self.collection:
                     self.collection.insert({'streamName' : streamIter.getName(), 
                                     'eventItr' : streamIter.dbIndex, 

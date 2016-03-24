@@ -44,9 +44,7 @@ class ExternalAgentsThread(threading.Thread):
 		self.fromNetwork = Queue.Queue()
 		self.messaging = messaging
 
-		self.commPort = config.getConfig().get('processAgentsCommPort')
-		if not self.commPort:
-			self.commPort = 18809
+		self.commPort = config.getConfig()['localInfo'].get('processAgentsCommPort', 18809)
 			
 		# Start a TCP server to listen from external agents
 		self.server = TCPServer(address="0.0.0.0", port=self.commPort)

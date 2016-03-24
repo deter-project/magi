@@ -24,19 +24,19 @@ def initializeProcessAgent(agent, argv):
         log.critical('command line must start with name and dock')
         sys.exit(2)
 
-    agent.name, dock = argv[1:3]
-    args = argv_to_dict(argv[3:])
+    agent.name, dock, nodeConfigFile, experimentConfigFile = argv[1:5]
+    args = argv_to_dict(argv[5:])
     
-    setAttributes(agent, {'hostname' : None, 
+    config.loadNodeConfig(nodeConfigFile, experimentConfigFile)
+    
+    setAttributes(agent, {'hostname' : config.getNodeName(), 
                           'execute' : 'socket', 
                           'logfile' : os.path.join(config.getLogDir(), agent.name + '.log'), 
                           'loglevel': 'DEBUG', 
                           'commHost': 'localhost', 
-                          'commPort': config.getConfig().get('processAgentsCommPort', 18809), 
+                          'commPort': config.getConfig()['localInfo'].get('processAgentsCommPort', 18809), 
                           'commGroup': None}, 
                   args)
-    
-    config.getConfig()['localInfo']['nodename'] = agent.hostname
     
     agent.docklist.add(dock)
     

@@ -7,11 +7,12 @@ import sys
 import tempfile
 import time
 
+from magi.db import CONFIG_SERVER_PORT, ROUTER_SERVER_PORT, DATABASE_SERVER_PORT
 from magi.util import helpers
 import pymongo
 
+from Collection import HOST_FIELD_KEY
 from Connection import getConnection
-from magi.db import CONFIG_SERVER_PORT, ROUTER_SERVER_PORT, DATABASE_SERVER_PORT
 
 
 log = logging.getLogger(__name__)
@@ -19,6 +20,15 @@ log = logging.getLogger(__name__)
 TIMEOUT=900
 TEMP_DIR = tempfile.gettempdir()
 
+#mongodb in some cases gets installed under /usr/local/bin,
+#and in case of some setups /usr/local/bin is not part of the environment path
+#hence, adding it
+env_path = os.environ['PATH']
+env_paths = env_path.split(':')
+if '/usr/local/bin' not in env_paths:
+    env_paths.append('/usr/local/bin') 
+os.environ['PATH'] = ":".join(env_paths)
+    
 def startConfigServer(port=CONFIG_SERVER_PORT, 
                       dbPath=os.path.join(TEMP_DIR, "configdb"), 
                       logPath=os.path.join(TEMP_DIR, "mongoc.log"),
@@ -228,7 +238,7 @@ def registerShard(dbHost, configHost, dbPort=DATABASE_SERVER_PORT, configPort=RO
     getConnection(host=dbHost, port=DATABASE_SERVER_PORT, timeout=timeout) #check if mongod is up
     
     while time.time() < stop:
-        if call("""/usr/local/bin/mongo --host %s --eval "sh.addShard('%s:%d')" """ %(configHost, dbHost, dbPort), shell=True):
+        if call("""mongo --host %s --eval "sh.addShard('%s:%d')" """ %(configHost, dbHost, dbPort), shell=True):
             log.debug("Failed to add shard. Will retry.")
             time.sleep(1)
             continue
@@ -288,10 +298,14 @@ def moveChunk(db, collection, host, collector, configHost, configPort=ROUTER_SER
                 break
             time.sleep(0.2)
         
+    log.info("Creating index for %s.%s on key '%s'" %(db, collection, HOST_FIELD_KEY))
+    adminConnection[db][collection].create_index(HOST_FIELD_KEY)
+    log.info("Index created successfully")
+    
     while True:
         try:
             log.info("Sharding Collection %s.%s" %(db, collection))
-            adminConnection.admin.command('shardcollection', '%s.%s' %(db, collection), key={"host": 1})
+            adminConnection.admin.command('shardcollection', '%s.%s' %(db, collection), key={HOST_FIELD_KEY: 1})
             log.info("Collection sharded successfully.")
             break
         except pymongo.errors.OperationFailure, e:
@@ -303,7 +317,7 @@ def moveChunk(db, collection, host, collector, configHost, configPort=ROUTER_SER
     while True:
         try:
             log.info("Splitting Collection %s.%s on host:%s" %(db, collection, host))
-            adminConnection.admin.command("split", '%s.%s' %(db, collection), middle={"host": host})
+            adminConnection.admin.command("split", '%s.%s' %(db, collection), middle={HOST_FIELD_KEY: host})
             log.info("Collection split successfully.")
             break
         except pymongo.errors.OperationFailure, e:
@@ -315,7 +329,9 @@ def moveChunk(db, collection, host, collector, configHost, configPort=ROUTER_SER
     while True:
         try:
             log.info("Moving chunk %s.%s {'host': %s} to %s" %(db, collection, host, collector))
-            adminConnection.admin.command('moveChunk', '%s.%s' %(db, collection), find={"host": host}, to='%s:%d' %(collector, DATABASE_SERVER_PORT))
+            adminConnection.admin.command('moveChunk', '%s.%s' %(db, collection), 
+                                          find={HOST_FIELD_KEY: host}, 
+                                          to='%s:%d' %(collector, DATABASE_SERVER_PORT))
             log.info("Collection moved successfully.")
             break
         except pymongo.errors.OperationFailure, e:

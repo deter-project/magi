@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
-from magi.util import helpers, visualization
-from pymongo import MongoClient
 import logging
 import matplotlib
 matplotlib.use('Agg')
 import optparse
 import sys
+
+from magi.util import helpers, visualization
+from pymongo import MongoClient
+
 
 #cannot import from magi.util.database as it needs testbed specific information
 #that might not be available on all nodes from where magi_graph tool is run
@@ -54,17 +56,17 @@ if __name__ == '__main__':
      
         if options.dbhost:
             dbHost = options.dbhost
+            dbPort = options.dbport
         elif options.experimentConfig or (options.project and options.experiment):
-            logging.info("Fetching database config host based on the experiment information")
-            dbHost = helpers.getDBConfigHost(experimentConfigFile=options.experimentConfig,
-                                             project=options.project, 
-                                             experiment=options.experiment)
-            logging.info("Fetched database config host: %s" %(dbHost))    
+            logging.info("Fetching database host based on the experiment information")
+            (dbHost, dbPort) = helpers.getExperimentDBHost(experimentConfigFile=options.experimentConfig,
+                                                       project=options.project, 
+                                                       experiment=options.experiment)
+            logging.info("Fetched database host: %s" %(dbHost)) 
+            logging.info("Fetched database port: %s" %(dbPort))    
         else:
             optparser.print_help()
             optparser.error("Missing database host and experiment configuration information")
-            
-        dbPort = options.dbport
         
         logging.info("Attempting to load the graph configuration file")
         config = helpers.loadYaml(options.config)

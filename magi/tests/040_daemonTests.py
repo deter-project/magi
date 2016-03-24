@@ -16,7 +16,7 @@ from magi.messaging.api import MAGIMessage
 from magi.tests.util import SimpleMessaging
 import magi.tests
 import magi.modules
-
+from magi.util import database
 
 class DaemonTest(unittest2.TestCase):
 	"""
@@ -24,6 +24,7 @@ class DaemonTest(unittest2.TestCase):
 	"""
 
 	def setUp(self):
+		database.setDBStatus(False)
 		subprocess.call("rm -rf %s" % (magi.modules.__path__[0] + '/testhttp*'), shell=True)
 		trans = [ {'address': '127.0.0.1', 'class': 'TCPTransport', 'port': 51232} ]
 		# trans = [ {'address': '239.255.1.2', 'class':' MulticastTransport', 'localaddr': '127.0.0.1', 'port': '18808'} ]
@@ -35,8 +36,10 @@ class DaemonTest(unittest2.TestCase):
 		self.d.start()
 
 	def tearDown(self):
+		logging.disable(50)
 		self.d.stop()
 		self.d.join(5.0)
+		logging.disable(0)
 		subprocess.call("rm -rf %s" % (magi.modules.__path__[0] + '/testhttp*'), shell=True)
 
 	def test_MethodCall(self):
@@ -69,6 +72,7 @@ class DaemonTest(unittest2.TestCase):
 			'args': { 'name1':'name1', 'name2':'name2', 'ignoreme':'extra' }
 		}
 		testobj = tester(self)
+		testobj.name = 'testobj'
 		msg=yaml.safe_dump(call)
 		dispatchCall(testobj, msg, call)
 		call['method'] = 'nameddefaults'
@@ -114,7 +118,7 @@ class DaemonTest(unittest2.TestCase):
 
 
 	def test_Alive(self):
-		""" Test of alive requests """
+		""" Test of alive ping request """
 		self.q.inject(MAGIMessage(src='othernode', docks='daemon', data=yaml.safe_dump({'version':1.0, 'method':'ping'})))
 		self.assertEquals('pong', self.q.extract(True, 2).msg.dstdocks.pop())
 		time.sleep(0.2)
@@ -228,6 +232,6 @@ if __name__ == '__main__':
 	root = logging.getLogger()
 	root.handlers = []
 	root.addHandler(hdlr)
-	root.setLevel(logging.DEBUG)
+	root.setLevel(logging.ERROR)
 	unittest2.main(verbosity=2)
 

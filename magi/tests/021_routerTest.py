@@ -40,12 +40,15 @@ class RouterTest(unittest2.TestCase):
 		self.router = WorkerThread("mynode", self.txqueue, self.rxqueue)
 		self.transports = { 10 : TestTransport(10), 11 : TestTransport(11), 12 : TestTransport(12) }
 		for key in self.transports:
-			# Add transport to router and verify resend message is sent and then clear it
+			# Add transport to router and verify resend message and 
+			# group membership information messages are sent and then clear it
 			self.router.addTransport(self.transports[key])
 			self.router.loop()
-			self.assertEquals(1, len(self.transports[key].outmessages))
+			self.assertEquals(2, len(self.transports[key].outmessages))
 			self.assertEquals(set([GroupRouter.ONEHOPNODES]), self.transports[key].outmessages[0].dstgroups)
 			self.assertEquals(set([GroupRouter.DOCK]), self.transports[key].outmessages[0].dstdocks)
+			self.assertEquals(set([GroupRouter.ONEHOPNODES]), self.transports[key].outmessages[1].dstgroups)
+			self.assertEquals(set([GroupRouter.DOCK]), self.transports[key].outmessages[1].dstdocks)
 			self.transports[key].outmessages = []
 
 
@@ -127,7 +130,7 @@ class RouterTest(unittest2.TestCase):
 		self.push(rtmsg)
 		self.assertEquals(0, len(self.router.processors[6].pausedMessages['n2']))
 
-		self._checkForMessageOnlyIn("data", yaml.safe_dump({'request':'n2'}), [11, 12])
+		self._checkForMessageOnlyIn("data", yaml.safe_dump({'request':'n2'}), [10, 11, 12])
 		self._checkForMessageOnlyIn("msgid", 1234, [])
 		self.assert_(self.router.rxqueue.empty(), "Local receive queue should be empty")  # routerdock message absorbed by router processor
 		self.commonAssert()

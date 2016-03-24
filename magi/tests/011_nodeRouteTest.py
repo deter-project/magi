@@ -31,7 +31,7 @@ class NodeRouteTest(unittest2.TestCase):
 		# Attempt to route message, should have nowhere to go
 		fds = self.router.routeMessage(msg)
 		self.assertEqual(fds, set([]))
-		self._checkForMessageOnlyIn('data', yaml.safe_dump({'request':'unknown'}), [2])
+		self._checkForMessageOnlyIn('data', yaml.safe_dump({'request':'unknown'}), [1, 2])
 
 		# Get a route response and check for proper queing, original header information should stay intact when sending paused
 		self.router.processIN([rtmsg], time.time())
@@ -50,7 +50,7 @@ class NodeRouteTest(unittest2.TestCase):
 		# Attempt to route message, should have nowhere to go
 		fds = self.router.routeMessage(msg)
 		self.assertEqual(fds, set([]))
-		self._checkForMessageOnlyIn('data', yaml.safe_dump({'request':'unknown'}), [2])
+		self._checkForMessageOnlyIn('data', yaml.safe_dump({'request':'unknown'}), [1, 2])
 
 		# Get a route response and check for proper queing
 		self.router.processIN([rtmsg], time.time())
@@ -69,8 +69,8 @@ class NodeRouteTest(unittest2.TestCase):
 		self.assertEqual(fds, set([]))
 		fds = self.router.routeMessage(msg2)
 		self.assertEqual(fds, set([]))
-		self._checkForMessageOnlyIn('data', yaml.safe_dump({'request':'unknown'}), [2])
-		self._checkMessagesInEquals(1, 0)
+		self._checkForMessageOnlyIn('data', yaml.safe_dump({'request':'unknown'}), [1, 2])
+		self._checkMessagesInEquals(1, 1)
 		self._checkMessagesInEquals(2, 1)
 
 	def test_multipleRoutes(self):

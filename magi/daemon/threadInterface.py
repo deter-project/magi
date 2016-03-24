@@ -82,11 +82,14 @@ class ThreadedAgent(threading.Thread):
 		self.messaging = messaging
 		self.args = args
 		
+		if not self.args:
+			self.args = dict()
+			
+		self.args['name'] = self.agentname
+		self.args['hostname'] = self.hostname
+		
 		# create the agent here, it may install software which is time consuming
-		if self.args: 
-			self.agent = self.getAgent(**self.args)
-		else:
-			self.agent = self.getAgent()
+		self.agent = self.getAgent(**self.args)
 
 		#send the load complete event to listeners
 		#9/16: Moved AgentLoadDone trigger to the daemon loadAgent call  
@@ -102,13 +105,13 @@ class ThreadedAgent(threading.Thread):
 			
 			try:
 				# call the main run function
-				self.agent.name = self.name
-				self.agent.hostname = self.hostname
+				#self.agent.name = self.agentname
+				#self.agent.hostname = self.hostname
 				self.agent.docklist = self.docklist
 				self.agent.messenger = MessagingWrapper(self.agentname, self.messaging, self.rxqueue, self.docklist)
 				self.agent.run()
 			except Exception, e:
-				log.error("Agent %s on %s threw an exception %s during main loop", self.name, self.hostname, e, exc_info=1)
+				log.error("Agent %s on %s threw an exception %s during main loop", self.agentname, self.hostname, e, exc_info=1)
 				# GTL TODO: do cleanup and useful things here!
 		finally:
 			log.info("Agent %s has finished", self)

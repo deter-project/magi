@@ -28,8 +28,8 @@ class AALParseTest(unittest2.TestCase):
 		# should be gone and replaced with a nodes field.
 		aal = AAL(os.path.join(os.path.dirname(__file__), 'triggerAgentTest_good.aal'))
 
-		for stream in aal.aal['eventstreams']:
-			for event in aal.aal['eventstreams'][stream]:
+		for stream in aal.rawAAL['eventstreams']:
+			for event in aal.rawAAL['eventstreams'][stream]:
 				if event['type'] == 'trigger':
 					for trigger in event['triggers']:
 						print '\nChecking trigger: %s' % trigger

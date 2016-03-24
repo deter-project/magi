@@ -3,7 +3,9 @@
 from magi.messaging import api
 from magi.orchestrator import AAL, Orchestrator
 from magi.orchestrator.parse import AALParseError
-from magi.util import helpers
+from magi.db import ROUTER_SERVER_PORT
+
+from magi.util import helpers, config
 from socket import gaierror # this should really be wrapped in daemon lib.
 from sys import exit
 
@@ -14,17 +16,25 @@ import signal
 import time
 
 lastSignalRcvd = 0
+orch = None
 
 def signal_handler(signum, frame):
     '''Set the flag in the Orchestrator module that causes current
     state to be printed to stdout when we get signal SIGINT.'''
     global lastSignalRcvd
+    global orch
     if time.time() - lastSignalRcvd < 2:
-        exit(0)
+        if orch:
+            print 'Cleaning up and exiting'
+            orch.stop(doTearDown=True)
+        else:
+            print 'Exiting'
+            exit(0)
+    else:
+        Orchestrator.show_state = True
+        print "Send SIGINT signal (ctrl+c) again within next 2 seconds to quit"
     lastSignalRcvd = time.time()
-    Orchestrator.show_state = True
-    print "Send SIGINT signal (ctrl+c) again within next 2 seconds to quit"
-
+    
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
     optparser.add_option("-b", "--bridge",
@@ -41,6 +51,14 @@ if __name__ == '__main__':
     optparser.add_option("-r", "--port",
                          dest="port", type="int", default=18808,
                          help="The port to connect to on the bridge node.")
+    
+    optparser.add_option("--dbhost",
+                         dest="dbhost",
+                         help="Address of the host running the database")
+    
+    optparser.add_option("--dbport",
+                         dest="dbport", type="int", default=ROUTER_SERVER_PORT,
+                         help="The port to connect to the database.")
     
     optparser.add_option("-i", "--config", dest="config", help="Experiment configuration file location")
     
@@ -166,7 +184,6 @@ if __name__ == '__main__':
 
     try:
         aal = AAL(options.events, dagdisplay=options.display, groupBuildTimeout=options.groupBuildTimeout)
-        #aal = AAL(options.events, groupBuildTimeout=options.groupBuildTimeout)
     except AALParseError as e:
         logging.critical('Unable to parse events file: %s', str(e))
         exit(2)
@@ -175,25 +192,69 @@ if __name__ == '__main__':
     if options.justparse:
         exit(0)
     
+    bridgeNode = None
+    bridgePort = options.port
+    dbHost = None
+    dbPort = options.dbport
+    
     if options.bridge:
         bridgeNode = options.bridge
-        bridgePort = options.port
-    elif options.config or (options.project and options.experiment):
-        (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config, 
-                                                     project=options.project, 
-                                                     experiment=options.experiment)
-    else:
-        optparser.print_help()
-        optparser.error("Missing bridge information and "
-                        "experiment configuration information")
+        dbHost = options.bridge
         
+    if options.dbhost:
+        dbHost = options.dbhost
+    
+    if not bridgeNode or not dbHost:  
+        if not options.config:
+            if not (options.project and options.experiment):
+                optparser.print_help()
+                optparser.error("Missing bridge information and "
+                                "experiment configuration information")
+                
+            options.config = helpers.getExperimentConfigFile(options.project, 
+                                                             options.experiment)
+        
+        while not os.path.isfile(options.config):
+            log.info("Config file might still be in the process of being created.")
+            time.sleep(5)
+        
+        # Set the context by loading the experiment configuration file
+        config.loadExperimentConfig(options.config)
+        
+        (bridgeNode, bridgePort) = helpers.getBridge(experimentConfigFile=options.config)
+        
+        (dbHost, dbPort) = helpers.getExperimentDBHost(experimentConfigFile=options.config)
+                    
     try:   
         tunnel_cmd = None
+        db_tunnel_cmd = None
         if options.tunnel:
+            localDbPort = 27020
             tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', bridgePort, bridgeNode, bridgePort, options.username)
+            db_tunnel_cmd = helpers.createSSHTunnel('users.deterlab.net', localDbPort, dbHost, dbPort, options.username)
             bridgeNode = '127.0.0.1'
+            dbHost = '127.0.0.1'
+            dbPort = localDbPort
             logging.info('Tunnel setup done')
                 
+        from magi_status import getStatus
+        nodeSet = helpers.getNodesFromAAL(options.events)
+        log.info("Making sure Magi daemons are up and listening")
+        while True:
+            try:
+                status = getStatus(bridgeNode=bridgeNode, 
+                                   bridgePort=bridgePort, 
+                                   nodeSet=nodeSet,
+                                   timeout=10)
+                if status[0]:
+                    break
+                log.info("Magi daemon on one or more nodes not up")
+            except:
+                log.info("Magi daemon on one or more nodes not up")
+                time.sleep(5)
+        
+        log.info("All magi daemons are up and listening")
+        
         try:
             messaging = api.ClientConnection(options.name, bridgeNode, bridgePort)
         except gaierror as e:
@@ -201,15 +262,17 @@ if __name__ == '__main__':
             exit(3)
     
         signal.signal(signal.SIGINT, signal_handler)
-    
+        
         orch = Orchestrator(messaging, aal, dagdisplay=options.display, verbose=options.verbose,
                             exitOnFailure=options.exitOnFailure,
-                            useColor=(not options.nocolor), dbHost=bridgeNode, dbPort=27017)
+                            useColor=(not options.nocolor), dbHost=dbHost, dbPort=dbPort)
         orch.run()
         
     finally:
         if tunnel_cmd:
             helpers.terminateProcess(tunnel_cmd)
+        if db_tunnel_cmd:
+            helpers.terminateProcess(db_tunnel_cmd)
             
     # GTL - we need to determine the outcome and return the
     # appropriate value here.

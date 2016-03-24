@@ -24,7 +24,11 @@ LOG_FORMAT = '%(asctime)s %(name)-30s %(levelname)-8s %(message)s'
 LOG_FORMAT_MSECS = '%(asctime)s.%(msecs)03d %(name)-30s %(levelname)-8s %(message)s'
 LOG_DATEFMT = '%m-%d %H:%M:%S'
 
+TRANSPORT_TCP = 'TCP'
+TRANSPORT_MULTICAST = 'Multicast'
+
 ALL = '__ALL__'
+DEFAULT = '__DEFAULT__'
 
 def makeDir(name):
     try:
@@ -43,16 +47,24 @@ def makePipe(name):
         raise
         
 def loadYaml(filename):
-    """ Load the configuration data from file """
+    """ Load YAML-formatted data from file """
     fp = open(filename, 'r')
-    data = yaml.load(fp)
+    if hasattr (yaml, 'CLoader'):
+        Loader = yaml.CLoader
+    else:
+        Loader = yaml.Loader
+    data = yaml.load(fp, Loader=Loader)
     fp.close()
     return data
 
 def writeYaml(data, filename):
-    """ Load the configuration data from file """
+    """ Write YAML-formatted data to file """
     fp = open(filename, 'w')
-    stream = yaml.dump(data, fp)
+    if hasattr (yaml, 'CDumper'):
+        Dumper = yaml.CDumper
+    else:
+        Dumper = yaml.Dumper
+    stream = yaml.dump(data, fp, Dumper=Dumper)
     fp.close()
     return stream
 
@@ -76,6 +88,18 @@ def toSet(value):
         return set()
     return set([value])
 
+def getFQCN(object):
+    return object.__module__ + "." + object.__class__.__name__
+    
+def createClassInstance(fqcn):
+    import importlib
+    moduleName = '.'.join(fqcn.split('.')[:-1])
+    className = fqcn.split(".")[-1]
+    module_ = importlib.import_module(moduleName)
+    class_ = getattr(module_, className)
+    instance = class_()
+    return instance
+    
 def toDirected(graph, root):
     """
         Convert an undirected graph to a directed graph
@@ -98,17 +122,17 @@ def toDirected(graph, root):
             
     return d
 
-def entrylog(log, functionName, arguments=None):
+def entrylog(log, functionName, arguments=None, level=logging.DEBUG):
     if arguments == None:
-        log.debug("Entering function %s", functionName)
+        log.log(level, "Entering function %s", functionName)
     else:
-        log.debug("Entering function %s with arguments: %s", functionName, arguments)
+        log.log(level, "Entering function %s with arguments: %s", functionName, arguments)
 
-def exitlog(log, functionName, returnValue=None):
+def exitlog(log, functionName, returnValue=None, level=logging.DEBUG):
     if returnValue == None:
-        log.debug("Exiting function %s", functionName)
+        log.log(level, "Exiting function %s", functionName)
     else:
-        log.debug("Exiting function %s with return value: %s", functionName, returnValue)
+        log.log(level, "Exiting function %s with return value: %s", functionName, returnValue)
 
 def is_os_64bit():
         return platform.machine().endswith('64')
@@ -160,15 +184,14 @@ def loadIDL(agentName, expProcdureFile):
     for member in tar.getmembers():
         if member.name.endswith('.idl'):
             f = tar.extractfile(member)
-            content = f.read()
-            config = yaml.load(content)
+            config = loadYaml(f)
             return config
 
 def getNodesFromAAL(filenames):
     nodeSet = set()
     if filenames:
         for filename in toSet(filenames):
-            aaldata = yaml.load(open(filename, 'r')) 
+            aaldata = loadYaml(filename)
             for nodes in aaldata['groups'].values():
                 nodeSet.update(nodes)
     return nodeSet
@@ -183,33 +206,62 @@ def getBridge(experimentConfigFile=None, project=None, experiment=None):
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
         experimentConfigFile = getExperimentConfigFile(project, experiment)
     
-    mesdl = yaml.load(open(experimentConfigFile, 'r'))['mesdl']
+    mesdl = loadYaml(experimentConfigFile)['mesdl']
     bridges = mesdl['bridges']
     
     return (bridges[0]['server'], bridges[0]['port'])
 
-def getDBConfigHost(experimentConfigFile=None, project=None, experiment=None):
+def getExperimentDBHost(experimentConfigFile=None, project=None, experiment=None):
     if not experimentConfigFile:
         if not project or not experiment:
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
         experimentConfigFile = getExperimentConfigFile(project, experiment)
     
-    experimentConfig = yaml.load(open(experimentConfigFile, 'r'))
-    dbdl = experimentConfig['dbdl']
-    expdl = experimentConfig['expdl']
+    dbdl = loadYaml(experimentConfigFile)['dbdl']
     
-    return "%s.%s.%s" % (dbdl['configHost'], expdl['experimentName'], expdl['projectName'])
-
+    isDBSharded = dbdl['isDBSharded']
+    
+    if isDBSharded:
+        return (toControlPlaneNodeName(dbdl['globalServerHost']), dbdl['globalServerPort'])
+    else:
+        sensorToCollectorMap = dbdl['sensorToCollectorMap']
+        return (toControlPlaneNodeName(dbdl['sensorToCollectorMap'][DEFAULT]), dbdl['collectorPort'])
+    
 def getExperimentNodeList(experimentConfigFile=None, project=None, experiment=None):
     if not experimentConfigFile:
         if not project or not experiment:
             raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
         experimentConfigFile = getExperimentConfigFile(project, experiment)
         
-    expdl = yaml.load(open(experimentConfigFile, 'r'))['expdl']
+    expdl = loadYaml(experimentConfigFile)['expdl']
     
     return expdl['nodeList']
     
+def getMagiNodeList(experimentConfigFile=None, project=None, experiment=None):
+    if not experimentConfigFile:
+        if not project or not experiment:
+            raise RuntimeError('Either the experiment config file or both project and experiment name needs to be provided')
+        experimentConfigFile = getExperimentConfigFile(project, experiment)
+        
+    expdl = loadYaml(experimentConfigFile)['expdl']
+    return expdl['magiNodeList']    
+
+def getServer(nodeList):
+    # returns control if  it finds a node named "control" 
+    # in the given node list otherwise it returns the
+    # first node in the alpha-numerically sorted list
+    if isinstance(nodeList, set):
+        nodeList = list(nodeList)
+    if not isinstance(nodeList, list):
+        raise TypeError("node list should be a set or list")
+    nodeList.sort()
+    host = nodeList[0]
+    for node in nodeList:
+        if 'control' == node.lower():
+            host = 'control'
+            break
+    return host 
+
 def printDBfields(agentidl):
             agentname = agentidl.get('display', 'Agent')
             desc = agentidl.get('description', 'No description Available')

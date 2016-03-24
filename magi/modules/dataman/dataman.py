@@ -12,14 +12,15 @@ from magi.util.agent import NonBlockingDispatchAgent, agentmethod
 import pymongo
 import yaml
 
-from magi.db.Collection import AGENT_FIELD
+from magi.db.Collection import AGENT_FIELD_KEY
 
 
 log = logging.getLogger(__name__)
 
-def getAgent():
-        return DataManAgent()
-
+def getAgent(**kwargs):
+    agent = DataManAgent()
+    agent.setConfiguration(None, **kwargs)
+    return agent
 
 class DataManAgent(NonBlockingDispatchAgent):
     
@@ -32,7 +33,7 @@ class DataManAgent(NonBlockingDispatchAgent):
             self.dbProcesses = set()
             self.dbLogHandler = None
             self.setupDatabase()
-            self.setupDBLogHandler()
+            #self.setupDBLogHandler()
         except:
             log.exception('Exception while initializing data manager')
             self.stop(None)
@@ -42,37 +43,46 @@ class DataManAgent(NonBlockingDispatchAgent):
         helpers.entrylog(log, functionName, locals())
         
         log.info("Setting up database")
-        if database.isDBSharded:
+        if database.isDBSharded():
             log.info("Setting up a distributed database")
-            if database.isConfigHost:
+            if database.isConfigHost():
                 log.info("Starting mongo config server")
                 cp = database.startConfigServer()
-                self.dbProcesses.add(cp)
+                if cp: #if a database server was started with this call
+                    self.dbProcesses.add(cp)
                 log.info("Starting mongo shard server")
                 sp = database.startShardServer()
-                self.dbProcesses.add(sp)
+                if sp: #if a database server was started with this call
+                    self.dbProcesses.add(sp)
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
-                self.dbProcesses.add(dp)
+                if dp: #if a database server was started with this call
+                    self.dbProcesses.add(dp)
                 log.info("Stopping balancer")
                 database.setBalancerState(False)
                 log.info("Configuring database cluster")
                 self.configureDBCluster()
-            elif database.isCollector:
+            elif database.isCollector():
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
-                self.dbProcesses.add(dp)
-            
+                if dp: #if a database server was started with this call
+                    self.dbProcesses.add(dp)
+                    
             log.info("Waiting for collector database to be added as a shard")
             database.isShardRegistered(dbHost=database.getCollector(), block=True)
             log.info("Collector database has been added as a shard")
             
         else:
             log.info("Setting up a non-distributed database")
-            if database.isCollector:
+            if database.isCollector():
                 log.info("Starting mongo database server")
                 dp = database.startDBServer()
-                self.dbProcesses.add(dp)
+                if dp: #if a database server was started with this call
+                    self.dbProcesses.add(dp)
+            
+        log.info("Waiting for collector database to be up and running")        
+        database.getConnection()
+        log.info("Collector database up")
                 
         helpers.exitlog(log, functionName)
          
@@ -84,39 +94,42 @@ class DataManAgent(NonBlockingDispatchAgent):
         functionName = self.configureDBCluster.__name__
         helpers.entrylog(log, functionName, locals())
         
+        sensorToCollectorMap = database.getSensorToCollectorMap()
+        
         log.info("Registering collector database servers as shards")
-        cnodes = set(database.sensorToCollectorMap.values())
+        cnodes = set(sensorToCollectorMap.values())
         for collector in cnodes:
             database.registerShard(collector)
             
         log.info("Configuring database cluster according to the sensor:collector mapping")
-        snodes = set(database.sensorToCollectorMap.keys())
-        if helpers.ALL in database.sensorToCollectorMap:
+        snodes = set(sensorToCollectorMap.keys())
+        if helpers.DEFAULT in sensorToCollectorMap:
             allnodes = set(config.getTopoGraph().nodes())
-            snodes.remove(helpers.ALL)
+            snodes.remove(helpers.DEFAULT)
             rnodes = allnodes - snodes
         else:
             rnodes = set()
             
         for sensor in snodes:
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[sensor])
+                               sensorToCollectorMap[sensor])
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[sensor], 
+                               sensorToCollectorMap[sensor], 
                                database.LOG_COLLECTION_NAME)
             
         for sensor in rnodes:
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[helpers.ALL])
+                               sensorToCollectorMap[helpers.DEFAULT])
             database.moveChunk(sensor, 
-                               database.sensorToCollectorMap[helpers.ALL], 
+                               sensorToCollectorMap[helpers.DEFAULT], 
                                database.LOG_COLLECTION_NAME)
         
-        log.info('Creating index on field: %s' %(AGENT_FIELD))
-        configConn = database.getConnection(host=config.getServer(), 
+        log.info("Creating index for %s.%s on key '%s'" %(database.DB_NAME, 
+                                                          database.COLLECTION_NAME, 
+                                                          AGENT_FIELD_KEY))
+        configConn = database.getConnection(host=database.getConfigHost(), 
                                             port=database.ROUTER_SERVER_PORT)
-        configConn[database.DB_NAME][database.COLLECTION_NAME].ensure_index([(AGENT_FIELD, 
-                                                                              pymongo.ASCENDING)])
+        configConn[database.DB_NAME][database.COLLECTION_NAME].create_index(AGENT_FIELD_KEY)
         
         helpers.exitlog(log, functionName)
        
@@ -189,7 +202,7 @@ class DataManAgent(NonBlockingDispatchAgent):
                     nodedata = nodedata + database.getData(agent, 
                                                            filters_copy, 
                                                            tsChunk, 
-                                                           database.configHost, 
+                                                           database.configHost(), 
                                                            database.ROUTER_SERVER_PORT)
                 data[agent][node] = nodedata
         
@@ -238,7 +251,8 @@ class DataManAgent(NonBlockingDispatchAgent):
         
         node = node.split(".")[0]
         
-        result = database.sensorToCollectorMap.get(node, database.sensorToCollectorMap.get('__ALL__'))
+        sensorToCollectorMap = database.getSensorToCollectorMap()
+        result = sensorToCollectorMap.get(node, sensorToCollectorMap.get('__ALL__'))
         helpers.exitlog(log, functionName, result)
         return result
         

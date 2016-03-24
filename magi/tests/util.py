@@ -23,7 +23,7 @@ import sys
 if 'installedAllowed' not in locals():
 	ToTransmit = namedtuple("ToTransmit", "msg, fds, args")
 	Transmitted = namedtuple("Transmitted", "msg, args")
-	installAllowed = None
+	installAllowed = 'y'
 
 def softwareRequired(name):
 	if os.geteuid() != 0:  # no class decorators in 2.5 and below
@@ -154,7 +154,8 @@ class AgentFixture(threading.Thread):
 		return self.messenger.txqueue.get(block, timeout)
 
 	def run(self):
-		self.agent.run(self.messenger, self.args)
+		self.agent.messenger = self.messenger
+		self.agent.run()
 
 	def stop(self):
 		self.agent.stop()

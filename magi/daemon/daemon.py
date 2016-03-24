@@ -6,6 +6,7 @@
 
 import base64
 import cStringIO
+import datetime
 import errno
 import glob
 import json
@@ -55,10 +56,11 @@ class Daemon(threading.Thread):
 		self.extAgentsThread = ExternalAgentsThread(self.messaging)
 		self.extAgentsThread.start()
 
-		if database.isDBEnabled:
+		if database.isDBEnabled():
 			try:
 				log.info("Starting Data Manager Agent")
-				self.startAgent(code=magi.modules.dataman.__path__[0], name="dataman", dock="dataman", static=True)
+				self.startAgent(code=magi.modules.dataman.__path__[0], 
+							    name="dataman", dock="dataman", static=True)
 				
 				#Inserting the topology information in the database
 				topo_collection = database.getCollection(agentName="topo_agent")
@@ -98,14 +100,15 @@ class Daemon(threading.Thread):
 #	
 #	def runX(self):
 		"""
-			Daemon thread loop.  Continual processing of incoming messages while monitoring for the
-			stop flag.
+			Daemon thread loop. Continual processing of incoming messages 
+			while monitoring for the stop flag.
 		"""
 		self.threadId = helpers.getThreadId()
 		log.info("Daemon started. Thread id: " + str(self.threadId))
 		
 		try:
-			for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
+			for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, 
+					    signal.SIGQUIT]:
 				signal.signal(sig, self.signalhandler)
 		except:
 			pass
@@ -206,7 +209,7 @@ class Daemon(threading.Thread):
 			# 9/14: changed testbed.nodename to self.hostname to support desktop daemons 
 			self.messaging.trigger(event='AgentLoadDone', agent=name, nodes=[self.hostname])
 			return
-
+		
 		# Start by extracting the tardata into the appropriate modules directory if provided
 
 		# TODO: 5/28/2013 
@@ -217,6 +220,14 @@ class Daemon(threading.Thread):
 		# If code is not specified, then find out the code name from the idl. 
 		#
 		cachepath = os.path.join(magi.modules.__path__[0], os.path.basename(os.path.normpath(code)))
+		
+		# Different instances of MAGI daemon share the file system in desktop mode
+		# Differentiating module folders by concatenating MAGI daemon's hostname
+		from magi.testbed import testbed
+		from magi.testbed.desktop import DesktopExperiment
+		if isinstance(testbed.getTestbedClassInstance(), DesktopExperiment):
+			cachepath = cachepath + "_" + self.hostname
+		
 		if tardata is not None:
 			self.extractTarBuffer(cachepath, tardata)
 		elif path is not None:
@@ -229,7 +240,7 @@ class Daemon(threading.Thread):
 		else:
 			raise OSError(errno.ENOENT, "Invalid path to agent implementation: %s" % code)
 
-		self.startAgent(cachepath, name, dock, execargs, idl)
+		return self.startAgent(cachepath, name, dock, execargs, idl)
 		
 	
 	@agentmethod()
@@ -335,9 +346,22 @@ class Daemon(threading.Thread):
 		"""
 		if self.hostname in nodes:
 			self.messaging.leave(group, "daemon")
-			# 9/14: Changed testbed.nodename to self.hostname to support desktop daemons  
-			self.messaging.trigger(event='GroupTeardownDone', group=group, nodes=[self.hostname])
+			# 9/14: Changed testbed.nodename to self.hostname 
+			# to support desktop daemons  
+			self.messaging.trigger(event='GroupTeardownDone', 
+								   group=group, nodes=[self.hostname])
 	
+	
+	@agentmethod()
+	def groupPing(self, msg, group):
+		"""
+			Method to check if messages sent to a group are reaching the node
+			This helps check if the groups have been built successfully
+			When a node joins/leaves a group, it may take a while for the 
+			information to propagate throughout the network
+		"""
+		self.messaging.trigger(event='GroupPong', 
+							   group=group, nodes=[self.hostname])
 	
 	@agentmethod()
 	def ping(self, msg):
@@ -347,14 +371,18 @@ class Daemon(threading.Thread):
 		res = {
 		        'pong': True
 		}
-		# Added a data part to the message otherwise it gets dropped by the local daemon itself 
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong', contenttype=MAGIMessage.YAML, data=yaml.safe_dump(res)))
+		# Added a data part to the message otherwise it gets dropped 
+		# by the local daemon itself 
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks='pong', 
+									    contenttype=MAGIMessage.YAML, 
+									    data=yaml.safe_dump(res)))
 	
 	
 	@agentmethod()
 	def getStatus(self, msg, groupMembership=False, agentInfo=False):
 		"""
-			gives the group membership and agent information: pid, agentname, threadId
+			gives the group membership and agent information: 
+			pid, agentname, threadId
         """ 
 		functionName = self.getStatus.__name__
 		helpers.entrylog(log, functionName, locals())
@@ -369,16 +397,21 @@ class Daemon(threading.Thread):
 			agentInfo = []
 			processId = os.getpid()
 			for tAgent in self.staticAgents + self.threadAgents:
-				agentInfo.append({"name": tAgent.agentname, "processId": processId, "threadId": tAgent.tid})
+				agentInfo.append({"name": tAgent.agentname, 
+								  "processId": processId, 
+								  "threadId": tAgent.tid})
 			for name in self.pAgentPids.keys():
-				agentInfo.append({"name": name, "processId": self.pAgentPids[name]})
+				agentInfo.append({"name": name, 
+								  "processId": self.pAgentPids[name]})
 			result['agentInfo'] = agentInfo
 		
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))	
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, 
+									    contenttype=MAGIMessage.YAML, 
+									    data=yaml.safe_dump(result)))	
 		helpers.exitlog(log, functionName)
 		
 	@agentmethod()
-	def archive(self, msg):
+	def getLogsArchive(self, msg):
 		""" 
             Tars the log directory and sends it to the requester as a message" 
         """ 
@@ -390,9 +423,27 @@ class Daemon(threading.Thread):
 		logTar.add(logDir, arcname=os.path.basename(logDir))
 		logTar.close()
 		result = base64.encodestring(store.getvalue())
-		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, contenttype=MAGIMessage.YAML, data=yaml.safe_dump(result)))
+		self.messaging.send(MAGIMessage(nodes=msg.src, docks=msg.srcdock, 
+									    contenttype=MAGIMessage.YAML, 
+									    data=yaml.safe_dump(result)))
 		helpers.exitlog(log, functionName)
 	
+	@agentmethod()
+	def archive(self, msg, destinationDir=config.getTempDir()):
+		""" 
+            Tars the log directory" 
+        """ 
+		functionName = self.archive.__name__
+		helpers.entrylog(log, functionName, locals())
+		logDir = config.getLogDir()
+		logTar = tarfile.open(name=os.path.join(destinationDir, 
+								"logs_%s.tar.gz"%(datetime.datetime.now()
+												.strftime("%Y%m%d_%H%M%S"))), 
+							  mode='w:gz')
+		logTar.add(logDir, arcname=os.path.basename(logDir))
+		logTar.close()
+		helpers.exitlog(log, functionName)
+		
 	@agentmethod()
 	def reboot(self, msg, distributionDir=None, noUpdate=False, noInstall=False, expConf=None, nodeConf=None):
 		"""
@@ -482,7 +533,7 @@ class Daemon(threading.Thread):
 				from magi.daemon.threadInterface import ThreadedAgent
 				agent = ThreadedAgent(self.hostname, name, mainfile, dock, execargs, self.messaging)
 				agent.start()
-				log.debug("Started threaded agent %s", agent)
+				log.info("Started threaded agent %s", agent)
 				if static:
 					self.staticAgents.append(agent)
 				else:
@@ -492,27 +543,32 @@ class Daemon(threading.Thread):
 				
 			else:
 				# Process agent, use the file as written to disk
-				# TODO Process agent need to know hostname 
-				args = []
-				if execargs and type(execargs) == dict:
-					# I apologize for this abuse
-					args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
-				args.append('hostname='+self.hostname)
+				if (not execargs) or (type(execargs) != dict):
+					execargs = dict()
+					
+				# Process agent need to know hostname 
+				execargs['hostname'] = self.hostname
+				
+				# I apologize for this abuse
+				args = ['%s=%s' % (str(k), yaml.dump(v)) for k,v in execargs.iteritems()]
+				
 				os.chmod(mainfile, 00777)
 				stderrname = os.path.join(config.getLogDir(), name + '.stderr')
 				stderr = open(stderrname, 'w')		# GTL should this be closed? If so, when?
-				log.debug("Starting %s, stderr sent to %s", name, stderrname)
+				log.info("Starting %s, stderr sent to %s", name, stderrname)
 				
 				if execstyle == 'pipe':
 					args.append('execute=pipe')
-					log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
-					agent = Popen([mainfile, name, dock] + args, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
+					cmdList = [mainfile, name, dock, config.getNodeConfFile(), config.getExperimentConfFile()] + args
+					log.info('running: %s', ' '.join(cmdList))
+					agent = Popen(cmdList, close_fds=True, stdin=PIPE, stdout=PIPE, stderr=stderr)
 					self.extAgentsThread.fromNetwork.put(PipeTuple([dock], InputPipe(fileobj=agent.stdout), OutputPipe(fileobj=agent.stdin)))
 	
 				elif execstyle == 'socket':
 					args.append('execute=socket')
-					log.debug('running: %s', ' '.join([mainfile, name, dock] + args))
-					agent = Popen([mainfile, name, dock] + args, close_fds=True, stderr=stderr)
+					cmdList = [mainfile, name, dock, config.getNodeConfFile(), config.getExperimentConfFile()] + args
+					log.info('running: %s', ' '.join(cmdList))
+					agent = Popen(cmdList, close_fds=True, stderr=stderr)
 	
 				else:
 					log.critical("unknown launch style '%s'", interface['execute'])
@@ -528,9 +584,13 @@ class Daemon(threading.Thread):
 				exc_type, exc_value, exc_tb = sys.exc_info()
 				filename, line_num, func_name, text = traceback.extract_tb(exc_tb)[-1]
 				filename = basename(filename)
-				self.messaging.trigger(event='RuntimeException', func_name=func_name, agent=self.name, 
-								   nodes=[self.hostname], filename=filename, line_num=line_num, error=str(e))
+				self.messaging.trigger(event='RuntimeException', type=exc_type.__name__, error=str(e), nodes=[self.hostname], 
+									agent=self.name, func_name=func_name, filename=filename, line_num=line_num)
+				return False
+		
+		return True
 
+		
 	def extractTarPath(self, cachepath, path):
 		"""
 			Internal function to extract a tar file
