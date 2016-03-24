@@ -68,29 +68,29 @@ agents:
     execargs: []
     group: agroup
     dock: nothing
-    code: nothing
+    path: nothing
 
   logger:
     execargs: []
-    code: logger
+    path: logger
     group: agroup
     dock: logger
 
   allcounters:
     execargs: []
-    code: counters
+    path: counters
     group: agroup
     dock: cdock
 
   Server1:
     execargs: []
-    code: apache
+    path: apache
     group: Server1-group
     dock: Server1-dock
 
   Client1:
     execargs: []
-    code: http_wget
+    path: http_wget
     group: Client1-group
     dock: Client1-dock
 
