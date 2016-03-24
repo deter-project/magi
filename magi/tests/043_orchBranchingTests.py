@@ -1,72 +1,199 @@
 #!/usr/bin/env python
 
+from collections import defaultdict
+from magi.orchestrator.parse import createTrigger
+import logging
+import time
 import unittest2
-
-from magi.tests.util import *
-from magi.orchestrator.parse import *
 
 log = logging.getLogger(__name__)
 
 class BranchingTest(unittest2.TestCase):
 	"""
-		Testing of handingstream branching in AAL Files.
+		Testing of handling stream branching in AAL Files.
 	"""
-	def test_countContraints(self):
-		#TODO: Test needs to be fixed
-		return
-		
-		args = {'count': 3}
-		t = Trigger(**args)
-		# TriggerData doesn't matter - we're only looking at count.
-		incoming = TriggerData({'hello':'world'})
-		print '\n'
-		for i in range(args['count']):
-			print t
-			retVal = t.constraintMatched()
-			self.assertEquals(retVal, False)
-			t.update(incoming)
+	
+	def cacheTrigger(self, triggerCache, incoming):
+		merged = False
+		for trigger in triggerCache[incoming.event]:
+			if trigger.isEqual(incoming):
+				trigger.merge(incoming)
+				merged = True
+				break
+		if not merged:
+			triggerCache[incoming.event].append(incoming)
 
-		print t
-		retVal = t.constraintMatched()
+			
+	def test_countContraints(self):
+		
+		triggerCache = defaultdict(list)
+		
+		# TriggerData doesn't matter - we're only looking at count.
+		t = createTrigger({'event' : 'CountTest', 'count': 3})
+		t.activate()
+		
+		for i in range(t.count):
+			incoming = createTrigger({'event' : 'CountTest', 'nodes' : i })
+			retVal = t.isComplete(triggerCache)
+			self.assertEquals(retVal, False)
+			self.cacheTrigger(triggerCache, incoming)
+
+		retVal = t.isComplete(triggerCache)
 		self.assertEquals(True, retVal)
 
 	def test_nodeContraints(self):
-		#TODO: Test needs to be fixed
-		return
 		
-		nodeNames = ['dewey', 'screwem', 'howe']
-		args = {'nodes': nodeNames}
-		t = Trigger(**args)
+		triggerCache = defaultdict(list)
+		
 		# TriggerData doesn't matter - we're only looking at count.
-		print '\n'
+		nodeNames = ['dewey', 'screwem', 'howe']
+		args = {'event' : 'CountTest', 'nodes' : nodeNames}
+		t = createTrigger(args)
+		t.activate()
+		
+		incoming = createTrigger({'event' : 'CountTest', 'nodes' : 'somenode'})
+		self.cacheTrigger(triggerCache, incoming)
+		
+		incoming = createTrigger({'event' : 'CountTest', 'nodes' : 'somenode1'})
+		self.cacheTrigger(triggerCache, incoming)
+		
 		for name in nodeNames:
-			print t
-			retVal = t.constraintMatched()
+			incoming = createTrigger({'event' : 'CountTest', 'nodes' : name})
+			retVal = t.isComplete(triggerCache)
 			self.assertEquals(retVal, False)
-			t.sets['nodes'].update([name])
+			self.cacheTrigger(triggerCache, incoming)
 
-		t.update({'dont': 'matter'})
-		print t
-		retVal = t.constraintMatched()
+		retVal = t.isComplete(triggerCache)
 		self.assertEquals(True, retVal)
 
-	def test_selfDestruct(self):
-		#TODO: Test needs to be fixed
-		return
+	def test_logicalTriggers(self):
+		
+		triggerCache = defaultdict(list)
+		
+		td1 = {'event' : 'TestTrigger'}
+		t1 = createTrigger(td1)
+		t1.activate()
+		
+		incoming = createTrigger({'event' : 'TestTrigger', 'nodes' : 'node'})
+		self.cacheTrigger(triggerCache, incoming)
+		
+		retVal = t1.isComplete(triggerCache)
+		self.assertEquals(retVal, True)
+		
+		log.debug('t1 -> complete')
+		
+		td2 = {'timeout' : 2000}
+		t2 = createTrigger(td2)
+		t2.activate()
+		self.assertEquals(t2.isComplete(triggerCache), False)
+		
+		log.debug('t2 -> not complete')
+		
+		td3 = {'type' : 'AND', 'triggers' : [td1, td2]}
+		t3 = createTrigger(td3)
+		t3.activate()
+		self.assertEquals(t3.isComplete(triggerCache), False)
+		
+		log.debug('t1 and t2 -> not complete')
+		
+		td4 = {'type' : 'OR', 'triggers' : [td1, td2]}
+		t4 = createTrigger(td4)
+		t4.activate()
+		self.assertEquals(t4.isComplete(triggerCache), True)
+		
+		log.debug('t1 or t2 -> complete')
+		
+		time.sleep(2)
+		
+		log.debug('sleep for 2 seconds')
+		
+		self.assertEquals(t1.isComplete(triggerCache), True)
+		self.assertEquals(t2.isComplete(triggerCache), True)
+		self.assertEquals(t3.isComplete(triggerCache), True)
+		self.assertEquals(t4.isComplete(triggerCache), True)
+		
+		log.debug('all complete')
+		
+	def test_disjunctionTriggers(self):
+		
+		triggerCache = defaultdict(list)
+		
+		td0 = {}
+		t0 = createTrigger(td0)
+		t0.activate()
+		retVal = t0.isComplete(triggerCache)
+		self.assertEquals(retVal, True)
+		
+		td1 = {'event' : 'TestTrigger'}
+		t1 = createTrigger(td1)
+		t1.activate()
+		retVal = t1.isComplete(triggerCache)
+		self.assertEquals(retVal, False)
+		
+		td2 = {'type' : 'OR', 'triggers' : [td0, td1]}
+		t2 = createTrigger(td2)
+		t2.activate()
+		retVal = t2.isComplete(triggerCache)
+		self.assertEquals(retVal, True)
+		
+		td3 = {'type' : 'OR', 'triggers' : [td1, td2]}
+		t3 = createTrigger(td3)
+		t3.activate()
+		retVal = t3.isComplete(triggerCache)
+		self.assertEquals(retVal, True)
+		
+		td4 = {'type' : 'OR', 'triggers' : [td1, td3]}
+		t4 = createTrigger(td4)
+		t4.activate()
+		retVal = t4.isComplete(triggerCache)
+		self.assertEquals(retVal, True)
+		
+	def test_conjunctionTriggers(self):
 
-		args = { 'event': 'Bork! Bork! Bork!' }
-		t = Trigger(**args)
-		print '\n'
-		timeout = 3
-		t.selfDestructTime=time.time() + float(timeout+2)
-		for i in range(timeout): 
-			self.assertEquals(t.shouldDelete(time.time()), False)
-			print '.'
-			time.sleep(1)
+		triggerCache = defaultdict(list)
+		
+		td0 = {}
+		t0 = createTrigger(td0)
+		t0.activate()
+		retVal = t0.isComplete(triggerCache)
+		self.assertEquals(retVal, True)
+		
+		td1 = {'event' : 'TestTrigger'}
+		t1 = createTrigger(td1)
+		t1.activate()
+		retVal = t1.isComplete(triggerCache)
+		self.assertEquals(retVal, False)
+		
+		td2 = {'type' : 'AND', 'triggers' : [td0, td1]}
+		t2 = createTrigger(td2)
+		t2.activate()
+		retVal = t2.isComplete(triggerCache)
+		self.assertEquals(retVal, False)
+		
+		td3 = {'type' : 'AND', 'triggers' : [td0, td2]}
+		t3 = createTrigger(td3)
+		t3.activate()
+		retVal = t3.isComplete(triggerCache)
+		self.assertEquals(retVal, False)
+		
+		td4 = {'type' : 'AND', 'triggers' : [td0, td3]}
+		t4 = createTrigger(td4)
+		t4.activate()
+		retVal = t4.isComplete(triggerCache)
+		self.assertEquals(retVal, False)
 
-		print
-		time.sleep(3)
-		self.assertEquals(t.shouldDelete(time.time()), True)
+#	def test_selfDestruct(self):
+#
+#		args = { 'event': 'Bork! Bork! Bork!' }
+#		t = Trigger(**args)
+#		timeout = 3
+#		t.selfDestructTime=time.time() + float(timeout+2)
+#		for i in range(timeout): 
+#			self.assertEquals(t.shouldDelete(time.time()), False)
+#			time.sleep(1)
+#
+#		time.sleep(3)
+#		self.assertEquals(t.shouldDelete(time.time()), True)
 
 if __name__ == '__main__':
 	import signal

@@ -23,7 +23,7 @@ import sys
 if 'installedAllowed' not in locals():
 	ToTransmit = namedtuple("ToTransmit", "msg, fds, args")
 	Transmitted = namedtuple("Transmitted", "msg, args")
-	installAllowed = None
+	installAllowed = 'y'
 
 def softwareRequired(name):
 	if os.geteuid() != 0:  # no class decorators in 2.5 and below

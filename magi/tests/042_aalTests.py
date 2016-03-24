@@ -2,8 +2,6 @@
 
 import unittest2
 import logging
-import os
-import pdb
 
 from magi.tests.util import *
 from magi.messaging.api import MAGIMessage
@@ -23,11 +21,11 @@ class AALTest(unittest2.TestCase):
 
     def test_1Parse(self):
         """ Test parsing of AAL file """
-        #TODO: Test needs to be fixed
-        return
-        
         self.assertEquals(['main', 'branch2'], self.aal.getStartKeys())
-        self.assertEquals(16, len(self.aal.getSetupStream()))
+        self.assertEquals('groupBuildStream', self.aal.getSetupStreams()[0].name)
+        self.assertEquals(12, len(self.aal.getSetupStreams()[0]))
+        self.assertEquals('loadAgentStream', self.aal.getSetupStreams()[1].name)
+        self.assertEquals(10, len(self.aal.getSetupStreams()[1]))
         self.assertEquals(5, len(self.aal.getStream('main')))
         self.assertEquals(3, len(self.aal.getStream('branch1')))
         self.assertEquals(2, len(self.aal.getStream('branch2')))
@@ -112,7 +110,7 @@ if __name__ == '__main__':
     root = logging.getLogger()
     root.handlers = []
     root.addHandler(hdlr)
-    root.setLevel(logging.DEBUG)
+    root.setLevel(logging.INFO)
     unittest2.main(verbosity=2)
 
 

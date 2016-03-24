@@ -25,6 +25,11 @@ def getDbConfig():
 
 def isDBEnabled():
     return getDbConfig().get('isDBEnabled', False)
+
+def setDBStatus(status):
+    if type(status) != bool:
+        return
+    getDbConfig()['isDBEnabled'] = False
     
 def isDBSharded():
     return getDbConfig().get('isDBSharded', True)
