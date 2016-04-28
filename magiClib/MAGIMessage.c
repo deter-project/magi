@@ -1,425 +1,435 @@
 #include "MAGIMessage.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <arpa/inet.h>
+#include "Logger.h"
+
 #include <string.h>
-#include "AgentMessenger.h"
-#include "logger.h"
+
 extern char* hostName;
 extern Logger* logger;
 
-void addList(list_t** list, char* name)
-{
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-	list_t* temp = (list_t*)malloc(sizeof(list_t));
-	temp->name = malloc(strlen(name)+1);
-	strcpy(temp->name,name);
-	temp->next = *list;
-	*list = temp;
-	log_debug(logger,"Exiting function: %s\n",__func__);
+MAGIMessage_t* allocateInitializedMagiMessage();
 
-}
-
-
-int calHlen(headerOpt_t* headers)
-{
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-	int len =0;
-	while(headers)
-	{
-		len+=headers->len;
-		len+=2;
-		headers= headers->next;
+int calMagiMsgHdrLen(headerOpt_t* headers) {
+	//entrylog(logger, __func__, __FILE__, __LINE__);
+	int len = 0;
+	while (headers) {
+		len += headers->len;
+		len += 2;
+		headers = headers->next;
 	}
-	log_debug(logger,"Exiting function: %s\n",__func__);
+	//exitlog(logger, __func__, __FILE__, __LINE__);
 	return len;
 }
 
 /****************************************************
  * Helper function to insert header into a list
  * ***************************************************/
-void insert_header( MAGIMessage_t* msg, uint8_t type, uint8_t len, char * value)
-{
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);	
+void insert_header(MAGIMessage_t* msg, uint8_t type, uint8_t len, char* value) {
+	//entrylog(logger, __func__, __FILE__, __LINE__);
 	headerOpt_t * list = msg->headers;
 	headerOpt_t * opt_header = (headerOpt_t *) malloc(sizeof(headerOpt_t));
 	opt_header->type = type;
 	opt_header->len = strlen(value);
-	if(len == 0 || value == NULL)
-		{
-
-			log_error(logger,"illegal header in function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-		}
-	opt_header->value = malloc(opt_header->len+1);
-	memcpy(opt_header->value,value,strlen(value));
+	if (len == 0 || value == NULL) {
+		log_error(logger,
+				"illegal header in function: %s\n\t in File \"%s\", line %d \n",
+				__func__, __FILE__, __LINE__);
+	}
+	opt_header->value = malloc(opt_header->len + 1);
+	memcpy(opt_header->value, value, strlen(value));
 	opt_header->next = NULL;
 
-	if(list == NULL)
-	{
+	if (list == NULL) {
 		list = opt_header;
-	}
-	else
-	{
+	} else {
 		headerOpt_t * tmp = list;
-		while(tmp->next)
-			tmp = tmp->next;			
+		while (tmp->next)
+			tmp = tmp->next;
 		tmp->next = opt_header;
 	}
-	if(type == DSTDOCKS)
-		addList(&msg->dstDocks,value);
-	else if(type == DSTGROUPS)
-		addList(&msg->dstGroups,value);
-	else if(type == DSTNODES)
-		addList(&msg->dstNodes,value);
+
+	if (type == DSTDOCKS)
+		addList(&msg->dstDocks, value);
+	else if (type == DSTGROUPS)
+		addList(&msg->dstGroups, value);
+	else if (type == DSTNODES)
+		addList(&msg->dstNodes, value);
+	else if (type == SRC){
+		msg->src = malloc(strlen(value) + 1);
+		strcpy(msg->src, value);
+	} else if (type == SRCDOCK) {
+		msg->srcDock = malloc(strlen(value) + 1);
+		strcpy(msg->srcDock, value);
+	}
+
 	msg->headers = list;
-	log_debug(logger,"Exiting function: %s\n",__func__);
+	//exitlog(logger, __func__, __FILE__, __LINE__);
 }
 
-char *trimwhitespace(char *str)
-{
+/**
+ * Function: decodeMsgDataYaml
+ * This function takes a YAML message as input and extracts the arguments,
+ * method, trigger information if any.
+ */
+fargs_t decodeMsgDataYaml(char* yamlEncodedData) {
+	entrylog(logger, __func__, __FILE__, __LINE__);
 
-  char *end;
+	char* dataBuf = (char*) malloc(strlen(yamlEncodedData) + 1);
+	strcpy(dataBuf, yamlEncodedData);
 
-  // Trim leading space
-  while(isspace(*str)) str++;
+	log_info(logger, "YAML Encoded Data : %s", dataBuf);
 
-  if(*str == 0)  // All spaces?
-    return str;
+	fargs_t funcInfo;
+	funcInfo.func = NULL;
+	funcInfo.args[0] = NULL;
+	funcInfo.trigger = NULL;
 
-  // Trim traili space
-  end = str + strlen(str) - 1;
-  while(end > str && isspace(*end)) end--;
+	char*tkn;
+	int charPosition = 0, lineLength = 0;
 
-  // Write new null terminator
-  *(end+1) = 0;
-  return str;
-}
+	int msgLength = strlen(dataBuf);
+	for (charPosition = 0; charPosition < strlen(dataBuf); charPosition++) {
+		if (dataBuf[charPosition] == '\'' || dataBuf[charPosition] == '\"')
+			dataBuf[charPosition] = ' ';
+	}
 
-
-
-void decodeYAML(char* msg, char** func, char**args,char** event)
-{
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-	char* buf = (char*)malloc(strlen(msg));
-        strncpy(buf,msg,strlen(msg));
-	log_info(logger,"YAML msg : %s\n",buf);
-	args[0] =NULL;
-        char*tkn,*temp;
-        char* bufp =buf;
-        int j =0,cnt =0,i=0;
-	int max = strlen(buf);
-        for(j =0;j<strlen(buf);j++)
-        {
-                if(buf[j] == '\'' || buf[j] == '\"')
-                        buf[j] = ' ';
-        }
-nxt:
-    	while(buf)
-     	{
-		log_debug(logger,"parsing line\n");
-		cnt =0;
-        	j=0;
-        	while(buf[j] != '\n')
-        	{        
-			cnt++; j++;
-			if(j == max){
-				log_warn(logger,"something wrong in YAML parsing of string:\n %s\n",msg);
-				return;	}
+	nxt: while (dataBuf) {
+		log_debug(logger, "Parsing next line");
+		lineLength = 0;
+		charPosition = 0;
+		while (dataBuf[charPosition] != '\n') {
+			lineLength++;
+			charPosition++;
+			if (charPosition > msgLength) {
+				log_debug(logger, "Reached the end of message");
+				return funcInfo;
+			}
 		}
-	 	//read 1 line
-        	char* line ;
-		line =NULL;
-        	line = malloc(cnt);
-        	strncpy(line,buf,cnt);
-		log_debug(logger,"line parsed: %s\n",line);
-       	 	line[cnt]='\0';
-        	char * ck;
-        	if((ck = strstr(line, "method"))!=NULL)
-        	{
-			log_debug(logger,"YAML: Method\n");
-                	//This line has method
-                	tkn = strtok(line,":");
-                	tkn = strtok(NULL,":,");
-                	//func name
-                	log_debug(logger,"Function name : %s\n",tkn);
-                	tkn = trimwhitespace(tkn);
-                	*func = (char*)malloc(strlen(tkn)+1);
-                	strncpy(*func,tkn,strlen(tkn));	
 
-        	}
-        	else if((ck = strstr(line, "args"))!=NULL)
-        	{
-			log_debug(logger,"YAML: Args\n");
-			/*if((ck = strstr(line,"key"))==NULL)
-			{
-				free(line);
-				buf = buf+cnt+1;
-				goto nxt;
-			}*/
-			//args: {key1: '1', key2: '2'} 
-                	tkn = strtok(line,":");//key - args     
-                	if(tkn ==NULL)
-			{
-				buf = buf+cnt+1;
-                        	goto nxt;
-                	}
-			tkn = strtok(NULL,"}");//val -> args list
-                	char* tstr =(char*)malloc(strlen(tkn));
-                	strcpy(tstr,tkn);
-                	char *t1 = strchr(tstr,'{');
-                	if (t1)
-                	{
-                        	t1++;
-                       	 	tstr = t1;
-                	}
-			else
-			{
-				free(line);
-				buf = buf+cnt+1;
+		//read 1 line
+		char* line = (char*) malloc(lineLength + 1);
+		strncpy(line, dataBuf, lineLength);
+		line[lineLength] = '\0';
+		log_debug(logger, "Parsing line: %s", line);
+
+		char * ck;
+		if ((ck = strstr(line, "method")) != NULL) {
+			log_debug(logger, "YAML: method");
+			//This line has method
+			tkn = strtok(line, ":");
+			tkn = strtok(NULL, ":,");
+			//func name
+			log_debug(logger, "Function name : %s", tkn);
+			tkn = trimwhitespace(tkn);
+			funcInfo.func = (char*) malloc(strlen(tkn) + 1);
+			sprintf(funcInfo.func, "%s", tkn);
+
+		} else if ((ck = strstr(line, "args")) != NULL) {
+			log_debug(logger, "YAML: args");
+			//args: {key1: '1', key2: '2'}
+			tkn = strtok(line, ":"); //key - args
+			if (tkn == NULL) {
+				dataBuf = dataBuf + lineLength + 1;
 				goto nxt;
 			}
-                // tstr = " key1: 1,key2:2 " or " key1:1 "
-                	char * t;
-                	t= strtok(tstr,",:");//key
-                	do
-                	{
-                                //1 key value pair
-                        	t = strtok(NULL,":,%"); //value
-                        	if(t ==NULL){
-					buf = buf+cnt+1;
-                                	goto nxt;
+			tkn = strtok(NULL, "}"); //val -> args list
+			char* tstr = (char*) malloc(strlen(tkn) + 1);
+			strcpy(tstr, tkn);
+			char *t1 = strchr(tstr, '{');
+			if (t1) {
+				t1++;
+				tstr = t1;
+			} else {
+				free(line);
+				dataBuf = dataBuf + lineLength + 1;
+				goto nxt;
+			}
+			// tstr = " key1: 1,key2:2 " or " key1:1 "
+			char * t;
+			t = strtok(tstr, ",:"); //key
+			int argItr = 0;
+			do {
+				//1 key value pair
+				t = strtok(NULL, ":,%"); //value
+				if (t == NULL) {
+					dataBuf = dataBuf + lineLength + 1;
+					goto nxt;
 				}
 				t = trimwhitespace(t);
-                        	log_debug(logger,"arg value[%d]: %d\n",i, atoi(t));
-                       		t = trimwhitespace(t);
-                        	temp = (char*)malloc(strlen(t));
-                        	strncpy(temp,t,strlen(t)+1);
-                        	args[i] = temp;
-                        	i++;
-                	}while((t= strtok(NULL,",:%"))!=NULL); //key
-    			args[i] =NULL;
-			log_debug(logger,"Parsed all args\n");
-                }
-
-	//
-	else if((ck = strstr(line, "trigger"))!=NULL)
-	{
-		log_debug(logger,"YAML: trigger\n");
-		tkn = strtok(line,":");
-                tkn = strtok(NULL,":,");
-                //event name
-                log_debug(logger,"Event name : %s\n",tkn);
-                tkn = trimwhitespace(tkn);
-                *event = (char*)malloc(strlen(tkn)+1);
-                strncpy(*event,tkn,strlen(tkn));
-     //           *event[strlen(tkn)] = '\0';
-
+				log_debug(logger, "arg value[%d]: %s", argItr, t);
+				t = trimwhitespace(t);
+				char* temp = (char*) malloc(strlen(t));
+				strncpy(temp, t, strlen(t) + 1);
+				funcInfo.args[argItr] = temp;
+				argItr++;
+			} while ((t = strtok(NULL, ",:%")) != NULL); //key
+			funcInfo.args[argItr] = NULL;
+			log_debug(logger, "Parsed all args");
+		} else if ((ck = strstr(line, "trigger")) != NULL) {
+			log_debug(logger, "YAML: trigger");
+			tkn = strtok(line, ":");
+			tkn = strtok(NULL, ":,");
+			//event name
+			log_debug(logger, "Event name : %s", tkn);
+			tkn = trimwhitespace(tkn);
+			funcInfo.trigger = (char*) malloc(strlen(tkn) + 1);
+			sprintf(funcInfo.trigger, "%s", tkn);
+		}
+		dataBuf = dataBuf + lineLength + 1;
 	}
-        buf = buf+cnt+1;
 
-    }
-	
-        log_debug(logger,"Exiting function: %s\n",__func__);
+	free(dataBuf);
 
+	exitlog(logger, __func__, __FILE__, __LINE__);
+	return funcInfo;
 }
 
-
-
-
 /**************************************************************************************
- * Function: MAGIMessageDecode
- * This function returns MAGIMessage structure from buffer(deserialize)
+ * Function: decodeMagiMessage
+ * This function returns MAGIMessage structure from buffer (deserialize)
  * This function allocates memory for the structure. This should be freed by the caller.
  **************************************************************************************/
-MAGIMessage_t *MAGIMessageDecode(char* msgBuf)
-{
-
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
+MAGIMessage_t* decodeMagiMessage(char* encodedMagiMessage) {
+	entrylog(logger, __func__, __FILE__, __LINE__);
 	/*Caller has realized it is a MAGI message*/
-	MAGIMessage_t* MAGImsg = (MAGIMessage_t*) malloc(sizeof(MAGIMessage_t));
-	if(MAGImsg == NULL)
-	{
-		log_error("malloc failed in function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-		exit(0);
-	}
-	MAGImsg->headers =NULL; 
-	char* parser = msgBuf;
+
+	char* msgBufPtr = encodedMagiMessage;
 	int len_optHeaders;
 
-	/*Now parser points to length*/
-	memcpy(&MAGImsg->length,parser,4);
-	MAGImsg->length = ntohl(MAGImsg->length);
+	//msgBufPtr points to total length
+	uint32_t totalLength;
+	memcpy(&totalLength, msgBufPtr, 4);
+	totalLength = ntohl(totalLength);
+	log_debug(logger, "Magi Message Total Length: %d", totalLength);
 
-	parser = parser+ 4; /*HeaderLen*/
-	memcpy(&MAGImsg->headerLength,parser,2);
-	MAGImsg->headerLength = ntohs(MAGImsg->headerLength);
-	len_optHeaders = MAGImsg->headerLength -6; 
+	msgBufPtr = msgBufPtr + 4; //header length
+	uint16_t headerLength;
+	memcpy(&headerLength, msgBufPtr, 2);
+	headerLength = ntohs(headerLength);
+	log_debug(logger, "Magi Message Header Length: %d", headerLength);
 
-	parser = parser+2;/*points to Identifier*/
-	memcpy(&MAGImsg->id,(void*)parser,4);
-	MAGImsg->id = ntohl(MAGImsg->id);
+	len_optHeaders = headerLength - 6;
 
-	parser = parser + 4; /*Flags*/
-	memcpy(&MAGImsg->flags,(void*)parser,1);
+	MAGIMessage_t* magiMsg = allocateInitializedMagiMessage();
+	msgBufPtr = msgBufPtr + 2; //message id
+	memcpy(&magiMsg->id, msgBufPtr, 4);
+	magiMsg->id = ntohl(magiMsg->id);
 
-	parser = parser + 1; /*content type*/
-	memcpy(&MAGImsg->contentType,(void*)parser,1);
-	parser = parser +1;	
+	msgBufPtr = msgBufPtr + 4; //flags
+	char flags;
+	memcpy(&flags, (char*) msgBufPtr, 1);
+	magiMsg->flags = (uint8_t) flags;
 
-	while(len_optHeaders > 0){
-		headerOpt_t * opt_header = (headerOpt_t *) malloc(sizeof(headerOpt_t)); 
+	msgBufPtr = msgBufPtr + 1; //content type
+	char contentType;
+	memcpy(&contentType, (char*) msgBufPtr, 1);
+	magiMsg->contentType = (uint8_t) contentType;
 
-		
-		memcpy((void*)&opt_header->type,(void*)parser,1);
+	msgBufPtr = msgBufPtr + 1;
 
-		parser = parser +1; 
-		memcpy((void*)&opt_header->len,(void*)parser,1);
+	magiMsg->headers = NULL;
+	while (len_optHeaders > 0) {
+		headerOpt_t * opt_header = (headerOpt_t *) malloc(sizeof(headerOpt_t));
 
-		parser = parser+1;
+		char headerType;
+		memcpy(&headerType, (char*) msgBufPtr, 1);
+		opt_header->type = (uint8_t) headerType;
+
+		msgBufPtr = msgBufPtr + 1;
+		char headerLength;
+		memcpy(&headerLength, (char*) msgBufPtr, 1);
+		opt_header->len = (uint8_t) headerLength;
+
+		msgBufPtr = msgBufPtr + 1;
 		opt_header->value = malloc(opt_header->len);
-		memcpy(opt_header->value,(void*)parser,opt_header->len);
+		memcpy(opt_header->value, msgBufPtr, opt_header->len);
 		opt_header->next = NULL;
-		
-		parser = parser + opt_header->len;
 
-		if(MAGImsg->headers == NULL)
-		{			
-			MAGImsg->headers = opt_header;
-		}
-		else
-		{
+		msgBufPtr = msgBufPtr + opt_header->len;
+
+		if (magiMsg->headers == NULL) {
+			magiMsg->headers = opt_header;
+		} else {
 			/*add at the end*/
 			/*update list_t - groups/nodes/docks TODO*/
-			headerOpt_t* tmp =  MAGImsg->headers;
-			while(tmp->next != NULL)
+			headerOpt_t* tmp = magiMsg->headers;
+			while (tmp->next != NULL)
 				tmp = tmp->next;
 			tmp->next = opt_header;
 		}
 
 		len_optHeaders = len_optHeaders - 2 - opt_header->len;
-		
 	}
 
-	MAGImsg->data = (char*)malloc(MAGImsg->length - MAGImsg->headerLength - 2);
+	int dataLen = totalLength - headerLength - 2;
+	log_debug(logger, "Magi Message Data Length: %d", dataLen);
 
-	switch(MAGImsg->contentType)
-	{
-		case YAML:
-		       		memcpy(MAGImsg->data,parser,MAGImsg->length - MAGImsg->headerLength - 2 );
-				log_debug(logger,"Received YAML message...\n");	
-				char* event =NULL;			
-				decodeYAML(MAGImsg->data,&(MAGImsg->funcArgs.func),&(MAGImsg->funcArgs.args),&event);
-				if(MAGImsg->funcArgs.func == NULL)
-				  return;		
-				log_debug(logger,"Calling function\n");
-				char* retVal = NULL; 
-				retVal = malloc(1024);
-				char* retType = malloc(50); 
-				call_function(MAGImsg->funcArgs.func,&(MAGImsg->funcArgs.args),retVal,retType);
-			//	if(retVal != NULL)
-				log_info(logger,"MAGIDecode() Call function returned\n");
-				log_info(logger,"retVal of function :%s",retVal);
-				if(event)
-				{
-				
-					log_info(logger,"Sending out Trigger message\n");
-					char ndata[1500];
-					if(!strcmp(retType,"dictionary"))
-				//	char ck[50];
-				//	strncpy(ck,retVal,50);
-				//	char* tk = strtok(ck,":,"); 
-				//	if(tk)
-					{
-						
-						sprintf(ndata,"{event: %s, %s, nodes: %s}",event,retVal,hostName);
+	log_debug(logger, "Message content type: %d", magiMsg->contentType);
 
-
-					}
-					else{
-					 /*Todo: Malloc this strlen(event+retVal+hostName)*/
-					sprintf(ndata,"{event: %s, retVal: %s, nodes: %s}",event,retVal,hostName);
-					}
-					free(retVal);
-					log_info(logger,"Trigger message: %s\n",ndata);
-					char* td = (char*)malloc(strlen(ndata));
-					strcpy(td,ndata);
-					trigger("control", "control", YAML, td);
-					log_info(logger,"Sent the trigger message for event: %s\n",event);
-				}
-				break;
-
-		default:
-				log_info(logger,"Content Type not supported\n");
-				break;
-
+	switch (magiMsg->contentType) {
+	case YAML:
+		log_debug(logger, "Received YAML encoded message");
+		magiMsg->data = (char*) malloc(dataLen + 1);
+		strncpy(magiMsg->data, msgBufPtr, dataLen);
+		magiMsg->data[dataLen] = '\0';
+		log_debug(logger, "MAGI Message Data: %s", magiMsg->data);
+		break;
+	default:
+		log_info(logger, "Content Type not supported\n");
+		return NULL;
 	}
-	log_debug(logger,"Exiting function: %s\n",__func__);
-	return (MAGImsg);
 
+	exitlog(logger, __func__, __FILE__, __LINE__);
+	return magiMsg;
 }
-
 
 /**************************************************************************************
- * Function: MAGIMessageEncode
+ * Function: encodeMagiMessage
  * This function returns a serialized buffer from MAGIMessage structure
  * This function allocates memory for the buffer. This should be freed by the caller.
+ *
+ * |TotalLength - 4B | HeaderLength - 2B | MsgID - 4B | Flags - 1B | ContentType - 1B|
+ * -------------------------------------
+ * Content         Size      Description
+ * =============== ========  ===========
+ * Length          4 bytes   header + data not including 4 length bytes
+ * Header Length   2 bytes   length of just the header not including this length value
+ * Identifier      4 bytes   this uniquely identifies any packet from the source
+ * Flags           1 byte    Message Flags
+ * ContentType     1 byte    Indicates generic format of content
+ * Headers         variable  type-length-value options (byte, byte, variable)
+ * Data            variable  the actual message data
+ * =============== ========  ===========
  **************************************************************************************/
-char * MAGIMessageEncode(char** b,MAGIMessage_t* MAGImsg, uint32_t* bufLen)
-{
-	char * msgBuf;
-	log_debug(logger,"Entering function: %s\n\t in File \"%s\", line %d \n",__func__,__FILE__,__LINE__);
-	msgBuf = (char*)malloc(MAGImsg->length+4);
-	/*err check*/
-	char* tmp = msgBuf;
+char* encodeMagiMessage(MAGIMessage_t* magiMsg, uint32_t* bufLen) {
+	entrylog(logger, __func__, __FILE__, __LINE__);
 
-	uint32_t conv = htonl(MAGImsg->length);
-	memcpy(tmp, &(conv), 4);
-	tmp+=4;
-	
-	if(MAGImsg->headerLength == 0)
-		memset(tmp,0,2);
-	else{
-		uint16_t conv1 = htons(MAGImsg->headerLength);
-		memcpy(tmp, &conv1, 2);
+	uint16_t headerLength = 4 + 2 + calMagiMsgHdrLen(magiMsg->headers);
+	uint32_t totalLength = 2 + headerLength + strlen(magiMsg->data);
+
+	//Total Length does not include 4 bytes of message id
+	char* msgBuf = (char*) malloc(totalLength + 4);
+	msgBuf[0] = '\0';
+
+	*bufLen = totalLength + 4;
+
+	char* msgBufPtr = msgBuf;
+
+	//TotalLength
+	totalLength = htonl(totalLength);
+	memcpy(msgBufPtr, &(totalLength), 4);
+	msgBufPtr += 4;
+
+	//HeaderLength
+	if (headerLength == 0)
+		memset(msgBufPtr, 0, 2);
+	else {
+		headerLength = htons(headerLength);
+		memcpy(msgBufPtr, &headerLength, 2);
 	}
-	tmp+=2;
-	
-	if(MAGImsg->id == 0)
-		memset(tmp,0,4);
-	else
-	{
-		conv = htonl(MAGImsg->id);
-		memcpy(tmp, &conv, 4);
+	msgBufPtr += 2;
+
+	//MsgID
+	if (magiMsg->id == 0)
+		memset(msgBufPtr, 0, 4);
+	else {
+		uint32_t msgId = htonl(magiMsg->id);
+		memcpy(msgBufPtr, &msgId, 4);
 	}
-	tmp+=4;
+	msgBufPtr += 4;
 
-	memcpy(tmp, &(MAGImsg->flags), 1);
-	tmp+=1;
+	//Flags
+	memcpy(msgBufPtr, &(magiMsg->flags), 1);
+	msgBufPtr += 1;
 
-	memcpy(tmp,&(MAGImsg->contentType), 1);
-	tmp+=1;
+	//ContentType
+	memcpy(msgBufPtr, &(magiMsg->contentType), 1);
+	msgBufPtr += 1;
 
-
-	/*tmp pointing to start of opt_headers*/
-	headerOpt_t * header = MAGImsg->headers;
-	/*No error checking of the total size - TODO*/
-	while(header != NULL)
-	{
-	memcpy((void*)tmp,(void*)&header->type,1);
-	tmp+=1;
-	memcpy((void*)tmp,(void*)&header->len,1);
-	tmp+=1;
-	memcpy((void*)tmp,(void*)header->value,header->len);
-	tmp+=header->len;
-	header = header->next;
+	headerOpt_t * header = magiMsg->headers;
+	while (header != NULL) {
+		memcpy((void*) msgBufPtr, (void*) &header->type, 1);
+		msgBufPtr += 1;
+		memcpy((void*) msgBufPtr, (void*) &header->len, 1);
+		msgBufPtr += 1;
+		memcpy((void*) msgBufPtr, (void*) header->value, header->len);
+		msgBufPtr += header->len;
+		header = header->next;
 	}
-	memcpy((void*)tmp,(void*)MAGImsg->data, MAGImsg->length - MAGImsg->headerLength - 2 );
-	*bufLen = MAGImsg->length+4;
 
+	memcpy((void*) msgBufPtr, (void*) magiMsg->data, strlen(magiMsg->data));
 
-	log_debug(logger,"Exiting function: %s\n",__func__);
-	*b = msgBuf;
+	exitlog(logger, __func__, __FILE__, __LINE__);
 	return msgBuf;
-
 }
 
+/**
+ * Create a partially filled MAGI message.
+ *
+ * @param srcdock if not null, the message srcdock is set to this
+ * @param node if not null, node is added to the list of destination nodes
+ * @param group if not null, group is added to the list of destination groups
+ * @param dstdock if not null, dstdock is add to the list of destination docks
+ * @param contenttype the contenttype for the data as specified in the Messenger interface
+ * @param data encoded data for the message or null for none.
+ */
+MAGIMessage_t* createMagiMessage(char* srcdock, char* node, char* group,
+		char* dstdock, contentType_t contenttype, char* data) {
+	entrylog(logger, __func__, __FILE__, __LINE__);
+
+	MAGIMessage_t* magiMsg = allocateInitializedMagiMessage();
+
+	if (srcdock)
+		insert_header(magiMsg, SRCDOCK, strlen(srcdock) + 1, srcdock);
+	if (node)
+		insert_header(magiMsg, DSTNODES, strlen(node) + 1, node);
+	if (group)
+		insert_header(magiMsg, DSTGROUPS, strlen(group) + 1, group);
+	if (dstdock)
+		insert_header(magiMsg, DSTNODES, strlen(dstdock) + 1, dstdock);
+
+	// MAGI message data.
+	magiMsg->contentType = contenttype;
+	magiMsg->data = (char*) malloc(strlen(data) + 1);
+	strcpy(magiMsg->data, data);
+
+	exitlog(logger, __func__, __FILE__, __LINE__);
+	return magiMsg;
+}
+
+MAGIMessage_t* allocateInitializedMagiMessage() {
+	MAGIMessage_t* magiMsg = (MAGIMessage_t*) malloc(sizeof(MAGIMessage_t));
+	magiMsg->id = 0;
+	magiMsg->flags = 0;
+	magiMsg->contentType = 0;
+	magiMsg->data = NULL;
+	magiMsg->dstGroups = NULL;
+	magiMsg->dstNodes = NULL;
+	magiMsg->dstDocks = NULL;
+	magiMsg->src = NULL;
+	magiMsg->srcDock = NULL;
+	magiMsg->headers = NULL;
+	return magiMsg;
+}
+
+void freeMagiMessage(MAGIMessage_t* msg){
+	entrylog(logger, __func__, __FILE__, __LINE__);
+	if(msg != NULL){
+		freeList(msg->dstGroups);
+		freeList(msg->dstNodes);
+		freeList(msg->dstDocks);
+
+		headerOpt_t* header;
+		while(msg->headers != NULL){
+			header = msg->headers;
+			msg->headers = header->next;
+			free(header->value);
+			free(header);
+		}
+
+		if(msg->data != NULL){
+			free(msg->data);
+		}
+		free(msg);
+	}
+	exitlog(logger, __func__, __FILE__, __LINE__);
+}

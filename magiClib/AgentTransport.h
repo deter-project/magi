@@ -1,26 +1,27 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h> 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include "logger.h"
+#ifndef _AGENT_TRANSPORT_H
+#define _AGENT_TRANSPORT_H
+
 #include "AgentRequest.h"
+#include <pthread.h>
 
-typedef struct Queue{	
-	AgentRequest_t* req; 
-	struct Queue* next;
-}Queue_t;
+typedef struct AgentRequestQueueNode {
+	AgentRequest_t* req;
+	struct AgentRequestQueueNode* next;
+} AgentRequestQueueNode_t;
 
-
-typedef struct Transport{
-
-	Queue_t *front;
-	Queue_t *rear;
-	Logger* logger;
-	/*int loglevel;*/
+typedef struct AgentRequestQueue {
+	AgentRequestQueueNode_t* front;
+	AgentRequestQueueNode_t* rear;
 	pthread_mutex_t qlock;
+} AgentRequestQueue_t;
 
-}Transport_t;
+void init_connection(char* commHost, int commPort);
+void start_connection(char* dockName, char* commGroup);
+void closeTransport();
+
+void enqueue(AgentRequestQueue_t *transport, AgentRequest_t *req);
+AgentRequest_t* dequeue(AgentRequestQueue_t *transport);
+void sendOut(AgentRequest_t* req);
+
+#endif /* _AGENT_TRANSPORT_H */
+

@@ -1,13 +1,16 @@
+#ifndef _AGENT_MESSENGER_H
+#define _AGENT_MESSENGER_H
 
-#include "logger.h"
-/*This structure holds dictionary data structure and also class variables*/
-typedef struct dList_s
-{
-	char* name;
-	char* value;
-	struct dList_s* next;
-}dList_t;
+#include "MAGIMessage.h"
 
-typedef dList_t* dictionary;
+MAGIMessage_t* next(int block);
 
+void sendMsg(MAGIMessage_t* magiMsg, char* arg, ...);
+void trigger(char* groups, char* docks, contentType_t contenttype, char* data);
 
+void joinGroup(char* group);
+void leaveGroup(char* group);
+void listenDock(char* dock);
+void unlistenDock(char* dock);
+
+#endif /* _AGENT_MESSENGER_H */

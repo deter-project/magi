@@ -1,49 +1,73 @@
-#include "logger.h"
+#include "Logger.h"
 
-Logger * Logger_create( FILE* fp, int log_level )
-{
-	Logger *l = (Logger *)malloc(sizeof(Logger));
-	if ( l == NULL )
-	return NULL;
+#include <string.h>
+
+Logger* Logger_create(FILE* fp, int log_level) {
+	Logger *l = (Logger *) malloc(sizeof(Logger));
+	if (l == NULL)
+		return NULL;
 	pthread_mutex_init(&l->log_mutex, NULL);
-	l->datetime_format = (char *)"%Y-%m-%d %H:%M:%S";
-	if(log_level >= 0 && log_level < 4)
+	l->datetime_format = (char *) "%Y-%m-%d %H:%M:%S";
+	if (log_level >= 0 && log_level < 4)
 		l->level = log_level;
 	else
 		l->level = LOG_INFO;/*set default log level*/
-	if(fp != NULL)
+	if (fp != NULL)
 		l->fp = fp;
 	else
 		l->fp = stdout;
 	return l;
 }
 
-void Logger_free(Logger *l)
-{
-	if ( l != NULL )
-	{
-		if ( fileno(l->fp) != STDOUT_FILENO )
+void Logger_free(Logger *l) {
+	if (l != NULL) {
+		if (fileno(l->fp) != STDOUT_FILENO)
 			fclose(l->fp);
 		free(l);
 	}
 }
 
-void log_add(Logger *l, int level, const char *msg)
-{
-	if (level < l->level) 
+void log_add(Logger *l, int level, const char *msg) {
+	if (level < l->level)
 		return;
-	time_t meow = time(NULL);
-	char buf[64];
-	strftime(buf, sizeof(buf), l->datetime_format, localtime(&meow));
-	pthread_mutex_lock(&l->log_mutex);
-	fprintf(l->fp, "%s : %s\n",buf,msg);
-	fflush(l->fp);
-	pthread_mutex_unlock(&l->log_mutex);
 
+	time_t meow = time(NULL);
+	char timeStr[64];
+	strftime(timeStr, sizeof(timeStr), l->datetime_format, localtime(&meow));
+
+	pthread_mutex_lock(&l->log_mutex);
+
+	char* levelStr = (char*) malloc(6);
+	if (level == 0) {
+		strcpy(levelStr, "DEBUG");
+	} else if (level == 1) {
+		strcpy(levelStr, "INFO ");
+	} else if (level == 2) {
+		strcpy(levelStr, "WARN ");
+	} else if (level == 3) {
+		strcpy(levelStr, "ERROR");
+	} else {
+		strcpy(levelStr, "UNKWN");
+	}
+
+	fprintf(l->fp, "%s : %s : %s\n", timeStr, levelStr, msg);
+	fflush(l->fp);
+
+	free(levelStr);
+
+	pthread_mutex_unlock(&l->log_mutex);
 }
 
-void log_debug(Logger *l, const char *fmt, ...)
-{
+void log_log(Logger *l, int level, const char *fmt, ...) {
+	va_list ap;
+	char msg[LOG_MAX_MSG_LEN];
+	va_start(ap, fmt);
+	vsnprintf(msg, sizeof(msg), fmt, ap);
+	log_add(l, level, msg);
+	va_end(ap);
+}
+
+void log_debug(Logger *l, const char *fmt, ...) {
 	va_list ap;
 	char msg[LOG_MAX_MSG_LEN];
 	va_start(ap, fmt);
@@ -52,8 +76,7 @@ void log_debug(Logger *l, const char *fmt, ...)
 	va_end(ap);
 }
 
-void log_info(Logger *l, const char *fmt, ...)
-{
+void log_info(Logger *l, const char *fmt, ...) {
 	va_list ap;
 	char msg[LOG_MAX_MSG_LEN];
 	va_start(ap, fmt);
@@ -62,8 +85,7 @@ void log_info(Logger *l, const char *fmt, ...)
 	va_end(ap);
 }
 
-void log_warn(Logger *l, const char *fmt, ...)
-{
+void log_warn(Logger *l, const char *fmt, ...) {
 	va_list ap;
 	char msg[LOG_MAX_MSG_LEN];
 	va_start(ap, fmt);
@@ -72,8 +94,7 @@ void log_warn(Logger *l, const char *fmt, ...)
 	va_end(ap);
 }
 
-void log_error(Logger *l, const char *fmt, ...)
-{
+void log_error(Logger *l, const char *fmt, ...) {
 	va_list ap;
 	char msg[LOG_MAX_MSG_LEN];
 	va_start(ap, fmt);
@@ -82,15 +103,16 @@ void log_error(Logger *l, const char *fmt, ...)
 	va_end(ap);
 }
 
-/*int main()
-{
+Logger* createLogger(char* path, char* fileName, FILE* fp, int log_level) {
+	Logger* logger;
+	char logFileStr[100];
+	sprintf(logFileStr, "%s/%s", path, fileName);
+	fp = fopen(logFileStr, "a");
+	logger = Logger_create(fp, log_level);
+	return logger;
+}
 
-	FILE* fp ;
-	fp = fopen("test.log","w");
-	Logger *n = Logger_create(fp,LOG_ERROR);
-	//log_add(n,LOG_INFO,"info messages are logged\n");
-	log_info(n,"Started logging...\n");
-	log_warn(n,"WARNING: Entering untested code..\n");
-	log_error(n,"Non- magi message received");
-	log_debug(n,"debug msg");	
-}*/
+void destroyLogger(FILE* fp, Logger *logger) {
+	fclose(fp);
+	Logger_free(logger);
+}
