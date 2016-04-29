@@ -53,33 +53,44 @@ if __name__ == '__main__':
         if options.config is None:
             optparser.print_help()
             optparser.error("Missing configuration file")
-     
+            
         if options.dbhost:
             dbHost = options.dbhost
             dbPort = options.dbport
-        elif options.experimentConfig or (options.project and options.experiment):
+        else:
+            if not options.experimentConfig:
+                if not (options.project and options.experiment):
+                    optparser.print_help()
+                    optparser.error("Missing database host and experiment configuration information")
+                    
+                options.experimentConfig = helpers.getExperimentConfigFile(
+                                            options.project, options.experiment)
+                
+            from magi.util import config
+            # Set the context by loading the experiment configuration file
+            config.loadExperimentConfig(options.experimentConfig)
+                
             logging.info("Fetching database host based on the experiment information")
-            (dbHost, dbPort) = helpers.getExperimentDBHost(experimentConfigFile=options.experimentConfig,
-                                                       project=options.project, 
-                                                       experiment=options.experiment)
+            (dbHost, dbPort) = helpers.getExperimentDBHost(
+                                experimentConfigFile=options.experimentConfig,
+                                project=options.project, 
+                                experiment=options.experiment)
+            
             logging.info("Fetched database host: %s" %(dbHost)) 
             logging.info("Fetched database port: %s" %(dbPort))    
-        else:
-            optparser.print_help()
-            optparser.error("Missing database host and experiment configuration information")
         
         logging.info("Attempting to load the graph configuration file")
-        config = helpers.loadYaml(options.config)
+        graphConfig = helpers.loadYaml(options.config)
         logging.info("Graph configuration loaded")
 
-        if not config.has_key('db') :
+        if not graphConfig.has_key('db') :
             raise RuntimeError, 'Configuration file incomplete. Database options are missing. Use option -a to get fields'
             sys.exit(2)
         
-        #logging.info(config)
+        #logging.info(graphConfig)
         
-        dbConfig = config['db']
-        graphConfig = config.get('graph', {})
+        dbConfig = graphConfig['db']
+        graphConfig = graphConfig.get('graph', {})
    
         try:
             agentName = dbConfig['agent']
