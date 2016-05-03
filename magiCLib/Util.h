@@ -30,4 +30,6 @@ char* parseYamlString(char* input);
 
 void freeList(list_t* list);
 
+char *covertToUpper(char *str);
+
 #endif /* _UTIL_H */

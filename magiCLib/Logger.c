@@ -1,4 +1,5 @@
 #include "Logger.h"
+#include "Util.h"
 
 #include <string.h>
 
@@ -115,4 +116,19 @@ Logger* createLogger(char* path, char* fileName, FILE* fp, int log_level) {
 void destroyLogger(FILE* fp, Logger *logger) {
 	fclose(fp);
 	Logger_free(logger);
+}
+
+int getIntLevel(char* strLevel){
+	if(strLevel == NULL){
+		return LOG_INFO;
+	}
+	if (strcmp("DEBUG", covertToUpper(strLevel)) == 0){
+		return LOG_DEBUG;
+	} else if (strcmp("WARN", covertToUpper(strLevel)) == 0){
+		return LOG_WARN;
+	} else if (strcmp("ERROR", covertToUpper(strLevel)) == 0){
+		return LOG_ERROR;
+	} else {
+		return LOG_INFO;
+	}
 }

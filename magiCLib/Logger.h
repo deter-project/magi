@@ -17,7 +17,6 @@ extern "C" {
 #define LOG_INFO 1
 #define LOG_WARN 2
 #define LOG_ERROR 3
-#define LOG_LEVEL_CHARS "LOG_INFO"
 #define LOG_MAX_MSG_LEN 1024
 
 struct _Logger {
@@ -39,6 +38,8 @@ void log_error(Logger *l, const char *fmt, ...);
 
 Logger* createLogger(char* path, char* fileName, FILE* fp, int log_level);
 void destroyLogger(FILE* fp, Logger *logger);
+
+int getIntLevel(char* strLevel);
 
 #ifdef __cplusplus
 }

@@ -375,9 +375,9 @@ void parse_args(int argc, char**argv) {
 			free(commGroup);
 			commGroup = parseYamlString(val);
 		} else if (!strcmp(key, "loglevel")) {
-			log_level = atoi(parseYamlString(val));
-			if (log_level < 0 || log_level > 3)
-				log_level = 0;
+			char* strLevel = parseYamlString(val);
+			log_level = getIntLevel(covertToUpper(strLevel));
+			free(strLevel);
 		} else if (!strcmp(key, "logfile")) {
 			free(logFileName);
 			logFileName = parseYamlString(val);
@@ -859,7 +859,7 @@ dList_t* ArgParser(int argc, char** argv) {
 		return NULL;
 
 	dList_t* dList = NULL;
-	insert(&dList, "agentName1", argv[1]);
+	insert(&dList, "agentName", argv[1]);
 	insert(&dList, "dockName", argv[2]);
 	insert(&dList, "nodeConfigFile", argv[3]);
 	insert(&dList, "experimentConfigFile", argv[4]);
