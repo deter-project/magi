@@ -19,7 +19,7 @@ log = logging.getLogger()
 
 iplist = deque([])
 
-for i in range (20):
+for i in range (200):
 	ip = '10.0.%s.1/24'%i
 	iplist.append(ip)
 	ip = '10.0.%s.2/24'%i
@@ -114,8 +114,6 @@ class createMininetHosts(Topo):
 			localInfo['tempDir'] = "/tmp/%s/tmp" %(nodeName)
 			localInfo['nodename'] = nodeName
 			
-			helpers.makeDir(localInfo['configDir'])
-			
 			dbConfig = dict()
 			dbConfig['isDBEnabled'] = True
 			dbConfig['isDBSharded'] = False
@@ -133,10 +131,11 @@ class createMininetHosts(Topo):
 			nodeConfig['database'] = dbConfig
 			nodeConfig['transports'] = transportsConfig
 			
-			nodeConfFile = "/tmp/%s/%s.conf" %(nodeName, nodeName)
-			fp = open(nodeConfFile, 'w')
-			fp.write(yaml.safe_dump(nodeConfig))
-			fp.close()
+			nodeConfigDir = localInfo['configDir']
+			helpers.makeDir(nodeConfigDir)
+			nodeConfFile = "%s/node.conf" %(nodeConfigDir)
+			helpers.writeYaml(nodeConfig, nodeConfFile)
+			log.info("Created a node configuration file at %s", nodeConfFile)
 			
 		print "Interface List: %s" % interfacelist.items() 
 			
