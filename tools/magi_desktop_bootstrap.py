@@ -23,18 +23,12 @@ log = logging.getLogger()
 def createConfigFiles(nodeName, topoGraph, externalAgentsCommPort=28809, isDBEnabled=True):
 	
 	config.setNodeDir("/tmp/%s" %(nodeName))
-	bridgeNode = helpers.getServer(topoGraph.nodes())
 	
 	expdl = dict()
 	expdl['topoGraph'] = json_graph.node_link_data(topoGraph)
 	
 	dbdl = dict()
-	if isDBEnabled:
-		dbdl['isDBEnabled'] = True
-		dbdl['isDBSharded'] = False
-		dbdl['sensorToCollectorMap'] = {'__ALL__': bridgeNode}
-	else:
-		dbdl['isDBEnabled'] = False
+	dbdl['isDBEnabled'] = isDBEnabled
 		
 	expConf = dict()
 	expConf['expdl'] = expdl
