@@ -53,6 +53,7 @@ class ToShare(Command):
         self.call("cp scripts/magi_query.py %s" % self.path)
         self.call("cp AUTHORS %s" % self.path) 
         self.call("cp GPLv3-LICENSE.txt %s" % self.path)
+        self.call("cp -af . %s" % os.path.join(self.path, 'src'))
         
         # Not sure why a copy of the source code is required in the distribution 
         # Let it stay for now 

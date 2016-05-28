@@ -26,7 +26,7 @@ def getStatus(bridgeNode, bridgePort, nodeSet=set(), groupMembership=False, agen
         log.info("Empty node set. Would query for just the bridge node.")
         nodeSet = set([bridgeNode.split('.')[0]])
     
-    log.info("Node Set: %s" %(nodeSet))
+    log.info("Node Set: %s" %(sorted(list(nodeSet))))
     
     args = {'groupMembership': groupMembership,
             'agentInfo': agentInfo}

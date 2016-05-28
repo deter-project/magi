@@ -167,3 +167,13 @@ void freeList(list_t* list){
 	}
 	exitlog(logger, __func__, __FILE__, __LINE__);
 }
+
+char *covertToUpper(char *str){
+	if(str==NULL){
+		return NULL;
+	}
+	char *newstr, *p;
+	p = newstr = strdup(str);
+	while(*p++=toupper(*p));
+	return newstr;
+}

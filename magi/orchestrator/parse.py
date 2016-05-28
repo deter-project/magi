@@ -326,7 +326,10 @@ class BaseMethodCall(EventObject):
             call['trigger'] = self.trigger
         return [MAGIMessage(groups=self.groups, nodes=self.nodes,
                             docks=self.docks, contenttype=MAGIMessage.YAML,
-                            data=yaml.dump(call))]
+                            data=yaml.dump(call, width=10000))]
+        #width set to 10000 for not breaking arg dict into multiple lines
+        #because the custom yaml parsing code in c agent library requires that
+        #pyyaml by default breaks down content of more than a certain length 
 
     def __repr__(self):
         return 'Event: %s(%s) \n\t trigger: %s\n' %(self.method, 

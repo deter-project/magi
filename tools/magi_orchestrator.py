@@ -242,13 +242,15 @@ if __name__ == '__main__':
         log.info("Making sure Magi daemons are up and listening")
         while True:
             try:
-                status = getStatus(bridgeNode=bridgeNode, 
-                                   bridgePort=bridgePort, 
-                                   nodeSet=nodeSet,
-                                   timeout=10)
-                if status[0]:
+                (status, result) = getStatus(bridgeNode=bridgeNode, 
+                                             bridgePort=bridgePort, 
+                                             nodeSet=nodeSet,
+                                             timeout=10)
+                if status:
                     break
                 log.info("Magi daemon on one or more nodes not up")
+                log.info("Did not receive reply from %s", sorted(list(nodeSet-set(result.keys()))))
+                nodeSet = nodeSet-set(result.keys())
             except:
                 log.info("Magi daemon on one or more nodes not up")
                 time.sleep(5)

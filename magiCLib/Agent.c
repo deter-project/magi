@@ -375,9 +375,9 @@ void parse_args(int argc, char**argv) {
 			free(commGroup);
 			commGroup = parseYamlString(val);
 		} else if (!strcmp(key, "loglevel")) {
-			log_level = atoi(parseYamlString(val));
-			if (log_level < 0 || log_level > 3)
-				log_level = 0;
+			char* strLevel = parseYamlString(val);
+			log_level = getIntLevel(covertToUpper(strLevel));
+			free(strLevel);
 		} else if (!strcmp(key, "logfile")) {
 			free(logFileName);
 			logFileName = parseYamlString(val);
@@ -576,7 +576,9 @@ char* dispatchCall(const char *name, char** args, char* retType) {
 			// Verify the argument count
 			if (argcnt != function_map[i].aCnt) {
 				log_error(logger, "Argument count did not match");
-				return "False";
+				retString = malloc(strlen("False") + 1);
+				strcpy(retString, "False");
+				return retString;
 			}
 
 			log_debug(logger, "Argument count matched");
@@ -592,7 +594,9 @@ char* dispatchCall(const char *name, char** args, char* retType) {
 				} else {
 					// TODO - handling unknown data types
 					log_error(logger, "Unknown data type");
-					return "False";
+					retString = malloc(strlen("False") + 1);
+					strcpy(retString, "False");
+					return retString;
 				}
 				j++;
 			}
@@ -650,7 +654,9 @@ char* dispatchCall(const char *name, char** args, char* retType) {
 				default:
 					log_error(logger,
 							"Not able to handle these many number of arguments\n");
-					break;
+					retString = malloc(strlen("False") + 1);
+					strcpy(retString, "False");
+					return retString;
 				}
 
 				int v = *ret;
@@ -710,8 +716,9 @@ char* dispatchCall(const char *name, char** args, char* retType) {
 				default:
 					log_error(logger,
 							"Not able to handle these many number of arguments\n");
-					retString = "False";
-					break;
+					retString = malloc(strlen("False") + 1);
+					strcpy(retString, "False");
+					return retString;
 				}
 
 			} else if (!strcmp(function_map[i].retType, "dictionary")) {
@@ -770,7 +777,9 @@ char* dispatchCall(const char *name, char** args, char* retType) {
 				default:
 					log_info(logger,
 							"Not able to handle these many number of arguments\n");
-					break;
+					retString = malloc(strlen("False") + 1);
+					strcpy(retString, "False");
+					return retString;
 				}
 
 				d = (dictionary) temp;
@@ -849,7 +858,11 @@ char* dispatchCall(const char *name, char** args, char* retType) {
 			return retString;
 		}
 	}
-	return "False";
+
+	log_error(logger, "No function found with name: %s", name);
+	retString = malloc(strlen("False") + 1);
+	strcpy(retString, "False");
+	return retString;
 }
 
 // Utility function to store the arguments passed from the orchestrator.
@@ -859,7 +872,7 @@ dList_t* ArgParser(int argc, char** argv) {
 		return NULL;
 
 	dList_t* dList = NULL;
-	insert(&dList, "agentName1", argv[1]);
+	insert(&dList, "agentName", argv[1]);
 	insert(&dList, "dockName", argv[2]);
 	insert(&dList, "nodeConfigFile", argv[3]);
 	insert(&dList, "experimentConfigFile", argv[4]);
