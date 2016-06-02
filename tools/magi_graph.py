@@ -1,20 +1,16 @@
 #!/usr/bin/env python
 
-import logging
 import matplotlib
 matplotlib.use('Agg')
+import logging
 import optparse
 import sys
 
+from magi.db.Collection import DB_NAME, COLLECTION_NAME
 from magi.util import helpers, visualization
 from pymongo import MongoClient
 
 
-#cannot import from magi.util.database as it needs testbed specific information
-#that might not be available on all nodes from where magi_graph tool is run
-#from magi.util.database import DB_NAME, COLLECTION_NAME
-DB_NAME = 'magi'
-COLLECTION_NAME = 'experiment_data'
                 
 if __name__ == '__main__':
  
@@ -94,19 +90,24 @@ if __name__ == '__main__':
    
         try:
             agentName = dbConfig['agent']
-            dataFilter = dbConfig.get('filter', {})
-            dataFilter['agent'] = agentName
-            xValue = graphConfig.get('xValue','created')
+            xValue = dbConfig['xValue']
             yValue = dbConfig['yValue']
+            dbName = dbConfig.get('dbName', DB_NAME)
+            collectionName = dbConfig.get('collectionName', COLLECTION_NAME)
+            
             graphType = graphConfig.get('type', 'line')
             xLabel = graphConfig.get('xLabel', xValue)
             yLabel = graphConfig.get('yLabel', yValue)
-            graphTitle = graphConfig.get('title', 'Graph')
+            graphTitle = graphConfig.get('title', '')
+            
         except KeyError:
             raise RuntimeError, 'Configuration file incomplete. Database options are missing. Use option -a to get fields'
             #logging.exception("Invalid graph configuration")
             sys.exit(2)
-            
+        
+        logging.info("Graph Config: %s", graphConfig)
+        logging.info("DB Config: %s", dbConfig)
+        
         try:
             tunnel_cmd = None		
             if options.tunnel:
@@ -118,40 +119,75 @@ if __name__ == '__main__':
                 logging.info('Tunnel setup done')
             
             try:
-                logging.info('Attempting to connect to the database')
+                logging.info('Attempting to connect to the database at %s:%d', 
+                             dbHost, dbPort)
+                logging.info('DB: %s, Collection: %s', dbName, collectionName)
+                
                 connection = MongoClient(dbHost, dbPort)
-                collection = connection[DB_NAME][COLLECTION_NAME]
+                collection = connection[dbName][collectionName]
+                
                 logging.info('Connected to the database')
             except:
-                logging.exception("Failed connecting to the database %s:%s" %(dbHost, str(dbPort)))
+                logging.exception("Failed connecting to the database at %s:%d", 
+                                  dbHost, dbPort)
                 sys.exit(2)
-
+            
             """ X and Y list values for the graph """
-            x=[]
-            y=[]
-            logging.info('The filter applied for data collected: %s', dataFilter)
+            xValues = []
+            yValues = []
+            labels = []
             
-            try:
-                """ Populating the X and Y values from the database """
-                firstRecord = collection.find(dataFilter).sort(xValue, 1).limit(1)[0]
-                logging.info('The first timestamp in database: %s', firstRecord[xValue])
-    
-                logging.info('Fetching data from database')
-                for record in collection.find(dataFilter).sort(xValue, 1):
-                    x.append("%.8f" % (record[xValue] - firstRecord[xValue]))
-                    y.append(record[yValue])
-            except:
-                logging.exception("Error fetching data")
-                sys.exit(2)
+            if (not dbConfig.has_key('plots')) or (type(dbConfig['plots']) != list):
+                raise RuntimeError, "DB Config should have a list of plots"
+            
+            plots = dbConfig['plots']
                 
-            logging.info('Constructed the x and y values for graph')
-  
-            """ Check for type of graph needed and print """          
+            logging.info('Number of plots: %d', len(plots))
+            plotItr = 0
             
+            for plot in plots:
+                
+                plotItr += 1
+                logging.info('Fetching data for plot #%d', plotItr)
+                
+                if type(plot) != dict:
+                    raise RuntimeError, "Each plot entry should be a dictionary"
+                
+                seriesName = plot.get('series', '')    
+                
+                dataFilter = plot.get('filter', {})
+                dataFilter['agent'] = dbConfig['agent']
+                
+                logging.info('Data filter: %s', dataFilter)
+                
+                try:
+                    x= []
+                    y= []
+                    
+                    """ Populating the X and Y values from the database """
+                    firstRecord = collection.find(dataFilter).sort(xValue, 1).limit(1)[0]
+                    logging.info('The first timestamp in database: %s', firstRecord[xValue])
+        
+                    logging.info('Fetching data from database')
+                    for record in collection.find(dataFilter).sort(xValue, 1):
+                        x.append("%.8f" % (record[xValue] - firstRecord[xValue]))
+                        y.append(record[yValue])
+                except:
+                    logging.exception("Error fetching data")
+                    sys.exit(2)
+                    
+                logging.info('Constructed the x and y values for graph')
+                
+                xValues.append(x)
+                yValues.append(y)
+                labels.append(seriesName)
+            
+            """ Check for type of graph needed and print """          
             if graphType == 'line':
-                visualization.line_Graph(xLabel, yLabel, graphTitle, x, y, options.output)
+                visualization.line_Graph(xLabel, yLabel, graphTitle, xValues, yValues, labels, options.output)
             elif graphType == 'scatter':
-                visualization.scatter_Graph(xLabel, yLabel, graphTitle, x, y, options.output)
+                visualization.scatter_Graph(xLabel, yLabel, graphTitle, xValues, yValues, labels, options.output)
+            
             logging.info('Saved graph at %s' %(options.output))	    
 
         finally:
