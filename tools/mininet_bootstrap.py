@@ -147,6 +147,7 @@ if __name__ == '__main__':
 		#computes shortest path between all pairs of nodes and updates routing table on each node
 		for srcNode in topoGraph.nodes():
 			log.info("Computing routes for node: %s" %(srcNode))
+			#print net[srcNode].cmd('ip route add 10.0.0.0/16 dev %s-eth1' %(srcNode))
 			for destNode in topoGraph.nodes():
 				if srcNode != destNode: 		
 					sp = nx.shortest_path(topoGraph, srcNode, destNode)
@@ -156,7 +157,7 @@ if __name__ == '__main__':
 			print net[srcNode].cmd('ip route add default via 10.1.1.2')
 			#print net[srcNode].cmd('ip route add 192.168.0.0/24 dev %s-eth0' %(srcNode))
 			log.info("Routing table for node: %s" %(srcNode))
-			log.info(net[destNode].cmd('route'))
+			log.info(net[srcNode].cmd('route'))
 			
 		print net['z1'].cmd('ip route add 10.1.1.1 dev z1-eth1')
 		print net['z1'].cmd('ip route add 10.0.0.0/16 via 10.1.1.1')
@@ -172,7 +173,7 @@ if __name__ == '__main__':
 			
 			log.info("Starting daemon on %s" %(nodeName))
 			
-			daemonCmd = '/usr/local/bin/magi_daemon.py --nodeconf /tmp/%s/%s.conf' %(nodeName, nodeName)
+			daemonCmd = '/usr/local/bin/magi_daemon.py --nodeconf /tmp/%s/config/node.conf' %(nodeName)
 
 			if options.verbose:
 				log.info("Starting daemon with debugging")

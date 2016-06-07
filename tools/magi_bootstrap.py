@@ -89,7 +89,7 @@ if __name__ == '__main__':
         
                 if not options.noinstall:                 
                         try:
-                                installC('yaml', '/usr/local/lib/libyaml.so', rpath)
+                                installC('yaml', '/usr/lib/libyaml.so', rpath)
                                 import yaml 
                         except:
                                 log.info("unable to install libyaml, will using pure python version: %s", sys.exc_info()[1])
@@ -102,14 +102,25 @@ if __name__ == '__main__':
                         installPython('unittest2', 'unittest2', 'install', rpath)
                         installPython('networkx', 'networkx', 'install', rpath)
                         #installPython('SQLAlchemy', 'sqlalchemy', 'install', rpath)
-                        magidist = 'MAGI-1.8.0'
+                        magidist = 'MAGI-1.9.0'
                         installPython(magidist, 'alwaysinstall', 'install', rpath)
                         
                         installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
                         installPython('pymongo', 'pymongo', 'install', rpath)
                         
                         if options.enablecagent:
-                            installC('mongo-c-driver', '/usr/local/lib/libmongoc-1.0.so', rpath)
+                            installC('mongo-c-driver', '/usr/lib/libmongoc-1.0.so', rpath)
+                            # installing magi c library
+                            log.info("Installing magi-c-lib")
+                            # TODO: should be converted to use autotools
+                            call("cp -a %s /tmp/" %(os.path.join(rpath, 'src', 'magiCLib')))
+                            cdCmd = "cd /tmp/magiCLib"
+                            compileCmd = "gcc -c -fPIC *.c -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0"
+                            libCmd = "gcc -shared -o libmagic.so *.o -lm"
+                            call("%s && %s && %s" %(cdCmd, compileCmd, libCmd))
+                            call("cp /tmp/magiCLib/libmagic.so /usr/lib")
+                            call("mkdir /usr/include/libmagic")
+                            call("cp /tmp/magiCLib/*.h /usr/include/libmagic/")
                         
                         #updating sys.path with the installed packages
                         import site
