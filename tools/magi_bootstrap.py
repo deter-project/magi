@@ -102,7 +102,7 @@ if __name__ == '__main__':
                         installPython('unittest2', 'unittest2', 'install', rpath)
                         installPython('networkx', 'networkx', 'install', rpath)
                         #installPython('SQLAlchemy', 'sqlalchemy', 'install', rpath)
-                        magidist = 'MAGI-1.8.0'
+                        magidist = 'MAGI-1.9.0'
                         installPython(magidist, 'alwaysinstall', 'install', rpath)
                         
                         installPackage(yum_pkg_name="python-setuptools", apt_pkg_name="python-setuptools")
