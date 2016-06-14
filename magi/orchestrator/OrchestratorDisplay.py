@@ -158,11 +158,14 @@ class OrchestratorDisplayState(object):
                             self._name(streamItr.name), self._red('wait'), now, timeout)
                     elif isinstance(trigger, parse.EventTrigger):
                         event = trigger.event
+                        cachedEventTriggers = cache[event]
+                        log.debug("cachedEventTriggers size: %d" %(len(cachedEventTriggers)))
                         completedNodes = set()
-                        for cachedTrigger in cache[event]:
-                            if cachedTrigger.isEqual(trigger):
-                                completedNodes = cachedTrigger.nodes
-                                break
+                        for cachedTrigger in cachedEventTriggers:
+                            log.debug(cachedTrigger)
+                            if trigger.isMatch(cachedTrigger):
+                                log.debug("Cached trigger matches. Updating completed nodes set.")
+                                completedNodes |= cachedTrigger.nodes
                         remainingNodes = trigger.nodes - completedNodes
                         print '%s : %s : (%s) event trigger %s : %s waiting to be received from nodes %s' % (
                             self._name(streamItr.name), self._red('wait'), now, trigger.event, trigger.args, self._minstr(remainingNodes))

@@ -138,12 +138,7 @@ class EventTrigger(Trigger):
             matchingTriggers = []
             
             for cachedTrigger in cachedTriggers:
-                match = True
-                for key, value in self.args.iteritems():
-                    if cachedTrigger.args.get(key) != value:
-                        match = False
-                        break
-                if match:
+                if self.isMatch(cachedTrigger):
                     matchingTriggers.append(cachedTrigger)
             
             interestedNodeSet = set()
@@ -158,6 +153,14 @@ class EventTrigger(Trigger):
         
         return False
     
+    def isMatch(self, trigger):
+        if self.event != trigger.event:
+            return False
+        for key, value in self.args.iteritems():
+            if trigger.args.get(key) != value:
+                return False
+        return True
+        
     def isEqual(self, trigger):
         return self.event == trigger.event and self.args == trigger.args
     
