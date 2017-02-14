@@ -201,7 +201,7 @@ def getNodesFromAAL(filenames):
             read_data = True
 
     if read_data:
-        print('concat AAL: {}'.format(yaml_file.getvalue()))
+        log.debug('concat AAL: {}'.format(yaml_file.getvalue()))
         aaldata = yaml.load(yaml_file.getvalue())
         for nodes in aaldata['groups'].values():
             nodeSet.update(nodes)
