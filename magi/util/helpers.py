@@ -7,6 +7,7 @@ import os
 import platform
 import yaml
 import tarfile
+import cStringIO
 
 log = logging.getLogger(__name__)
 
@@ -189,11 +190,22 @@ def loadIDL(agentName, expProcdureFile):
 
 def getNodesFromAAL(filenames):
     nodeSet = set()
-    if filenames:
-        for filename in toSet(filenames):
-            aaldata = loadYaml(filename)
-            for nodes in aaldata['groups'].values():
-                nodeSet.update(nodes)
+
+    # GTL We need to merge the AALs to parse them correctly as there my be anchors
+    #  and rerferences across the files!
+    yaml_file = cStringIO.StringIO()
+    read_data = False
+    for f in filenames:  # do NOT change order of filenames!
+        with open(f) as fd:
+            yaml_file.write(fd.read())
+            read_data = True
+
+    if read_data:
+        log.debug('concat AAL: {}'.format(yaml_file.getvalue()))
+        aaldata = yaml.load(yaml_file.getvalue())
+        for nodes in aaldata['groups'].values():
+            nodeSet.update(nodes)
+
     return nodeSet
 
 def getExperimentConfigFile(project, experiment):
