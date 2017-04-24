@@ -195,6 +195,11 @@ def getNodesFromAAL(filenames):
     #  and rerferences across the files!
     yaml_file = cStringIO.StringIO()
     read_data = False
+    # not everyone passes a list of filenames. (magi_status,py)
+    # if it's not a list, make it one.
+    if not isinstance(filenames, list):
+        filenames = [filenames]
+
     for f in filenames:  # do NOT change order of filenames!
         with open(f) as fd:
             yaml_file.write(fd.read())

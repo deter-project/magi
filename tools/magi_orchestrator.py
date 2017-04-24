@@ -4,6 +4,7 @@ from magi.messaging import api
 from magi.orchestrator import AAL, Orchestrator
 from magi.orchestrator.parse import AALParseError
 from magi.db import ROUTER_SERVER_PORT
+from magi import __version__
 
 from magi.util import helpers, config
 from socket import gaierror # this should really be wrapped in daemon lib.
@@ -145,7 +146,17 @@ if __name__ == '__main__':
                          default=False,
                          action="store_true")
 
+    optparser.add_option('-V', '--version',
+                         dest='version',
+                         help='Give Magi version and exit',
+                         default=False,
+                         action='store_true')
+
     (options, args) = optparser.parse_args()
+
+    if options.version:
+        print('Magi Version: {}'.format(__version__))
+        exit(0)
 
     if not options.events:
         optparser.print_help()
